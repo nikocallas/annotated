@@ -1,0 +1,6 @@
+/* Annotated — content-script overlay styles. Reserved for highlight overlays. */
+.annotated-highlight-overlay {
+  background: rgba(1, 105, 111, 0.18);
+  border-bottom: 2px solid #01696f;
+  border-radius: 2px;
+}
