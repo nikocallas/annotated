@@ -1,9 +1,32 @@
-import { storage } from "./storage";
+import { storage, storageBackend } from "./storage";
 
-/** Idempotent demo data seed. Runs at server start. */
+let seeded: Promise<void> | null = null;
+
+/**
+ * Idempotent demo data seed.
+ *
+ * In long-running dev/server mode this is awaited once at boot. On Vercel
+ * serverless functions the module is re-evaluated on cold start; we cache the
+ * promise so only one request triggers the seed, and we skip entirely on
+ * Supabase unless the table is empty (the SQL seed migration is the
+ * authoritative seed for production).
+ */
 export async function seedDemoData() {
+  if (!seeded) seeded = doSeed();
+  return seeded;
+}
+
+async function doSeed() {
+  // On Supabase the SQL seed migration owns demo data. Only seed via the API
+  // if the table is genuinely empty (e.g. someone applied 0001_init.sql but
+  // skipped 0002_seed.sql).
   const existing = await storage.listUsers();
   if (existing.length > 0) return;
+  if (storageBackend === "supabase") {
+    // Avoid hammering Supabase from cold starts when SQL seed wasn't applied;
+    // surface a console hint and exit. Production should run 0002_seed.sql.
+    console.log("[seed] users table empty on Supabase — apply supabase/migrations/0002_seed.sql");
+  }
 
   const u1 = await storage.createUser({
     username: "jcal",

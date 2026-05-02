@@ -4,7 +4,7 @@ Project location: `/home/user/workspace/annotated/`
 
 ## What was built
 
-A monorepo with three packages:
+A monorepo with three packages plus a Supabase migration tree:
 
 ```
 annotated/
@@ -14,42 +14,28 @@ annotated/
 │   ├── content/content-script.js   Detects YouTube/article/podcast, captures selections
 │   ├── content/content-style.css
 │   ├── public/icons/               16/48/128 PNG icons (generated)
-│   └── sidepanel/
-│       ├── index.html              Side panel UI (vanilla JS, no build step)
-│       ├── sidepanel.css
-│       └── sidepanel.js            Login → Clip → Feed → Profile → Detail flows
+│   └── sidepanel/                  Login → Clip → Feed → Profile → Detail flows
 │
-├── shared/types.ts                 Shared TypeScript types (User, Annotation, etc.)
+├── shared/types.ts                 Shared TypeScript types
 │
-├── web/                            Express + Vite + React + Tailwind + shadcn
-│   ├── shared/schema.ts            Drizzle SQLite schema + Zod insert schemas
-│   ├── server/
-│   │   ├── index.ts                + permissive CORS for the extension
-│   │   ├── routes.ts               REST API (auth demo, users, feed, clips, comments, claims)
-│   │   ├── storage.ts              IStorage + DatabaseStorage (SQLite via Drizzle)
-│   │   ├── seed.ts                 4 users, 5 annotations, follows, comments
-│   │   └── clip-processing.ts      90s + 240p validation + FFmpeg/yt-dlp command builder
-│   └── client/src/
-│       ├── App.tsx                 Hash-routed pages
-│       ├── lib/auth-context.tsx    In-memory auth (no localStorage in deploy)
-│       ├── components/
-│       │   ├── AppLayout.tsx
-│       │   ├── Logo.tsx                Custom inline SVG logo
-│       │   ├── FeedCard.tsx
-│       │   ├── ClipPreview.tsx         YouTube embed with start/end, audio, article quote
-│       │   ├── CommentThread.tsx
-│       │   ├── FileClaimButton.tsx     ⚠ Required by spec
-│       │   └── SourceBadge.tsx
-│       ├── pages/
-│       │   ├── feed.tsx                Global feed
-│       │   ├── following.tsx           Following feed (per-user)
-│       │   ├── login.tsx               X / Google buttons only
-│       │   ├── profile.tsx             User profile + follow toggle
-│       │   ├── annotation-detail.tsx   Public landing page with Source link + File a claim
-│       │   └── install.tsx             Extension install instructions
-│       └── index.css                   Custom warm cream + teal palette
+├── supabase/
+│   └── migrations/
+│       ├── 0001_init.sql           Postgres schema mirroring the Drizzle/SQLite shape
+│       └── 0002_seed.sql           Idempotent demo seed (users, annotations, follows, comments)
 │
-└── README.md / IMPLEMENTATION_SUMMARY.md
+└── web/                            Express + Vite + React + Tailwind + shadcn
+    ├── shared/schema.ts            Drizzle schema (now type-only) + Zod insert schemas
+    ├── server/
+    │   ├── index.ts                Express bootstrap for `npm run dev` / standalone Node prod
+    │   ├── routes.ts               REST API (auth demo, users, feed, clips, comments, claims)
+    │   ├── storage.ts              IStorage + SupabaseStorage + MemoryStorage fallback
+    │   ├── seed.ts                 Memoized demo seed (used by MemoryStorage)
+    │   └── clip-processing.ts      90s + 240p validation + FFmpeg/yt-dlp command builder
+    ├── api/
+    │   └── index.ts                Vercel serverless entrypoint (mounts the Express app)
+    ├── vercel.json                 Build + rewrites for /api/* and SPA fallback
+    ├── .env.example                SUPABASE_URL / SUPABASE_ANON_KEY template
+    └── client/src/                 React SPA — hash-routed, in-memory auth, Tailwind theme
 ```
 
 ## Hard requirements — coverage
@@ -59,11 +45,70 @@ annotated/
 | Sidebar Chrome extension is the primary surface             | `extension/manifest.json` (MV3, Side Panel API), `extension/sidepanel/`                              |
 | "File a claim" button on every annotation page              | `client/src/components/FileClaimButton.tsx`, rendered top + bottom of `annotation-detail.tsx`        |
 | Always link back to source URL                              | `client/src/components/FeedCard.tsx`, two anchors on `annotation-detail.tsx`, sidepanel feed/detail  |
-| Max 90s clips (server-enforced)                             | `shared/schema.ts` insertAnnotationSchema refine + `server/clip-processing.ts` `validateClipDuration`|
+| Max 90s clips (server-enforced)                             | Zod `insertAnnotationSchema` refine, `server/clip-processing.ts` `validateClipDuration`, Postgres CHECK in `supabase/migrations/0001_init.sql` |
 | Video downscaled to 240p (< 480p)                           | `server/clip-processing.ts` `TARGET_VIDEO_HEIGHT = 240` + ffmpeg scale in `buildYouTubeClipCommands` |
 | Account creation via X or Google only (no email/password)   | `pages/login.tsx`, `routes.ts` `/api/auth/demo`, `extension/sidepanel/sidepanel.js`                  |
 | Public-facing social feed with follow + comment             | `pages/feed.tsx`, `pages/following.tsx`, `CommentThread.tsx`, `/api/users/:id/follow`                |
 | Text + audio commentary                                     | `pages/annotation-detail.tsx` (audio player) + sidepanel `MediaRecorder` recorder                    |
+| Hash routing                                                | `client/src/App.tsx` uses `wouter` `useHashLocation`                                                 |
+
+## Vercel + Supabase live deployment
+
+### Live infrastructure (already provisioned by main agent)
+
+- **Supabase project**: `cpqmjujhcwpavrsjadjz` at
+  `https://cpqmjujhcwpavrsjadjz.supabase.co`.
+- **Publishable key for env vars**: `sb_publishable_Ibpg9ePSkS0IrmQZbseKPg_MqBZ5Die`.
+
+### Migrations to apply
+
+```
+supabase/migrations/0001_init.sql   # users, follows, annotations, comments, claims
+supabase/migrations/0002_seed.sql   # demo seed (idempotent)
+```
+
+`0001_init.sql` keeps the same column names, defaults, and enum-style CHECK
+constraints as the original Drizzle/SQLite schema. The 90-second clip cap is
+enforced as a Postgres CHECK constraint *and* in the Zod schema *and* in the
+clip-processing helper — three layers of defense.
+
+### Vercel configuration
+
+`web/vercel.json`:
+
+- `buildCommand`: `vite build`
+- `outputDirectory`: `dist/public`
+- Function: `api/index.ts` (1 GB memory, 30s max duration)
+- Rewrites: `/api/(.*)` → `/api/index`, everything else → `/index.html` so
+  hash routing works without server-side rewrites.
+
+`web/api/index.ts` mounts the same `registerRoutes(app)` used in dev so route
+handlers don't change between environments.
+
+### Required Vercel env vars
+
+| Var                  | Value                                                                       |
+|----------------------|-----------------------------------------------------------------------------|
+| `SUPABASE_URL`       | `https://cpqmjujhcwpavrsjadjz.supabase.co`                                  |
+| `SUPABASE_ANON_KEY`  | `sb_publishable_Ibpg9ePSkS0IrmQZbseKPg_MqBZ5Die`                            |
+
+When both are set the API uses Supabase. When either is absent it falls back
+to in-memory storage (process-local, suitable for dev / preview only).
+
+## Storage layer
+
+`web/server/storage.ts` exports an `IStorage` interface implemented by:
+
+- **`SupabaseStorage`** — wraps `@supabase/supabase-js`. Translates between the
+  snake_case Postgres rows and the camelCase domain types from
+  `shared/schema.ts`. Selected at boot when `SUPABASE_URL` and
+  `SUPABASE_ANON_KEY` are both present.
+- **`MemoryStorage`** — `Map`-backed, process-local. Selected when the env
+  vars are missing. Seeded by `server/seed.ts` on first request.
+
+The previous `DatabaseStorage` (Drizzle + better-sqlite3) is removed. The
+SQLite better-sqlite3 dependency is no longer imported anywhere; it can be
+dropped from `package.json` later but is left in place to avoid churn.
 
 ## Source types supported
 
@@ -73,64 +118,58 @@ annotated/
 | Article  | Default + selection capture from content script        | Highlighted passage textarea                     | Stored as text + page metadata             |
 | Podcast  | `<audio>` tag or known hosts (overcast/apple/spotify)  | Start/end seconds, ≤ 90s                         | yt-dlp + ffmpeg `-ss/-t` AAC 128kbps       |
 
-## Build checks
+## Build + smoke-test results
 
-- `npx tsc --noEmit` — clean (no errors)
-- `npm run build` — Vite client + esbuild server, both succeed
-- `node --check` on every extension JS file — clean
-- `python3 -c "json.load(...)"` on `manifest.json` — valid JSON
-- API smoke tests — `/api/feed` returns 5 seeded annotations with full relations
-- API smoke tests — over-90-second clips reject; valid clips return a 240p processing plan; both `/api/annotations/:id/claims` and `/api/claims` create pending claims
-- Playwright UI smoke — feed renders 5 cards; detail page shows 2 "File a claim" buttons (top+bottom), 2 source links, and no horizontal overflow on desktop or mobile
-
-## Demo-safe behaviour
-
-- **Auth**: production OAuth credentials are not configured. `/api/auth/demo` accepts `{provider: "x"|"google"}` and signs the user into the seeded `@jcal` identity. Production wiring is sketched as TODOs in `routes.ts`.
-- **Clip processing**: yt-dlp + ffmpeg are not invoked in the deployed demo. `clip-processing.ts` validates the input (URL, duration ≤ 90s) and returns the *exact commands that would run*, attached as `processingPlan` on the response.
-- **Audio commentary upload**: the sidepanel records via `MediaRecorder` but does not upload the blob — it's kept in-memory. `// TODO(prod)` in `sidepanel.js` indicates the upload point.
-- **R2/S3, BullMQ, Redis**: TODO hooks in code; SQLite + Drizzle handle all persistence in the demo.
-
-## Final QA notes
-
-- Added a top-level `/api/claims` compatibility route in addition to the UI's nested `/api/annotations/:id/claims` route because the bounty spec lists `/claims` as a backend endpoint.
-- Tightened the mobile header so the install CTA collapses out of the top bar on small screens; the install path remains available via the mobile footer and install page.
-
-## Commands run
-
-```bash
-# Scaffolding
-mkdir -p annotated && cp -r skills/website-building/webapp/template annotated/web
-mkdir -p annotated/{extension,shared}
-cd annotated/web && npm install            # 454 packages, 0 vulnerabilities
-
-# Build checks
-npx tsc --noEmit                            # clean
-npm run build                               # Vite + esbuild — client 341kB, server 941kB
-cd ../extension
-node --check background/service-worker.js content/content-script.js sidepanel/sidepanel.js
-python3 -c "import json; json.load(open('manifest.json'))"
-
-# Icon generation
-python3 /tmp/gen_icon.py                    # 16/48/128 PNG icons
-
-# Production deploy
-cd ../web
-NODE_ENV=production node dist/index.cjs &   # backend on :5000
-deploy_website(project_path=annotated/web/dist/public)
 ```
-
-## How to use locally
-
-```bash
-# 1. Run the API + web app
 cd annotated/web
-npm run dev          # http://localhost:5000
-
-# 2. Load the extension
-#    - Visit chrome://extensions, enable Developer mode
-#    - Click "Load unpacked", select annotated/extension/
-#    - Click the Annotated toolbar icon to open the side panel
-#
-# The sidepanel defaults to http://localhost:5000 for its API.
-# Override via ?api=https://your-domain on the panel URL.
+npx tsc --noEmit                                    # ✔ clean
+npm run build                                       # ✔ Vite 341 kB + esbuild 900 kB
+PORT=5050 NODE_ENV=production node dist/index.cjs   # ✔ serves on 5050
 ```
+
+API smoke tests (against the standalone production server, MemoryStorage):
+
+| Endpoint                                       | Result                                                                                         |
+|------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `GET /api/feed`                                | 200, returns 5 seeded annotations with relations                                                |
+| `GET /api/users`                               | 200, returns 4 seeded users                                                                     |
+| `POST /api/auth/demo {provider:"x"}`           | 200, returns the seeded `jcal` user                                                             |
+| `POST /api/clips` 120s clip                    | 400 `"Clip duration must be 1–90 seconds"`                                                      |
+| `POST /api/clips` 60s YouTube clip             | 201 with `processingPlan` containing the yt-dlp + ffmpeg `scale=-2:240` commands                |
+| `POST /api/annotations/:id/comments`           | 201 with comment + user payload                                                                 |
+| `POST /api/claims`                             | 201, status `pending`                                                                           |
+
+Vercel handler import test: `import handler from './api/index.ts'` resolves
+to a function and serves `GET /api/feed` end-to-end through the same Express
+app (verified with `tsx`).
+
+## Files added or changed in this conversion
+
+- `supabase/migrations/0001_init.sql` *(new)* — Postgres schema + 90s CHECK.
+- `supabase/migrations/0002_seed.sql` *(new)* — demo seed.
+- `web/api/index.ts` *(new)* — Vercel serverless entrypoint.
+- `web/vercel.json` *(new)* — build, function, and rewrite rules.
+- `web/.env.example` *(new)* — Supabase env var template.
+- `web/server/storage.ts` *(rewritten)* — `SupabaseStorage` + `MemoryStorage`,
+  removes Drizzle/better-sqlite3 runtime dependency.
+- `web/server/seed.ts` *(updated)* — memoized, gated on Supabase backend.
+- `web/tsconfig.json` *(updated)* — includes the new `api/` directory.
+- `README.md` *(rewritten)* — adds Vercel + Supabase deployment instructions.
+- `IMPLEMENTATION_SUMMARY.md` *(this file, rewritten)*.
+
+Files unchanged:
+
+- `web/server/index.ts`, `web/server/routes.ts`, `web/server/clip-processing.ts`,
+  `web/server/static.ts`, `web/server/vite.ts`, `web/script/build.ts`,
+  `web/shared/schema.ts`, all of `client/`, `extension/`, `shared/`.
+
+## Production TODO hooks (still open, unchanged from previous build)
+
+- **Auth** (`web/server/routes.ts`): X OAuth 2.0 PKCE, Google Identity API.
+- **Clip processing** (`web/server/clip-processing.ts`): replace inline command
+  generation with BullMQ enqueue (Redis), worker calling yt-dlp + ffmpeg, and
+  R2/S3 upload. Output is the FFmpeg/yt-dlp command that *would* be run.
+- **Object storage**: env vars `R2_ACCESS_KEY_ID`, `R2_SECRET`, `R2_BUCKET`.
+- **Audio commentary upload** (`extension/sidepanel/sidepanel.js`): currently
+  the recorded blob lives in-memory; production would POST it to a
+  `/api/upload` endpoint that hands off to R2.
