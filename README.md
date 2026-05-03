@@ -93,6 +93,7 @@ Set the following **environment variables** in Vercel (production + preview):
 | `SUPABASE_ANON_KEY`                | server   | Supabase publishable key                                    |
 | `VITE_SUPABASE_URL`                | client   | Same value as `SUPABASE_URL`; Vite inlines this at build    |
 | `VITE_SUPABASE_PUBLISHABLE_KEY`    | client   | Same value as `SUPABASE_ANON_KEY`                           |
+| `VITE_CHROME_WEB_STORE_URL`        | client   | Optional. When set, "Get the Chrome Extension" buttons link to the Web Store listing (e.g. `https://chromewebstore.google.com/detail/<extension-id>`); when unset, they fall back to the bundled `/downloads/annotated-extension.zip`. |
 
 When both server vars are set the API talks to Supabase. When either is
 missing the API silently falls back to an in-memory `MemoryStorage` backend so
@@ -156,6 +157,20 @@ By default the sidepanel talks to <https://annotatedextension.com>. To point
 it at another deployed URL, open the panel with
 `?api=https://your-deploy.example.com` appended (or update `DEFAULT_API_BASE` in
 `extension/sidepanel/sidepanel.js`).
+
+## Publish to the Chrome Web Store
+
+1. From `web/`, run `npm run build:extension:cws`. This produces
+   `annotated-chrome-web-store.zip` at the repo root with `manifest.json` at
+   the zip root (no parent folder, no node_modules / dist / dotfile junk).
+2. Upload the zip to the Chrome Web Store Developer Dashboard. After the
+   listing is approved, copy the public listing URL (e.g.
+   `https://chromewebstore.google.com/detail/<extension-id>`).
+3. Set `VITE_CHROME_WEB_STORE_URL` to that URL in Vercel (production +
+   preview) and redeploy. The "Get the Chrome Extension" buttons across the
+   site will then link directly to the Web Store. Until that var is set, the
+   buttons fall back to downloading the bundled
+   `/downloads/annotated-extension.zip` so the site keeps working pre-listing.
 
 ## Architecture notes
 

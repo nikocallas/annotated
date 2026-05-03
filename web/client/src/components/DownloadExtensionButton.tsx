@@ -1,8 +1,17 @@
 import type { CSSProperties } from "react";
 
-export const EXTENSION_DOWNLOAD_HREF = "/downloads/annotated-extension.zip";
+// Fallback download URL used until the Chrome Web Store listing is published.
+// Set VITE_CHROME_WEB_STORE_URL in the environment (Vercel) to switch all
+// "Get the Chrome Extension" buttons to point at the live Web Store listing.
+export const EXTENSION_DOWNLOAD_FALLBACK_HREF = "/downloads/annotated-extension.zip";
 export const EXTENSION_DOWNLOAD_FILENAME = "annotated-extension.zip";
-export const CHROME_ICON_SRC = "/chrome-icon.jpg";
+export const CHROME_ICON_SRC = "/chrome-icon.png";
+
+const STORE_URL = (import.meta.env.VITE_CHROME_WEB_STORE_URL as string | undefined)?.trim();
+export const EXTENSION_INSTALL_HREF = STORE_URL && STORE_URL.length > 0
+  ? STORE_URL
+  : EXTENSION_DOWNLOAD_FALLBACK_HREF;
+export const EXTENSION_IS_STORE_LINK = Boolean(STORE_URL && STORE_URL.length > 0);
 
 export function ChromeLogo({ size = 18, className }: { size?: number; className?: string }) {
   return (
@@ -22,7 +31,7 @@ export function ChromeLogo({ size = 18, className }: { size?: number; className?
 export function DownloadExtensionButton({
   size = "md",
   variant = "primary",
-  label = "Download Chrome Extension",
+  label = "Get the Chrome Extension",
   className = "",
   style,
 }: {
@@ -46,14 +55,18 @@ export function DownloadExtensionButton({
 
   const iconSize = size === "lg" ? 22 : size === "sm" ? 16 : 18;
 
+  const linkProps = EXTENSION_IS_STORE_LINK
+    ? { target: "_blank", rel: "noopener noreferrer" as const }
+    : { download: EXTENSION_DOWNLOAD_FILENAME };
+
   return (
     <a
-      href={EXTENSION_DOWNLOAD_HREF}
-      download={EXTENSION_DOWNLOAD_FILENAME}
+      href={EXTENSION_INSTALL_HREF}
+      {...linkProps}
       className={`inline-flex items-center justify-center rounded-md font-semibold transition-shadow shadow-sm hover:shadow-md ${sizeClasses} ${variantClasses} ${className}`}
       style={style}
       data-testid="button-download-extension"
-      aria-label="Download Chrome extension"
+      aria-label="Get the Chrome extension"
     >
       <ChromeLogo size={iconSize} />
       <span>{label}</span>

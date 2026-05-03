@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build:extension": "tsx script/build-extension-zip.ts",
+    "build:extension:cws": "tsx script/build-extension-cws-zip.ts",
     "build": "tsx script/build-extension-zip.ts && tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",

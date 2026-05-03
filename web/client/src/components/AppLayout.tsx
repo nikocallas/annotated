@@ -43,7 +43,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </nav>
           <div className="ml-auto flex items-center gap-2 min-w-0">
             <ThemeToggle />
-            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" label="Download Extension" />
+            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" />
 
             {user ? (
               <>
