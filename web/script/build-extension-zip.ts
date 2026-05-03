@@ -3,6 +3,10 @@
 // serve it as a one-click download. Run before the Vite build, or whenever
 // the extension changes. Falls back to the system `zip` command for a
 // dependency-free implementation.
+//
+// On Vercel the deploy root is web/, so the sibling extension/ directory is
+// not present. In that case we keep the checked-in zip artifact and skip
+// repackaging; we only fail when both the source and the zip are missing.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
@@ -13,7 +17,15 @@ const outDir = resolve(import.meta.dirname, "..", "client", "public", "downloads
 const outFile = resolve(outDir, "annotated-extension.zip");
 
 if (!existsSync(extensionDir)) {
-  console.error(`extension/ not found at ${extensionDir}`);
+  if (existsSync(outFile)) {
+    console.warn(
+      `extension/ not found at ${extensionDir}; using checked-in zip at ${outFile}`,
+    );
+    process.exit(0);
+  }
+  console.error(
+    `extension/ not found at ${extensionDir} and no prebuilt zip at ${outFile}`,
+  );
   process.exit(1);
 }
 
