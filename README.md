@@ -46,10 +46,18 @@ and the spec-compatible `POST /api/claims` shape with `annotationId` in the body
 
 ## Live deployment — Vercel + Supabase
 
+Live service:
+
+- Web app: `https://annotated-seven.vercel.app`
+- GitHub repo: `https://github.com/nikocallas/annotated`
+- Supabase project: `cpqmjujhcwpavrsjadjz` in the Laymen organization
+- Vercel project: `niko-callas-projects/annotated`
+
 This project is designed to deploy to **Vercel** with **Supabase** as the
 Postgres backend. The Vercel build serves the Vite SPA from `web/dist/public`
-and routes `/api/*` to a single serverless function at `web/api/index.ts` that
-mounts the same Express app used in dev.
+and routes `/api/*` to a single serverless function at `web/api/index.js`.
+`web/api/index.js` is a checked-in placeholder; `npm run build` overwrites it
+with a bundled Express handler from `web/server/vercel-handler.ts`.
 
 ### 1. Apply the Supabase schema
 
@@ -73,8 +81,8 @@ in Zod and the Express handlers (defense in depth).
 Set the project's root directory to `web/`. Vercel will read `web/vercel.json`,
 which:
 
-- Builds with `vite build` and serves `dist/public/` as the static SPA.
-- Routes `/api/*` to the serverless function `api/index.ts`.
+- Builds with `npm run build` and serves `dist/public/` as the static SPA.
+- Routes `/api/*` to the bundled serverless function `api/index.js`.
 - Falls back all other paths to `index.html` so hash routing keeps working.
 
 Set the following **environment variables** in Vercel (production + preview):
@@ -122,9 +130,10 @@ NODE_ENV=production node dist/index.cjs   # optional — runs the same Express a
 4. Select `annotated/extension/`
 5. Pin the Annotated icon. Click it on any tab — the side panel slides in.
 
-By default the sidepanel talks to <http://localhost:5000>. To point it at the
-deployed Vercel URL, open the panel with `?api=https://your-deploy.vercel.app`
-appended (or update `DEFAULT_API_BASE` in `extension/sidepanel/sidepanel.js`).
+By default the sidepanel talks to <https://annotated-seven.vercel.app>. To point
+it at another deployed Vercel URL, open the panel with
+`?api=https://your-deploy.vercel.app` appended (or update `DEFAULT_API_BASE` in
+`extension/sidepanel/sidepanel.js`).
 
 ## Architecture notes
 

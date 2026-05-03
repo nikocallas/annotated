@@ -32,7 +32,7 @@ annotated/
     │   ├── seed.ts                 Memoized demo seed (used by MemoryStorage)
     │   └── clip-processing.ts      90s + 240p validation + FFmpeg/yt-dlp command builder
     ├── api/
-    │   └── index.ts                Vercel serverless entrypoint (mounts the Express app)
+    │   └── index.js                Vercel placeholder overwritten by bundled handler at build time
     ├── vercel.json                 Build + rewrites for /api/* and SPA fallback
     ├── .env.example                SUPABASE_URL / SUPABASE_ANON_KEY template
     └── client/src/                 React SPA — hash-routed, in-memory auth, Tailwind theme
@@ -59,6 +59,8 @@ annotated/
 - **Supabase project**: `cpqmjujhcwpavrsjadjz` at
   `https://cpqmjujhcwpavrsjadjz.supabase.co`.
 - **Publishable key for env vars**: `sb_publishable_Ibpg9ePSkS0IrmQZbseKPg_MqBZ5Die`.
+- **Vercel production URL**: `https://annotated-seven.vercel.app`.
+- **GitHub repo**: `https://github.com/nikocallas/annotated`.
 
 ### Migrations to apply
 
@@ -76,14 +78,16 @@ clip-processing helper — three layers of defense.
 
 `web/vercel.json`:
 
-- `buildCommand`: `vite build`
+- `buildCommand`: `npm run build`
 - `outputDirectory`: `dist/public`
-- Function: `api/index.ts` (1 GB memory, 30s max duration)
+- Function: `api/index.js` (1 GB memory, 30s max duration)
 - Rewrites: `/api/(.*)` → `/api/index`, everything else → `/index.html` so
   hash routing works without server-side rewrites.
 
-`web/api/index.ts` mounts the same `registerRoutes(app)` used in dev so route
-handlers don't change between environments.
+`web/api/index.js` is a placeholder so Vercel can discover the function before
+build. `npm run build` overwrites it with an esbuild-bundled ESM handler from
+`web/server/vercel-handler.ts`; the bundle includes a `createRequire` shim so
+CommonJS dependencies work in Vercel's ESM runtime.
 
 ### Required Vercel env vars
 
@@ -123,7 +127,7 @@ dropped from `package.json` later but is left in place to avoid churn.
 ```
 cd annotated/web
 npx tsc --noEmit                                    # ✔ clean
-npm run build                                       # ✔ Vite 341 kB + esbuild 900 kB
+npm run build                                       # ✔ Vite 341 kB + esbuild server + bundled Vercel function
 PORT=5050 NODE_ENV=production node dist/index.cjs   # ✔ serves on 5050
 ```
 
@@ -139,15 +143,17 @@ API smoke tests (against the standalone production server, MemoryStorage):
 | `POST /api/annotations/:id/comments`           | 201 with comment + user payload                                                                 |
 | `POST /api/claims`                             | 201, status `pending`                                                                           |
 
-Vercel handler import test: `import handler from './api/index.ts'` resolves
-to a function and serves `GET /api/feed` end-to-end through the same Express
-app (verified with `tsx`).
+Live Vercel smoke tests passed against `https://annotated-seven.vercel.app`:
+`GET /api/feed`, `GET /api/users`, `POST /api/auth/demo`, over-90-second clip
+rejection, valid 60-second clip creation, and `POST /api/claims`. Smoke-test
+records were removed afterward so the production seed remains clean.
 
 ## Files added or changed in this conversion
 
 - `supabase/migrations/0001_init.sql` *(new)* — Postgres schema + 90s CHECK.
 - `supabase/migrations/0002_seed.sql` *(new)* — demo seed.
-- `web/api/index.ts` *(new)* — Vercel serverless entrypoint.
+- `web/api/index.js` *(new)* — Vercel discovery placeholder; overwritten by build.
+- `web/server/vercel-handler.ts` *(new)* — bundled Vercel serverless entrypoint.
 - `web/vercel.json` *(new)* — build, function, and rewrite rules.
 - `web/.env.example` *(new)* — Supabase env var template.
 - `web/server/storage.ts` *(rewritten)* — `SupabaseStorage` + `MemoryStorage`,
