@@ -28,6 +28,7 @@ export function LegalLayout({ title, children }: { title: string; children: Reac
           <Logo />
           <DownloadExtensionButton size="sm" />
           <div className="flex gap-4 flex-wrap">
+            <a href="/support" className="hover:text-foreground">Support</a>
             <a href="/privacy" className="hover:text-foreground">Privacy</a>
             <a href="/tos" className="hover:text-foreground">Terms</a>
             <a href="/" className="hover:text-foreground">Home</a>

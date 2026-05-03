@@ -329,6 +329,119 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
   );
 
+  // ---- SUPPORT (contact form) -------------------------------------------
+  // Sends an email via Resend's REST API. The destination address is held
+  // server-side in SUPPORT_TO_EMAIL and is never exposed to the browser.
+  app.post(
+    "/api/support",
+    asyncHandler(async (req, res) => {
+      const body = (req.body ?? {}) as {
+        name?: unknown;
+        email?: unknown;
+        subject?: unknown;
+        message?: unknown;
+        website?: unknown;
+      };
+
+      // Honeypot: bots typically auto-fill every field. Humans never see it.
+      // Pretend success to avoid signaling the trap.
+      if (typeof body.website === "string" && body.website.trim().length > 0) {
+        return res.json({ ok: true });
+      }
+
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      const email = typeof body.email === "string" ? body.email.trim() : "";
+      const subject = typeof body.subject === "string" ? body.subject.trim() : "";
+      const message = typeof body.message === "string" ? body.message.trim() : "";
+
+      if (!email) return res.status(400).json({ ok: false, error: "Email is required." });
+      if (!message) return res.status(400).json({ ok: false, error: "Message is required." });
+      // Loose RFC-5322-ish check; precise validation happens on delivery anyway.
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ ok: false, error: "Please enter a valid email address." });
+      }
+      if (name.length > 200 || email.length > 320 || subject.length > 300 || message.length > 10000) {
+        return res.status(400).json({ ok: false, error: "One or more fields exceed the maximum length." });
+      }
+
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          ok: false,
+          error:
+            "Email delivery is not configured on the server. Please try again later.",
+        });
+      }
+
+      const toEmail = process.env.SUPPORT_TO_EMAIL || "niko@laymen.com";
+      const fromEmail =
+        process.env.SUPPORT_FROM_EMAIL || "Annotated Support <onboarding@resend.dev>";
+
+      const escapeHtml = (s: string) =>
+        s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+
+      const safeSubject = subject
+        ? `[Annotated Support] ${subject}`.slice(0, 200)
+        : "[Annotated Support] New message";
+
+      const textBody = [
+        `Name: ${name || "(not provided)"}`,
+        `Email: ${email}`,
+        `Subject: ${subject || "(none)"}`,
+        "",
+        message,
+      ].join("\n");
+
+      const htmlBody = `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.5;">
+          <p><strong>Name:</strong> ${escapeHtml(name || "(not provided)")}</p>
+          <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+          <p><strong>Subject:</strong> ${escapeHtml(subject || "(none)")}</p>
+          <hr />
+          <pre style="white-space: pre-wrap; font-family: inherit;">${escapeHtml(message)}</pre>
+        </div>
+      `.trim();
+
+      try {
+        const resendRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: [toEmail],
+            reply_to: email,
+            subject: safeSubject,
+            text: textBody,
+            html: htmlBody,
+          }),
+        });
+        if (!resendRes.ok) {
+          const detail = await resendRes.text().catch(() => "");
+          console.error("[support] resend error", resendRes.status, detail);
+          return res.status(502).json({
+            ok: false,
+            error: "We couldn't deliver your message. Please try again shortly.",
+          });
+        }
+        return res.json({ ok: true });
+      } catch (err) {
+        console.error("[support] resend network error", err);
+        return res.status(502).json({
+          ok: false,
+          error: "We couldn't deliver your message. Please try again shortly.",
+        });
+      }
+    })
+  );
+
   // ---- Public landing-page metadata (server-rendered in deploy: SPA only,
   //      but we expose meta for the API so an SSR layer could consume it).
   app.get(

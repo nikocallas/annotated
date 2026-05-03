@@ -3,6 +3,7 @@ import App from "./App";
 import LandingPage from "./pages/landing";
 import PrivacyPage from "./pages/privacy";
 import TermsPage from "./pages/tos";
+import SupportPage from "./pages/support";
 import AuthCallbackPage from "./pages/auth-callback";
 import { initThemeEarly } from "./lib/theme";
 import "./index.css";
@@ -32,6 +33,9 @@ if (path === "/privacy" || path === "/privacy/") {
 } else if (path === "/tos" || path === "/tos/" || path === "/terms" || path === "/terms/") {
   document.title = "Terms of Service — Annotated";
   root.render(<TermsPage />);
+} else if (path === "/support" || path === "/support/") {
+  document.title = "Support — Annotated";
+  root.render(<SupportPage />);
 } else if (path === "/auth/callback" || path === "/auth/callback/") {
   document.title = "Signing in — Annotated";
   root.render(<AuthCallbackPage />);
