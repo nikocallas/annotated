@@ -32,15 +32,17 @@ if (path === "/privacy" || path === "/privacy/") {
   root.render(<AuthCallbackPage />);
 } else if (isAppPath) {
   // Translate path-based app URLs (e.g. /feed, /following, /u/jcal) into the
-  // hash route the app uses internally, then mount the app.
+  // hash route the app uses internally, then mount the app. We keep the
+  // original path in the URL bar so /feed stays visible to the user.
   let hashTarget = path;
   if (path === "/feed" || path === "/feed/") hashTarget = "/";
   if (!window.location.hash) {
-    window.history.replaceState(null, "", `/#${hashTarget}${window.location.search}`);
+    window.history.replaceState(null, "", `${path}${window.location.search}#${hashTarget}`);
   }
   root.render(<App />);
 } else if ((path === "/" || path === "") && !window.location.hash) {
   // Bare / → landing page. The app feed is at /feed (path) or /#/ (hash).
+  document.title = "Annotated - Clip. Annotate.";
   root.render(<LandingPage />);
 } else {
   if (!window.location.hash) {
