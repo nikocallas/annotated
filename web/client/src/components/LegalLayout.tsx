@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Logo } from "./Logo";
+import { DownloadExtensionButton } from "./DownloadExtensionButton";
 
 export function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -14,15 +15,14 @@ export function LegalLayout({ title, children }: { title: string; children: Reac
       </header>
       <main className="flex-1">
         <article className="mx-auto max-w-3xl px-6 py-12 prose prose-neutral dark:prose-invert">
-          <h1 className="font-serif" style={{ fontFamily: "var(--font-serif)" }}>{title}</h1>
+          <h1>{title}</h1>
           {children}
         </article>
       </main>
       <footer className="border-t border-border mt-12">
-        <div className="mx-auto max-w-3xl px-6 py-8 text-sm text-muted-foreground flex flex-wrap gap-4 justify-between">
-          <span>
-            <span className="font-serif italic">annotated</span> — clip and share what's worth saving.
-          </span>
+        <div className="mx-auto max-w-3xl px-6 py-8 text-sm text-muted-foreground flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+          <Logo />
+          <DownloadExtensionButton size="sm" />
           <div className="flex gap-4 flex-wrap">
             <a href="/privacy" className="hover:text-foreground">Privacy</a>
             <a href="/tos" className="hover:text-foreground">Terms</a>

@@ -1,8 +1,9 @@
 import { Link, useLocation } from "wouter";
 import { Logo } from "./Logo";
+import { DownloadExtensionButton } from "./DownloadExtensionButton";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Compass, Users, User as UserIcon, Chrome, LogOut } from "lucide-react";
+import { Compass, Users, User as UserIcon, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import type { ReactNode } from "react";
 
@@ -40,12 +41,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
             })}
           </nav>
           <div className="ml-auto flex items-center gap-2 min-w-0">
-            <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex" data-testid="button-install-extension">
-              <Link href="/install">
-                <Chrome className="w-4 h-4 mr-1.5" />
-                Install extension
-              </Link>
-            </Button>
+            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" label="Download Extension" />
+
             {user ? (
               <>
                 <Link href={`/u/${user.username}`} className="hover-elevate rounded-full" data-testid="link-profile-self">
@@ -90,16 +87,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </header>
       <main className="flex-1">{children}</main>
       <footer className="border-t border-border mt-12">
-        <div className="mx-auto max-w-6xl px-6 py-8 text-sm text-muted-foreground flex flex-wrap gap-4 justify-between">
-          <span>
-            <span className="font-serif italic">annotated</span> — clip and share what's worth saving.
-            Always linked to source.
-          </span>
+        <div className="mx-auto max-w-6xl px-6 py-8 text-sm text-muted-foreground flex flex-col md:flex-row gap-6 md:gap-4 md:items-center md:justify-between">
+          <Logo />
+          <DownloadExtensionButton size="sm" />
           <div className="flex gap-4 flex-wrap">
-            <Link href="/install" className="hover:text-foreground" data-testid="link-footer-install">Get the extension</Link>
+            <a href="/" className="hover:text-foreground">Home</a>
             <a href="/privacy" className="hover:text-foreground" data-testid="link-footer-privacy">Privacy</a>
             <a href="/tos" className="hover:text-foreground" data-testid="link-footer-tos">Terms</a>
-            <span>Bounty by Jason Calacanis</span>
           </div>
         </div>
       </footer>
