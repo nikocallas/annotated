@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Logo } from "./Logo";
 import { DownloadExtensionButton } from "./DownloadExtensionButton";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -8,9 +9,12 @@ export function LegalLayout({ title, children }: { title: string; children: Reac
       <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 h-14 flex items-center gap-4">
           <Logo />
-          <a href="/" className="ml-auto text-sm text-muted-foreground hover:text-foreground">
-            Back to Annotated
-          </a>
+          <div className="ml-auto flex items-center gap-3">
+            <a href="/" className="text-sm text-muted-foreground hover:text-foreground">
+              Back to Annotated
+            </a>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="flex-1">

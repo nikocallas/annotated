@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AnnotationWithRelations } from "@shared/schema";
 import { AppLayout } from "@/components/AppLayout";
@@ -5,24 +6,45 @@ import { FeedCard } from "@/components/FeedCard";
 import { OAuthSignIn } from "@/components/OAuthSignIn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { Chrome, Scissors, FileText, Mic } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 type FeedTab = "all" | "following";
 
+function readInitialTab(): FeedTab {
+  if (typeof window === "undefined") return "all";
+  // Tab can come from either the path query (?tab=) or the hash query
+  // (#/?tab=). We check both so /feed?tab=following and /#/?tab=following work.
+  const search = window.location.search;
+  const hash = window.location.hash;
+  const fromSearch = new URLSearchParams(search).get("tab");
+  const fromHash = new URLSearchParams(hash.split("?")[1] ?? "").get("tab");
+  return fromSearch === "following" || fromHash === "following" ? "following" : "all";
+}
+
 export default function FeedPage() {
   const { user } = useAuth();
-  const [, setLocation] = useLocation();
+  // Tab state lives in React state. We seed from the URL once, then keep it
+  // local so changing tabs doesn't fight the hash router. We do mirror the
+  // selection back into the hash query so deep links / refresh keep the tab,
+  // but we don't read from the URL on every render — that previously broke
+  // because wouter treated "/?tab=following" as a path that didn't match
+  // the "/" route.
+  const [activeTab, setActiveTab] = useState<FeedTab>(readInitialTab);
 
-  // The active tab lives in the URL hash so it survives reload and
-  // copy/paste. Hash router updates trigger re-renders via useLocation, but
-  // we read the raw window hash to avoid coupling to its routing internals.
-  const activeTab: FeedTab = readTabFromHash();
-  const setTab = (tab: FeedTab) => {
-    if (tab === "all") setLocation("/");
-    else setLocation(`/?tab=${tab}`);
-  };
+  useEffect(() => {
+    // Mirror tab state into the hash without going through the router so
+    // /feed stays in the URL bar and the wouter route still matches "/".
+    if (typeof window === "undefined") return;
+    const baseHash = "#/";
+    const target = activeTab === "all" ? baseHash : `${baseHash}?tab=following`;
+    if (window.location.hash !== target) {
+      const path = window.location.pathname;
+      const search = window.location.search;
+      window.history.replaceState(null, "", `${path}${search}${target}`);
+    }
+  }, [activeTab]);
 
   return (
     <AppLayout>
@@ -34,7 +56,7 @@ export default function FeedPage() {
               style={{ fontFamily: "var(--font-serif)" }}
               data-testid="text-feed-title"
             >
-              The feed
+              The Feed
             </h1>
             <p className="text-muted-foreground mt-2 max-w-xl">
               Clipped, annotated, and credited. 90-second highlights from videos, podcasts, and articles —
@@ -44,7 +66,7 @@ export default function FeedPage() {
 
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setTab(v as FeedTab)}
+            onValueChange={(v) => setActiveTab(v as FeedTab)}
             className="mb-6"
           >
             <TabsList data-testid="feed-tabs">
@@ -114,15 +136,6 @@ export default function FeedPage() {
       </div>
     </AppLayout>
   );
-}
-
-function readTabFromHash(): FeedTab {
-  // Hash router URL looks like "#/?tab=following" — parse the part after the
-  // first "?" of the hash for the tab value.
-  const hash = typeof window !== "undefined" ? window.location.hash : "";
-  const q = hash.split("?")[1] ?? "";
-  const params = new URLSearchParams(q);
-  return params.get("tab") === "following" ? "following" : "all";
 }
 
 function AllFeed() {

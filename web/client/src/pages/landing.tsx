@@ -1,5 +1,6 @@
 import { Logo, QuoteMark } from "@/components/Logo";
 import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function LandingPage() {
   return (
@@ -13,8 +14,9 @@ export default function LandingPage() {
               className="hidden sm:inline text-sm text-muted-foreground hover:text-foreground"
               data-testid="link-feed"
             >
-              The feed
+              The Feed
             </a>
+            <ThemeToggle />
             <DownloadExtensionButton size="sm" />
           </div>
         </div>

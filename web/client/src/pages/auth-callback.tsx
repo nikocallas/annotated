@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/lib/supabase";
 
 export default function AuthCallbackPage() {
@@ -43,6 +44,9 @@ export default function AuthCallbackPage() {
       <header className="border-b border-border">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 h-14 flex items-center">
           <Logo />
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
       <main className="flex-1 flex items-center justify-center px-6">

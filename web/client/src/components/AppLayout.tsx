@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Logo } from "./Logo";
 import { DownloadExtensionButton } from "./DownloadExtensionButton";
+import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Compass, Users, User as UserIcon, LogOut } from "lucide-react";
@@ -41,6 +42,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             })}
           </nav>
           <div className="ml-auto flex items-center gap-2 min-w-0">
+            <ThemeToggle />
             <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" label="Download Extension" />
 
             {user ? (

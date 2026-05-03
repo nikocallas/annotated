@@ -1,5 +1,3 @@
-import { Link } from "wouter";
-
 export function QuoteMark({ size = 28 }: { size?: number }) {
   return (
     <span
@@ -30,11 +28,17 @@ export function QuoteMark({ size = 28 }: { size?: number }) {
 }
 
 export function Logo({ size = 28 }: { size?: number }) {
+  // Use a plain anchor with an absolute path so the link always navigates to
+  // the landing page (`/`), regardless of whether the surrounding app uses
+  // wouter's hash router or path router. Inside the hash-routed feed app,
+  // wouter's <Link href="/"> would otherwise produce `#/`, which keeps the
+  // user on the feed instead of returning to the landing page.
   return (
-    <Link
+    <a
       href="/"
       className="inline-flex items-center gap-2 hover-elevate rounded-md px-2 py-1 -ml-2"
       data-testid="link-home"
+      aria-label="Annotated home"
     >
       <QuoteMark size={size} />
       <span
@@ -43,6 +47,6 @@ export function Logo({ size = 28 }: { size?: number }) {
       >
         Annotated
       </span>
-    </Link>
+    </a>
   );
 }

@@ -4,7 +4,12 @@ import LandingPage from "./pages/landing";
 import PrivacyPage from "./pages/privacy";
 import TermsPage from "./pages/tos";
 import AuthCallbackPage from "./pages/auth-callback";
+import { initThemeEarly } from "./lib/theme";
 import "./index.css";
+
+// Apply the saved/system theme before render so the page doesn't flash the
+// wrong palette while React mounts.
+initThemeEarly();
 
 // The main app uses hash routing (it can be served from a sandboxed iframe
 // without a backend rewrite). Several pages — landing, privacy, terms, and
