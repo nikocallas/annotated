@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,6 +20,7 @@ export function FollowButton({
 }: FollowButtonProps) {
   const { user: me } = useAuth();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const isMe = me?.id === targetUserId;
 
@@ -56,7 +58,27 @@ export function FollowButton({
     },
   });
 
-  if (!me || isMe) return null;
+  if (isMe) return null;
+
+  if (!me) {
+    return (
+      <Button
+        type="button"
+        size={size}
+        variant="outline"
+        className={className}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setLocation("/login");
+        }}
+        data-testid={`button-follow-signin-${targetUserId}`}
+        aria-label={`Sign in to follow ${targetUsername ?? "user"}`}
+      >
+        Sign in to follow
+      </Button>
+    );
+  }
 
   const isFollowing = followingState?.following ?? false;
 
