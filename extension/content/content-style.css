@@ -1,6 +1,7 @@
-/* Annotated — content-script overlay styles. Reserved for highlight overlays. */
+/* Annotated — content-script overlay styles. Reserved for highlight overlays.
+   Orange accent matches annotatedextension.com primary token. */
 .annotated-highlight-overlay {
-  background: rgba(1, 105, 111, 0.18);
-  border-bottom: 2px solid #01696f;
+  background: rgba(245, 158, 61, 0.20);
+  border-bottom: 2px solid #f59e3d;
   border-radius: 2px;
 }

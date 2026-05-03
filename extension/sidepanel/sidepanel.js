@@ -4,6 +4,34 @@
 
 const DEFAULT_API_BASE = "https://annotatedextension.com";
 
+// -------------------- Theme (light/dark) ------------------------------------
+// Mirrors the web app at annotatedextension.com: persisted to localStorage
+// under "annotated-theme", "system" by default, toggle button switches between
+// explicit light/dark.
+const THEME_KEY = "annotated-theme";
+function systemTheme() {
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+function readThemePref() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return v === "light" || v === "dark" || v === "system" ? v : "system";
+  } catch { return "system"; }
+}
+function writeThemePref(v) {
+  try { localStorage.setItem(THEME_KEY, v); } catch {}
+}
+function applyTheme(theme) {
+  const root = document.documentElement;
+  root.classList.toggle("dark", theme === "dark");
+  root.style.colorScheme = theme;
+}
+function resolveTheme(pref) { return pref === "system" ? systemTheme() : pref; }
+applyTheme(resolveTheme(readThemePref()));
+window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+  if (readThemePref() === "system") applyTheme(systemTheme());
+});
+
 const state = {
   apiBase: DEFAULT_API_BASE,
   user: null,                // current logged-in user (in-memory; chrome.storage.local in real auth)
@@ -491,7 +519,7 @@ function openClaimModal(annotationId) {
   const dialog = document.createElement("div");
   dialog.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;max-width:380px;width:100%;display:flex;flex-direction:column;gap:10px;";
   dialog.innerHTML = `
-    <div style="font-family:'Instrument Serif', serif; font-size:20px;">Dispute this content</div>
+    <div style="font-size:18px; font-weight:600; letter-spacing:-0.015em;">Dispute this content</div>
     <div class="muted small">If this clip infringes your copyright or exceeds fair use, file a claim and our team will review within 72 hours.</div>
     <input type="text" data-cn placeholder="Your full name" required />
     <input type="email" data-ce placeholder="Contact email" required />
@@ -532,6 +560,17 @@ function escapeAttr(s) { return escapeHtml(s); }
 (async function init() {
   // Tab buttons
   $$(".tab").forEach((btn) => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
+
+  // Theme toggle (light <-> dark; drops the "system" sentinel on first click).
+  const themeBtn = document.querySelector("[data-theme-toggle]");
+  if (themeBtn) {
+    themeBtn.addEventListener("click", () => {
+      const current = resolveTheme(readThemePref());
+      const next = current === "dark" ? "light" : "dark";
+      writeThemePref(next);
+      applyTheme(next);
+    });
+  }
 
   // Allow API base override via URL param for development.
   try {

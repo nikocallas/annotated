@@ -4,23 +4,44 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Annotated</title>
+    <link rel="icon" type="image/svg+xml" href="../public/icons/favicon.svg" />
     <link rel="stylesheet" href="sidepanel.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">
-        <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
-          <rect x="3" y="3" width="26" height="26" rx="6" fill="#01696F" />
-          <path d="M10 22L13 10H15.5L18.5 22M11.5 18H17" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-          <circle cx="22.5" cy="22" r="2" fill="#fff" />
-        </svg>
-        <span class="brand-name">annotated</span>
+      <div class="topbar-row">
+        <a class="brand" href="https://annotatedextension.com" target="_blank" rel="noopener noreferrer" aria-label="Annotated home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M9 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8H7.6c0-2.4 1.1-4.1 3.1-5.2L9 8.5zM21 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8h-4c0-2.4 1.1-4.1 3.1-5.2L21 8.5z"
+                fill="currentColor"
+              />
+            </svg>
+          </span>
+          <span class="brand-name">Annotated</span>
+        </a>
+        <button
+          type="button"
+          class="theme-toggle"
+          data-theme-toggle
+          aria-label="Toggle dark mode"
+          title="Toggle dark mode"
+        >
+          <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+          <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        </button>
       </div>
       <nav class="tabs">
         <button class="tab active" data-tab="clip">Clip</button>
@@ -34,7 +55,7 @@
     <template id="login-view">
       <section class="view view-login">
         <div class="hero">
-          <h2 class="serif">Sign in to start clipping</h2>
+          <h2>Sign in to start clipping</h2>
           <p class="muted">
             Annotated uses X or Google to sign you in. No email, no password.
           </p>
