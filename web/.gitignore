@@ -15,6 +15,3 @@ data.db-journal
 *.log
 .DS_Store
 .vercel
-
-# Generated Vercel function bundle (created by script/build.ts)
-api/
