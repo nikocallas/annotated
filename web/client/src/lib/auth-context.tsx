@@ -74,9 +74,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user);
       return;
     }
-    const supabaseProvider = provider === "x" ? "twitter" : "google";
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: supabaseProvider,
+      provider,
       options: { redirectTo: getRedirectUrl() },
     });
     if (error) throw error;
