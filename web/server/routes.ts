@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
+import { createClient } from "@supabase/supabase-js";
 import { storage } from "./storage";
 import { seedDemoData } from "./seed";
 import {
@@ -77,6 +78,78 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await storage.getUserByUsername("jcal");
       if (!user) return res.status(500).json({ error: "Demo user missing" });
       return res.json({ user, provider });
+    })
+  );
+
+  // Verify a Supabase access token and upsert the app-local user record.
+  // Frontend calls this after the OAuth flow completes; the token comes from
+  // the active Supabase session and is verified server-side.
+  app.post(
+    "/api/auth/supabase",
+    asyncHandler(async (req, res) => {
+      const { accessToken } = req.body as { accessToken?: string };
+      if (!accessToken) return res.status(400).json({ error: "accessToken required" });
+
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !supabaseKey) {
+        return res.status(503).json({ error: "Supabase auth is not configured on the server" });
+      }
+
+      const verifier = createClient(supabaseUrl, supabaseKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data, error } = await verifier.auth.getUser(accessToken);
+      if (error || !data?.user) {
+        return res.status(401).json({ error: error?.message ?? "Invalid Supabase session" });
+      }
+      const sUser = data.user;
+      const provider = (sUser.app_metadata?.provider as string | undefined) ?? "google";
+      const appProvider = provider === "twitter" ? "x" : provider === "google" ? "google" : provider;
+      if (appProvider !== "x" && appProvider !== "google") {
+        return res.status(400).json({ error: `Unsupported provider: ${provider}` });
+      }
+
+      // Try to find an existing user by (provider, authId).
+      const existing = await storage.getUserByAuth(appProvider, sUser.id);
+      if (existing) return res.json({ user: existing });
+
+      // Otherwise create one. Pull display name / handle / avatar from provider
+      // metadata, fall back to sensible defaults.
+      const meta = (sUser.user_metadata ?? {}) as Record<string, unknown>;
+      const displayName =
+        (meta.full_name as string | undefined) ||
+        (meta.name as string | undefined) ||
+        (meta.user_name as string | undefined) ||
+        (sUser.email ? sUser.email.split("@")[0] : "user");
+      const rawHandle =
+        (meta.user_name as string | undefined) ||
+        (meta.preferred_username as string | undefined) ||
+        (sUser.email ? sUser.email.split("@")[0] : sUser.id.slice(0, 8));
+      const baseUsername = rawHandle.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) || "user";
+
+      // Ensure unique username — append a short suffix if taken.
+      let username = baseUsername;
+      for (let i = 0; i < 5; i++) {
+        const taken = await storage.getUserByUsername(username);
+        if (!taken) break;
+        username = `${baseUsername}${Math.floor(Math.random() * 10000)}`;
+      }
+
+      const avatarUrl =
+        (meta.avatar_url as string | undefined) ||
+        (meta.picture as string | undefined) ||
+        null;
+
+      const created = await storage.createUser({
+        username,
+        displayName,
+        avatarUrl,
+        bio: null,
+        authProvider: appProvider,
+        authId: sUser.id,
+      });
+      return res.json({ user: created });
     })
   );
 

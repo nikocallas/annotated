@@ -2,7 +2,7 @@
 // Single-file SPA. Talks to the Annotated API. Designed to be loaded by Chrome
 // without a build step.
 
-const DEFAULT_API_BASE = "https://annotated-seven.vercel.app";
+const DEFAULT_API_BASE = "https://annotatedextension.com";
 
 const state = {
   apiBase: DEFAULT_API_BASE,

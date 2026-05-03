@@ -1,6 +1,7 @@
 import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
+import { supabaseConfigured } from "@/lib/supabase";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -15,12 +16,16 @@ export default function LoginPage() {
     setBusy(provider);
     try {
       await loginWithProvider(provider);
-      toast({ title: "Signed in", description: "You're in. Demo session active." });
-      setLocation("/");
+      // When Supabase is configured, the browser is redirected to the OAuth
+      // provider here and never reaches the next line. The fallback demo path
+      // resolves immediately and we route to the feed.
+      if (!supabaseConfigured) {
+        toast({ title: "Signed in", description: "Demo session active." });
+        setLocation("/");
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Sign-in failed";
       toast({ title: "Sign-in failed", description: message, variant: "destructive" });
-    } finally {
       setBusy(null);
     }
   }
@@ -91,9 +96,23 @@ export default function LoginPage() {
           </div>
 
           <p className="text-xs text-muted-foreground mt-6 leading-relaxed">
-            Production OAuth credentials aren't connected in this deployment, so the buttons sign
-            you into a demo identity. The flows themselves are wired the way the spec describes —
-            X via OAuth 2.0 PKCE, Google via the Identity API.
+            {supabaseConfigured ? (
+              <>
+                Sign-in is brokered by Supabase Auth. After you approve access at the
+                provider you'll be returned to Annotated.
+              </>
+            ) : (
+              <>
+                Auth env vars aren't configured for this build, so the buttons sign you
+                into a demo identity. Set <code>VITE_SUPABASE_URL</code> and{" "}
+                <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> to enable real OAuth.
+              </>
+            )}
+          </p>
+          <p className="text-xs text-muted-foreground mt-4">
+            By continuing you agree to our{" "}
+            <a href="/tos" className="underline hover:text-foreground">Terms</a> and{" "}
+            <a href="/privacy" className="underline hover:text-foreground">Privacy Policy</a>.
           </p>
         </div>
       </div>

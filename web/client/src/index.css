@@ -2,7 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* annotated — warm editorial palette: cream surfaces, deep teal accent */
+/* annotated — warm palette with an oklch(74% .18 52) orange accent, matching
+   annotated.lovable.app. HSL approximations are kept so the existing
+   hsl(var(--primary)) plumbing keeps working; oklch values are exposed as
+   --primary-oklch / --accent-oklch for future direct use. */
 
 :root {
   --button-outline: rgba(0, 0, 0, 0.1);
@@ -20,31 +23,38 @@
   --sidebar: 45 22% 94%;
   --sidebar-foreground: 40 18% 13%;
   --sidebar-border: 42 12% 80%;
-  --sidebar-primary: 184 99% 22%;     /* #01696F */
-  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-primary: 28 95% 60%;      /* orange */
+  --sidebar-primary-foreground: 30 40% 14%;
   --sidebar-accent: 42 18% 88%;
   --sidebar-accent-foreground: 40 18% 13%;
-  --sidebar-ring: 184 99% 22%;
+  --sidebar-ring: 28 95% 60%;
   --popover: 48 26% 97%;
   --popover-foreground: 40 18% 13%;
   --popover-border: 42 12% 82%;
-  --primary: 184 99% 22%;             /* Hydra Teal #01696F */
-  --primary-foreground: 0 0% 98%;
-  --secondary: 42 18% 88%;
-  --secondary-foreground: 40 18% 13%;
+  --primary: 28 95% 60%;              /* oklch(74% .18 52) — warm orange */
+  --primary-foreground: 30 40% 14%;   /* oklch(18% .02 40) — deep warm */
+  --secondary: 28 90% 65%;            /* secondary/accent orange */
+  --secondary-foreground: 30 40% 14%;
   --muted: 42 14% 90%;
-  --muted-foreground: 40 4% 47%;      /* #7A7974 */
-  --accent: 42 18% 88%;
-  --accent-foreground: 40 18% 13%;
-  --destructive: 322 58% 41%;         /* #A12C7B */
+  --muted-foreground: 40 4% 47%;
+  --accent: 28 95% 60%;               /* mirror primary for the accent feel */
+  --accent-foreground: 30 40% 14%;
+  --destructive: 0 70% 50%;
   --destructive-foreground: 0 0% 98%;
   --input: 42 12% 75%;
-  --ring: 184 99% 22%;
-  --chart-1: 187 63% 34%;             /* teal */
-  --chart-2: 12 57% 42%;              /* terra */
-  --chart-3: 187 49% 20%;             /* dark teal */
-  --chart-4: 36 82% 53%;              /* gold */
-  --chart-5: 345 36% 43%;             /* mauve */
+  --ring: 28 95% 60%;
+  --chart-1: 28 95% 60%;
+  --chart-2: 12 57% 42%;
+  --chart-3: 36 82% 53%;
+  --chart-4: 187 49% 30%;
+  --chart-5: 345 36% 43%;
+
+  /* Direct oklch tokens, matching annotated.lovable.app exactly. */
+  --primary-oklch: oklch(74% 0.18 52);
+  --primary-foreground-oklch: oklch(18% 0.02 40);
+  --accent-oklch: oklch(74% 0.18 52);
+  --gradient-primary: linear-gradient(180deg, oklch(78% 0.19 55), oklch(68% 0.17 45));
+  --shadow-primary: 0 10px 40px -10px oklch(74% 0.18 52 / 0.55);
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-serif: 'Instrument Serif', 'Source Serif 4', Georgia, serif;
@@ -85,35 +95,39 @@
   --elevate-1: rgba(255, 255, 255, 0.04);
   --elevate-2: rgba(255, 255, 255, 0.09);
 
-  --background: 40 8% 9%;             /* #171614 */
-  --foreground: 40 4% 80%;            /* #CDCCCA */
-  --border: 40 4% 22%;                /* #393836 */
-  --card: 40 7% 11%;                  /* #1C1B19 */
-  --card-foreground: 40 4% 80%;
-  --card-border: 40 4% 20%;
-  --sidebar: 40 7% 12%;
-  --sidebar-foreground: 40 4% 80%;
-  --sidebar-border: 40 4% 22%;
-  --sidebar-primary: 188 35% 47%;     /* #4F98A3 */
-  --sidebar-primary-foreground: 40 8% 9%;
-  --sidebar-accent: 40 4% 20%;
-  --sidebar-accent-foreground: 40 4% 80%;
-  --sidebar-ring: 188 35% 47%;
-  --popover: 40 7% 13%;
-  --popover-foreground: 40 4% 80%;
-  --popover-border: 40 4% 22%;
-  --primary: 188 35% 47%;
-  --primary-foreground: 40 8% 9%;
-  --secondary: 40 4% 22%;
-  --secondary-foreground: 40 4% 80%;
-  --muted: 40 4% 22%;
-  --muted-foreground: 40 2% 47%;
-  --accent: 40 4% 22%;
-  --accent-foreground: 40 4% 80%;
-  --destructive: 322 56% 60%;         /* #D163A7 */
-  --destructive-foreground: 40 8% 9%;
-  --input: 40 4% 32%;
-  --ring: 188 35% 47%;
+  /* Dark warm palette pulled from annotated.lovable.app:
+     --background: oklch(16% .02 40), --foreground: oklch(98% .005 80),
+     --secondary: oklch(26% .03 40), --muted: oklch(24% .025 40),
+     --muted-foreground: oklch(72% .02 60). */
+  --background: 30 14% 8%;
+  --foreground: 60 10% 96%;
+  --border: 30 6% 22%;
+  --card: 30 12% 11%;
+  --card-foreground: 60 10% 96%;
+  --card-border: 30 6% 20%;
+  --sidebar: 30 12% 10%;
+  --sidebar-foreground: 60 10% 96%;
+  --sidebar-border: 30 6% 22%;
+  --sidebar-primary: 28 95% 60%;
+  --sidebar-primary-foreground: 30 40% 14%;
+  --sidebar-accent: 30 8% 22%;
+  --sidebar-accent-foreground: 60 10% 96%;
+  --sidebar-ring: 28 95% 60%;
+  --popover: 30 12% 12%;
+  --popover-foreground: 60 10% 96%;
+  --popover-border: 30 6% 22%;
+  --primary: 28 95% 60%;
+  --primary-foreground: 30 40% 14%;
+  --secondary: 30 8% 22%;
+  --secondary-foreground: 60 10% 96%;
+  --muted: 30 8% 20%;
+  --muted-foreground: 35 6% 70%;
+  --accent: 28 95% 60%;
+  --accent-foreground: 30 40% 14%;
+  --destructive: 0 70% 55%;
+  --destructive-foreground: 0 0% 98%;
+  --input: 30 6% 32%;
+  --ring: 28 95% 60%;
   --chart-1: 187 60% 50%;
   --chart-2: 22 86% 54%;
   --chart-3: 187 49% 35%;

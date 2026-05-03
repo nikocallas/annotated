@@ -54,7 +54,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                     <AvatarFallback>{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                 </Link>
-                <Button variant="ghost" size="icon" onClick={logout} aria-label="Sign out" data-testid="button-logout">
+                <Button variant="ghost" size="icon" onClick={() => { void logout(); }} aria-label="Sign out" data-testid="button-logout">
                   <LogOut className="w-4 h-4" />
                 </Button>
               </>
@@ -95,8 +95,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <span className="font-serif italic">annotated</span> — clip and share what's worth saving.
             Always linked to source.
           </span>
-          <div className="flex gap-4">
+          <div className="flex gap-4 flex-wrap">
             <Link href="/install" className="hover:text-foreground" data-testid="link-footer-install">Get the extension</Link>
+            <a href="/privacy" className="hover:text-foreground" data-testid="link-footer-privacy">Privacy</a>
+            <a href="/tos" className="hover:text-foreground" data-testid="link-footer-tos">Terms</a>
             <span>Bounty by Jason Calacanis</span>
           </div>
         </div>

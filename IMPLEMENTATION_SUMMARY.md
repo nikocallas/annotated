@@ -59,7 +59,7 @@ annotated/
 - **Supabase project**: `cpqmjujhcwpavrsjadjz` at
   `https://cpqmjujhcwpavrsjadjz.supabase.co`.
 - **Publishable key for env vars**: `sb_publishable_Ibpg9ePSkS0IrmQZbseKPg_MqBZ5Die`.
-- **Vercel production URL**: `https://annotated-seven.vercel.app`.
+- **Production URL**: `https://annotatedextension.com` (custom domain, served by the same Vercel deployment that previously lived at `annotated-seven.vercel.app`).
 - **GitHub repo**: `https://github.com/nikocallas/annotated`.
 
 ### Migrations to apply
@@ -143,7 +143,7 @@ API smoke tests (against the standalone production server, MemoryStorage):
 | `POST /api/annotations/:id/comments`           | 201 with comment + user payload                                                                 |
 | `POST /api/claims`                             | 201, status `pending`                                                                           |
 
-Live Vercel smoke tests passed against `https://annotated-seven.vercel.app`:
+Live Vercel smoke tests passed against the deployed origin (now `https://annotatedextension.com`):
 `GET /api/feed`, `GET /api/users`, `POST /api/auth/demo`, over-90-second clip
 rejection, valid 60-second clip creation, and `POST /api/claims`. Smoke-test
 records were removed afterward so the production seed remains clean.

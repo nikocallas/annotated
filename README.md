@@ -48,7 +48,7 @@ and the spec-compatible `POST /api/claims` shape with `annotationId` in the body
 
 Live service:
 
-- Web app: `https://annotated-seven.vercel.app`
+- Web app: `https://annotatedextension.com` (custom domain in front of the Vercel deployment; the legacy `annotated-seven.vercel.app` URL also resolves)
 - GitHub repo: `https://github.com/nikocallas/annotated`
 - Supabase project: `cpqmjujhcwpavrsjadjz` in the Laymen organization
 - Vercel project: `niko-callas-projects/annotated`
@@ -87,14 +87,36 @@ which:
 
 Set the following **environment variables** in Vercel (production + preview):
 
-| Var                  | Value                                                                       |
-|----------------------|-----------------------------------------------------------------------------|
-| `SUPABASE_URL`       | `https://cpqmjujhcwpavrsjadjz.supabase.co`                                  |
-| `SUPABASE_ANON_KEY`  | `sb_publishable_Ibpg9ePSkS0IrmQZbseKPg_MqBZ5Die`                            |
+| Var                                | Used by  | Notes                                                       |
+|------------------------------------|----------|-------------------------------------------------------------|
+| `SUPABASE_URL`                     | server   | `https://cpqmjujhcwpavrsjadjz.supabase.co`                  |
+| `SUPABASE_ANON_KEY`                | server   | Supabase publishable key                                    |
+| `VITE_SUPABASE_URL`                | client   | Same value as `SUPABASE_URL`; Vite inlines this at build    |
+| `VITE_SUPABASE_PUBLISHABLE_KEY`    | client   | Same value as `SUPABASE_ANON_KEY`                           |
 
-When both vars are set the API talks to Supabase. When either is missing the
-API silently falls back to an in-memory `MemoryStorage` backend so previews
-still work without a database.
+When both server vars are set the API talks to Supabase. When either is
+missing the API silently falls back to an in-memory `MemoryStorage` backend so
+previews still work without a database. Likewise, when the `VITE_*` vars are
+absent the frontend falls back to the demo auth path instead of brokering real
+OAuth.
+
+### OAuth setup (Google and X)
+
+The web app uses Supabase Auth as the OAuth broker. To wire up real sign-in:
+
+1. In the Supabase dashboard, enable the **Google** and **Twitter** providers
+   under *Authentication → Providers* with the client IDs / secrets from the
+   respective developer consoles.
+2. Set the **Site URL** to `https://annotatedextension.com` and add
+   `https://annotatedextension.com/auth/callback` (plus any preview domain you
+   want to support) to the **Redirect URLs** allowlist.
+3. In each provider's developer console, add the Supabase project's OAuth
+   callback (e.g. `https://cpqmjujhcwpavrsjadjz.supabase.co/auth/v1/callback`)
+   as an authorized redirect URI.
+
+The frontend always passes `${window.location.origin}/auth/callback` as the
+redirect target, so previews on `*.vercel.app` work as long as the URL is in
+Supabase's allowlist.
 
 ### 3. Deploy
 
@@ -130,9 +152,9 @@ NODE_ENV=production node dist/index.cjs   # optional — runs the same Express a
 4. Select `annotated/extension/`
 5. Pin the Annotated icon. Click it on any tab — the side panel slides in.
 
-By default the sidepanel talks to <https://annotated-seven.vercel.app>. To point
-it at another deployed Vercel URL, open the panel with
-`?api=https://your-deploy.vercel.app` appended (or update `DEFAULT_API_BASE` in
+By default the sidepanel talks to <https://annotatedextension.com>. To point
+it at another deployed URL, open the panel with
+`?api=https://your-deploy.example.com` appended (or update `DEFAULT_API_BASE` in
 `extension/sidepanel/sidepanel.js`).
 
 ## Architecture notes
@@ -141,10 +163,16 @@ it at another deployed Vercel URL, open the panel with
   can be served from a sandboxed iframe (preview) or from Vercel's static
   hosting (production) with no server-side rewrite needed for client-side
   routes.
-- No `localStorage`, `sessionStorage`, or cookies are used in the deployed web
-  build (in-memory React state only). The Chrome extension uses
-  `chrome.storage.local` (allowed in the extension context) to persist the
-  signed-in user.
+- The web app uses hash routing for the main feed/profile/annotation views,
+  but a few path-based routes are served directly: `/privacy`, `/tos`, and
+  `/auth/callback`. `web/client/src/main.tsx` switches between the hash-routed
+  app and the path-based pages by inspecting `window.location.pathname` before
+  rendering.
+- Supabase JS persists the session in `localStorage` so the PKCE code
+  verifier survives the OAuth round trip. This is the standard SPA approach;
+  the previous in-memory-only constraint applied to the demo deployment that
+  predated real auth. The Chrome extension still uses `chrome.storage.local`
+  in the extension context.
 - All persistent data lives in Supabase Postgres in production. The API is
   written against an `IStorage` interface with two implementations:
   - `SupabaseStorage` — talks to `SUPABASE_URL` via `@supabase/supabase-js`.
