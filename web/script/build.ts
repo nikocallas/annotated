@@ -1,6 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "node:fs/promises";
+import { mkdir, rm, readFile } from "node:fs/promises";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -28,6 +28,7 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
+  "@supabase/supabase-js",
 ];
 
 async function buildAll() {
@@ -50,6 +51,23 @@ async function buildAll() {
     bundle: true,
     format: "cjs",
     outfile: "dist/index.cjs",
+    define: {
+      "process.env.NODE_ENV": '"production"',
+    },
+    minify: true,
+    external: externals,
+    logLevel: "info",
+  });
+
+  console.log("building Vercel serverless function...");
+  await rm("api", { recursive: true, force: true });
+  await mkdir("api", { recursive: true });
+  await esbuild({
+    entryPoints: ["server/vercel-handler.ts"],
+    platform: "node",
+    bundle: true,
+    format: "esm",
+    outfile: "api/index.js",
     define: {
       "process.env.NODE_ENV": '"production"',
     },

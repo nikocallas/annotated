@@ -1,14 +1,13 @@
 /**
  * Vercel serverless entrypoint.
  *
- * Vercel routes /api/* requests here (see vercel.json). We mount the same
- * Express app used in dev so route handlers don't change between environments.
- *
- * IMPORTANT: do not import server/vite (dev-only) — this file is the
- * production handler.
+ * This source is bundled by script/build.ts into api/index.js before Vercel
+ * packages functions. Bundling is intentional: Vercel's default TypeScript
+ * transpilation preserves ESM extensionless imports, which breaks runtime
+ * resolution for our internal server modules.
  */
 import express, { type Request, type Response, type NextFunction } from "express";
-import { registerRoutes } from "../server/routes";
+import { registerRoutes } from "./routes";
 import { createServer } from "node:http";
 
 const app = express();
@@ -40,7 +39,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Lightweight error handler — final word before Vercel's default.
 function attachErrorHandler() {
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (res.headersSent) return;
