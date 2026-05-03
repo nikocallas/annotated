@@ -13,6 +13,14 @@ import "./index.css";
 const path = window.location.pathname;
 const root = createRoot(document.getElementById("root")!);
 
+// Path prefixes that should mount the React app (hash router) instead of the
+// landing page. Vercel rewrites unknown paths to index.html, so e.g. /feed,
+// /following, /a/123 all land here.
+const APP_PATH_PREFIXES = ["/feed", "/following", "/login", "/install", "/u/", "/a/"];
+const isAppPath = APP_PATH_PREFIXES.some(
+  (p) => path === p || path === `${p}/` || path.startsWith(`${p}/`) || (p.endsWith("/") && path.startsWith(p))
+);
+
 if (path === "/privacy" || path === "/privacy/") {
   document.title = "Privacy Policy — Annotated";
   root.render(<PrivacyPage />);
@@ -22,8 +30,17 @@ if (path === "/privacy" || path === "/privacy/") {
 } else if (path === "/auth/callback" || path === "/auth/callback/") {
   document.title = "Signing in — Annotated";
   root.render(<AuthCallbackPage />);
+} else if (isAppPath) {
+  // Translate path-based app URLs (e.g. /feed, /following, /u/jcal) into the
+  // hash route the app uses internally, then mount the app.
+  let hashTarget = path;
+  if (path === "/feed" || path === "/feed/") hashTarget = "/";
+  if (!window.location.hash) {
+    window.history.replaceState(null, "", `/#${hashTarget}${window.location.search}`);
+  }
+  root.render(<App />);
 } else if ((path === "/" || path === "") && !window.location.hash) {
-  // Bare / → landing page. The app feed is at /#/ .
+  // Bare / → landing page. The app feed is at /feed (path) or /#/ (hash).
   root.render(<LandingPage />);
 } else {
   if (!window.location.hash) {

@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { SourceBadge, formatRange, timeAgo, hostname } from "./SourceBadge";
 import { ExternalLink, MessageCircle, Mic } from "lucide-react";
 import { ClipPreview } from "./ClipPreview";
+import { FollowButton } from "./FollowButton";
 
 export function FeedCard({ annotation }: { annotation: AnnotationWithRelations }) {
   const a = annotation;
@@ -26,7 +27,10 @@ export function FeedCard({ annotation }: { annotation: AnnotationWithRelations }
               </div>
               <div className="text-xs text-muted-foreground">{timeAgo(a.createdAt)}</div>
             </div>
-            <div className="ml-auto"><SourceBadge type={a.sourceType} /></div>
+            <div className="ml-auto flex items-center gap-2">
+              <FollowButton targetUserId={a.user.id} targetUsername={a.user.username} />
+              <SourceBadge type={a.sourceType} />
+            </div>
           </div>
 
           {/* Source attribution */}

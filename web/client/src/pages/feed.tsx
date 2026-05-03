@@ -2,22 +2,33 @@ import { useQuery } from "@tanstack/react-query";
 import type { AnnotationWithRelations } from "@shared/schema";
 import { AppLayout } from "@/components/AppLayout";
 import { FeedCard } from "@/components/FeedCard";
+import { OAuthSignIn } from "@/components/OAuthSignIn";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Link } from "wouter";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Link, useLocation } from "wouter";
 import { Chrome, Scissors, FileText, Mic } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
+type FeedTab = "all" | "following";
+
 export default function FeedPage() {
   const { user } = useAuth();
-  const { data, isLoading } = useQuery<AnnotationWithRelations[]>({
-    queryKey: ["/api/feed"],
-  });
+  const [, setLocation] = useLocation();
+
+  // The active tab lives in the URL hash so it survives reload and
+  // copy/paste. Hash router updates trigger re-renders via useLocation, but
+  // we read the raw window hash to avoid coupling to its routing internals.
+  const activeTab: FeedTab = readTabFromHash();
+  const setTab = (tab: FeedTab) => {
+    if (tab === "all") setLocation("/");
+    else setLocation(`/?tab=${tab}`);
+  };
 
   return (
     <AppLayout>
       <div className="mx-auto max-w-6xl px-6 py-10 grid lg:grid-cols-[1fr_320px] gap-10">
         <div>
-          <header className="mb-8">
+          <header className="mb-6">
             <h1
               className="text-4xl md:text-5xl leading-[1.05]"
               style={{ fontFamily: "var(--font-serif)" }}
@@ -30,14 +41,29 @@ export default function FeedPage() {
               every one linked back to the source.
             </p>
           </header>
-          <div className="space-y-5">
-            {isLoading
-              ? Array.from({ length: 3 }).map((_, i) => <FeedSkeleton key={i} />)
-              : (data ?? []).map((a) => <FeedCard key={a.id} annotation={a} />)}
-            {!isLoading && data && data.length === 0 && (
-              <div className="text-sm text-muted-foreground">No annotations yet.</div>
-            )}
-          </div>
+
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setTab(v as FeedTab)}
+            className="mb-6"
+          >
+            <TabsList data-testid="feed-tabs">
+              <TabsTrigger value="all" data-testid="tab-all">
+                All
+              </TabsTrigger>
+              <TabsTrigger value="following" data-testid="tab-following">
+                Following
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="all" className="mt-6">
+              <AllFeed />
+            </TabsContent>
+
+            <TabsContent value="following" className="mt-6">
+              <FollowingFeed />
+            </TabsContent>
+          </Tabs>
         </div>
 
         <aside className="space-y-6">
@@ -78,17 +104,98 @@ export default function FeedPage() {
           </div>
 
           {!user && (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-5">
-              <div className="text-sm font-semibold mb-1">Want to clip and comment?</div>
-              <p className="text-sm text-muted-foreground mb-3">Sign in with X or Google.</p>
-              <Link href="/login" className="text-sm text-primary hover:underline">
-                Sign in →
-              </Link>
-            </div>
+            <OAuthSignIn
+              compact
+              title="Sign in to follow"
+              description="Use X or Google to follow creators and unlock your Following feed."
+            />
           )}
         </aside>
       </div>
     </AppLayout>
+  );
+}
+
+function readTabFromHash(): FeedTab {
+  // Hash router URL looks like "#/?tab=following" — parse the part after the
+  // first "?" of the hash for the tab value.
+  const hash = typeof window !== "undefined" ? window.location.hash : "";
+  const q = hash.split("?")[1] ?? "";
+  const params = new URLSearchParams(q);
+  return params.get("tab") === "following" ? "following" : "all";
+}
+
+function AllFeed() {
+  const { data, isLoading } = useQuery<AnnotationWithRelations[]>({
+    queryKey: ["/api/feed"],
+  });
+  return (
+    <div className="space-y-5" data-testid="feed-list-all">
+      {isLoading ? (
+        Array.from({ length: 3 }).map((_, i) => <FeedSkeleton key={i} />)
+      ) : (data ?? []).length === 0 ? (
+        <div className="text-sm text-muted-foreground">No annotations yet.</div>
+      ) : (
+        (data ?? []).map((a) => <FeedCard key={a.id} annotation={a} />)
+      )}
+    </div>
+  );
+}
+
+function FollowingFeed() {
+  const { user } = useAuth();
+  const { data, isLoading } = useQuery<AnnotationWithRelations[]>({
+    queryKey: ["/api/feed", { followerOf: user?.id ?? "" }],
+    queryFn: async () => {
+      if (!user) return [];
+      const res = await fetch(`/api/feed?followerOf=${user.id}`);
+      return res.json();
+    },
+    enabled: !!user,
+  });
+
+  if (!user) {
+    return (
+      <div className="space-y-4" data-testid="feed-following-signed-out">
+        <div className="rounded-lg border border-card-border bg-card p-6">
+          <h3 className="text-lg font-semibold mb-1">Following requires sign-in</h3>
+          <p className="text-sm text-muted-foreground">
+            Sign in with X or Google to see clips from the people you follow.
+          </p>
+        </div>
+        <OAuthSignIn
+          title="Sign in to see your Following feed"
+          description="Annotated uses X or Google to sign you in. No email, no password."
+        />
+      </div>
+    );
+  }
+  if (isLoading) {
+    return (
+      <div className="space-y-5">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <FeedSkeleton key={i} />
+        ))}
+      </div>
+    );
+  }
+  if ((data ?? []).length === 0) {
+    return (
+      <div
+        className="rounded-lg border border-card-border bg-card p-6 text-sm text-muted-foreground"
+        data-testid="feed-following-empty"
+      >
+        No annotations from people you follow yet. Switch to the All tab and tap{" "}
+        <span className="font-medium">Follow</span> on creators you want to track.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-5" data-testid="feed-list-following">
+      {(data ?? []).map((a) => (
+        <FeedCard key={a.id} annotation={a} />
+      ))}
+    </div>
   );
 }
 

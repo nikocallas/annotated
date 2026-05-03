@@ -9,7 +9,7 @@ export default function LandingPage() {
           <Logo />
           <div className="ml-auto flex items-center gap-3">
             <a
-              href="/#/"
+              href="/feed"
               className="hidden sm:inline text-sm text-muted-foreground hover:text-foreground"
               data-testid="link-feed"
             >
@@ -54,7 +54,7 @@ export default function LandingPage() {
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <DownloadExtensionButton size="lg" />
             <a
-              href="/#/"
+              href="/feed"
               className="text-sm font-medium text-muted-foreground hover:text-foreground"
               data-testid="link-explore-feed"
             >
@@ -76,7 +76,7 @@ export default function LandingPage() {
           <Logo />
           <DownloadExtensionButton size="sm" />
           <div className="flex gap-5 flex-wrap">
-            <a href="/#/" className="hover:text-foreground">Feed</a>
+            <a href="/feed" className="hover:text-foreground">Feed</a>
             <a href="/privacy" className="hover:text-foreground">Privacy</a>
             <a href="/tos" className="hover:text-foreground">Terms</a>
           </div>
