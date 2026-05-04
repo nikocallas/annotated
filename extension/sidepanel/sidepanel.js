@@ -60,10 +60,20 @@ function avatarFallback(name) { return (name || "?").slice(0, 2).toUpperCase(); 
 function isExtension() { return typeof chrome !== "undefined" && !!chrome.runtime?.id; }
 
 async function api(path, options = {}) {
-  const res = await fetch(state.apiBase + path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
+  let res;
+  try {
+    res = await fetch(state.apiBase + path, {
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      ...options,
+    });
+  } catch (err) {
+    // fetch() rejects with TypeError ("Failed to fetch") on network errors,
+    // CORS rejections, or when the extension lacks host_permissions for the
+    // target origin. Give the user something more actionable than the raw
+    // browser message.
+    const detail = err?.message || String(err);
+    throw new Error(`Couldn't reach ${state.apiBase} (${detail}). Check your internet connection or reload the extension.`);
+  }
   if (!res.ok) {
     let msg = res.statusText;
     try { msg = (await res.json()).error || msg; } catch {}
@@ -165,7 +175,7 @@ async function render() {
 
 function renderLogin() {
   const node = tpl("#login-view");
-  $$(".btn", node).forEach((btn) => {
+  $$("[data-provider]", node).forEach((btn) => {
     btn.addEventListener("click", async () => {
       const provider = btn.dataset.provider;
       try {
@@ -184,6 +194,20 @@ function renderLogin() {
       }
     });
   });
+  // Fallback: open the production sign-in page in a new tab. Useful when the
+  // in-sidebar flow can't reach the API (rare, but gives users a way out).
+  const openWebBtn = $("[data-open-web-signin]", node);
+  if (openWebBtn) {
+    openWebBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const url = `${state.apiBase}/login`;
+      if (isExtension() && chrome.tabs?.create) {
+        chrome.tabs.create({ url });
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    });
+  }
   return node;
 }
 
