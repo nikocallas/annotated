@@ -95,8 +95,8 @@ Set the following **environment variables** in Vercel (production + preview):
 | `VITE_SUPABASE_PUBLISHABLE_KEY`    | client   | Same value as `SUPABASE_ANON_KEY`                           |
 | `VITE_CHROME_WEB_STORE_URL`        | client   | Optional. When set, "Get the Chrome Extension" buttons link to the Web Store listing (e.g. `https://chromewebstore.google.com/detail/<extension-id>`); when unset, they fall back to the bundled `/downloads/annotated-extension.zip`. |
 | `RESEND_API_KEY`                   | server   | Required for `/support` to send email via Resend's REST API. When unset, `POST /api/support` returns 503 and the form shows a friendly error. **Must be set in Vercel for live emails.** |
-| `SUPPORT_TO_EMAIL`                  | server   | Destination address for the `/support` contact form. Defaults to `niko@laymen.com`. Server-side only — never exposed to the browser. |
-| `SUPPORT_FROM_EMAIL`                | server   | Optional sender. Defaults to `Annotated Support <onboarding@resend.dev>` (Resend's shared sandbox sender, fine for testing). For production, set up a verified sending domain in Resend and use it here, e.g. `Annotated Support <support@annotatedextension.com>`. |
+| `SUPPORT_TO_EMAIL`                  | server   | Destination address for the `/support` contact form. Defaults to `support@annotatedextensions.com`. Server-side only — never exposed to the browser. |
+| `SUPPORT_FROM_EMAIL`                | server   | Optional sender. Defaults to `Annotated Support <onboarding@resend.dev>` (Resend's shared sandbox sender, fine for testing). For production, set up a verified sending domain in Resend and use it here, e.g. `Annotated Support <support@annotatedextensions.com>`. |
 
 When both server vars are set the API talks to Supabase. When either is
 missing the API silently falls back to an in-memory `MemoryStorage` backend so

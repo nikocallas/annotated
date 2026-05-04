@@ -72,7 +72,7 @@ export default function TermsPage() {
       <p>
         If you are a rights holder and you believe a clip on Annotated is not a fair use
         of your work, file a claim using the "File a claim" button on the clip's page or
-        email <a href="mailto:nikolascallas@gmail.com">nikolascallas@gmail.com</a>.
+        email <a href="mailto:support@annotatedextensions.com">support@annotatedextensions.com</a>.
         Provide:
       </p>
       <ul>
@@ -121,7 +121,7 @@ export default function TermsPage() {
 
       <h2>10. Contact</h2>
       <p>
-        Questions or notices: <a href="mailto:nikolascallas@gmail.com">nikolascallas@gmail.com</a>.
+        Questions or notices: <a href="mailto:support@annotatedextensions.com">support@annotatedextensions.com</a>.
       </p>
     </LegalLayout>
   );

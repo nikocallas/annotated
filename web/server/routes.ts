@@ -373,7 +373,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const toEmail = process.env.SUPPORT_TO_EMAIL || "niko@laymen.com";
+      const toEmail = process.env.SUPPORT_TO_EMAIL || "support@annotatedextensions.com";
       const fromEmail =
         process.env.SUPPORT_FROM_EMAIL || "Annotated Support <onboarding@resend.dev>";
 

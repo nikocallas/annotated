@@ -85,7 +85,7 @@ export default function PrivacyPage() {
       <p>
         You can request access to, correction of, or deletion of your account and the
         content you have created. To make a request, email{" "}
-        <a href="mailto:nikolascallas@gmail.com">nikolascallas@gmail.com</a>. We will
+        <a href="mailto:support@annotatedextensions.com">support@annotatedextensions.com</a>. We will
         respond within a reasonable time.
       </p>
 
@@ -103,7 +103,7 @@ export default function PrivacyPage() {
 
       <h2>Contact</h2>
       <p>
-        Questions: <a href="mailto:nikolascallas@gmail.com">nikolascallas@gmail.com</a>.
+        Questions: <a href="mailto:support@annotatedextensions.com">support@annotatedextensions.com</a>.
       </p>
     </LegalLayout>
   );
