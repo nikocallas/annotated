@@ -63,10 +63,6 @@ export default function LandingPage() {
               Explore the feed →
             </a>
           </div>
-
-          <p className="mt-6 text-xs text-muted-foreground max-w-sm">
-            Installs from the Chrome Web Store in one click.
-          </p>
         </section>
       </main>
 
