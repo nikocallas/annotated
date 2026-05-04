@@ -6,9 +6,13 @@ import { FeedCard } from "@/components/FeedCard";
 import { OAuthSignIn } from "@/components/OAuthSignIn";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Link } from "wouter";
 import { Chrome, Scissors, FileText, Mic } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import {
+  EXTENSION_INSTALL_HREF,
+  EXTENSION_IS_STORE_LINK,
+  EXTENSION_DOWNLOAD_FILENAME,
+} from "@/components/DownloadExtensionButton";
 
 type FeedTab = "all" | "following";
 
@@ -98,13 +102,16 @@ export default function FeedPage() {
               Annotated is a Chrome side panel extension. Open it on any video, article, or podcast
               and clip what's worth saving.
             </p>
-            <Link
-              href="/install"
+            <a
+              href={EXTENSION_INSTALL_HREF}
+              {...(EXTENSION_IS_STORE_LINK
+                ? { target: "_blank", rel: "noopener noreferrer" as const }
+                : { download: EXTENSION_DOWNLOAD_FILENAME })}
               className="inline-flex items-center text-sm text-primary hover:underline mt-3"
               data-testid="link-aside-install"
             >
               Install the extension →
-            </Link>
+            </a>
           </div>
 
           <div className="rounded-lg border border-card-border bg-card p-5">

@@ -1,17 +1,22 @@
 import type { CSSProperties } from "react";
 
-// Fallback download URL used until the Chrome Web Store listing is published.
-// Set VITE_CHROME_WEB_STORE_URL in the environment (Vercel) to switch all
-// "Get the Chrome Extension" buttons to point at the live Web Store listing.
+// The Chrome Web Store listing is the canonical install path. VITE_CHROME_WEB_STORE_URL
+// overrides the baked-in default (e.g. for staging listings). The packaged zip remains
+// only as an internal fallback if the env var is somehow set to empty — visible copy
+// must never instruct users to download or sideload it.
+export const EXTENSION_WEB_STORE_URL =
+  "https://chromewebstore.google.com/detail/annotated/eaealcbiidjigfndjchchbnjdjicbajb";
 export const EXTENSION_DOWNLOAD_FALLBACK_HREF = "/downloads/annotated-extension.zip";
 export const EXTENSION_DOWNLOAD_FILENAME = "annotated-extension.zip";
 export const CHROME_ICON_SRC = "/chrome-icon.png";
 
-const STORE_URL = (import.meta.env.VITE_CHROME_WEB_STORE_URL as string | undefined)?.trim();
-export const EXTENSION_INSTALL_HREF = STORE_URL && STORE_URL.length > 0
-  ? STORE_URL
-  : EXTENSION_DOWNLOAD_FALLBACK_HREF;
-export const EXTENSION_IS_STORE_LINK = Boolean(STORE_URL && STORE_URL.length > 0);
+const STORE_URL_OVERRIDE = (import.meta.env.VITE_CHROME_WEB_STORE_URL as string | undefined)?.trim();
+const RESOLVED_STORE_URL =
+  STORE_URL_OVERRIDE && STORE_URL_OVERRIDE.length > 0
+    ? STORE_URL_OVERRIDE
+    : EXTENSION_WEB_STORE_URL;
+export const EXTENSION_INSTALL_HREF = RESOLVED_STORE_URL || EXTENSION_DOWNLOAD_FALLBACK_HREF;
+export const EXTENSION_IS_STORE_LINK = Boolean(RESOLVED_STORE_URL);
 
 export function ChromeLogo({ size = 18, className }: { size?: number; className?: string }) {
   return (

@@ -65,10 +65,7 @@ export default function LandingPage() {
           </div>
 
           <p className="mt-6 text-xs text-muted-foreground max-w-sm">
-            Downloads a packaged Chrome extension. Open
-            {" "}
-            <span className="font-mono">chrome://extensions</span>, enable Developer mode,
-            and load the unzipped folder.
+            Installs from the Chrome Web Store in one click.
           </p>
         </section>
       </main>
