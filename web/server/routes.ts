@@ -151,8 +151,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: `Unsupported provider: ${provider}` });
       }
 
-      // Try to find an existing user by (provider, authId).
-      const existing = await storage.getUserByAuth(appProvider, sUser.id);
+      // Try to find an existing user by (provider, authId). Also handle the
+      // case where Supabase returns provider="twitter" but a previous version
+      // wrote our app-local row with provider="x" (or vice versa) so we don't
+      // create a duplicate user on each sign-in.
+      let existing = await storage.getUserByAuth(appProvider, sUser.id);
+      if (!existing && appProvider === "x") {
+        existing = await storage.getUserByAuth("twitter", sUser.id);
+      }
       if (existing) return res.json({ user: existing });
 
       // Otherwise create one. Pull display name / handle / avatar from provider
@@ -162,19 +168,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         (meta.full_name as string | undefined) ||
         (meta.name as string | undefined) ||
         (meta.user_name as string | undefined) ||
-        (sUser.email ? sUser.email.split("@")[0] : "user");
+        (sUser.email ? sUser.email.split("@")[0] : null) ||
+        "user";
       const rawHandle =
         (meta.user_name as string | undefined) ||
         (meta.preferred_username as string | undefined) ||
-        (sUser.email ? sUser.email.split("@")[0] : sUser.id.slice(0, 8));
-      const baseUsername = rawHandle.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) || "user";
+        (sUser.email ? sUser.email.split("@")[0] : null) ||
+        sUser.id.slice(0, 8);
+      // Lowercase, strip everything that isn't a-z/0-9/_ and cap length.
+      // Never let the slug fall to empty — always have something to anchor on.
+      const baseUsername =
+        rawHandle.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) ||
+        `user${sUser.id.replace(/-/g, "").slice(0, 8)}`;
 
-      // Ensure unique username — append a short suffix if taken.
+      // Ensure unique username — append a short suffix if taken. After a few
+      // collisions, fall back to a slug that includes the auth id so we always
+      // converge on a writable handle.
       let username = baseUsername;
       for (let i = 0; i < 5; i++) {
         const taken = await storage.getUserByUsername(username);
         if (!taken) break;
         username = `${baseUsername}${Math.floor(Math.random() * 10000)}`;
+      }
+      const stillTaken = await storage.getUserByUsername(username);
+      if (stillTaken) {
+        username = `${baseUsername}-${sUser.id.replace(/-/g, "").slice(0, 6)}`.slice(0, 30);
       }
 
       const avatarUrl =
@@ -212,6 +230,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return b.createdAt - a.createdAt;
       });
       return res.json(ranked);
+    })
+  );
+
+  // Look up by username — used by /u/:username profile route. The route is
+  // registered before /api/users/:id so usernames don't collide with UUIDs.
+  app.get(
+    "/api/users/by-username/:username",
+    asyncHandler(async (req, res) => {
+      const raw = String(req.params.username || "");
+      const username = raw.toLowerCase();
+      const user = await storage.getUserByUsername(username);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      const [followers, following] = await Promise.all([
+        storage.followerCount(user.id),
+        storage.followingCount(user.id),
+      ]);
+      const annotations = await storage.listAnnotations({ userId: user.id, limit: 100 });
+      return res.json({ user, followers, following, annotations });
     })
   );
 

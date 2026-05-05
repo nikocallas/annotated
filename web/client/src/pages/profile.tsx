@@ -17,17 +17,31 @@ interface ProfileData {
 
 export default function ProfilePage() {
   const [, params] = useRoute("/u/:username");
-  const username = params?.username ?? "";
+  const username = (params?.username ?? "").toLowerCase();
   const { user: me } = useAuth();
 
-  const { data: usersList } = useQuery<User[]>({ queryKey: ["/api/users"] });
-  const target = usersList?.find((u) => u.username === username);
-  const targetId = target?.id;
-
-  const { data, isLoading } = useQuery<ProfileData>({
-    queryKey: ["/api/users", targetId],
-    enabled: !!targetId,
+  // Fetch the profile by username directly. This is authoritative — it doesn't
+  // depend on the /api/users list (which can be cached, paginated, or stale)
+  // and so it works for users who just signed in via OAuth.
+  const { data, isLoading, isError, error } = useQuery<ProfileData>({
+    queryKey: ["/api/users/by-username", username],
+    queryFn: async () => {
+      const res = await fetch(`/api/users/by-username/${encodeURIComponent(username)}`);
+      if (res.status === 404) {
+        throw new Error("not_found");
+      }
+      if (!res.ok) {
+        const text = (await res.text()) || res.statusText;
+        throw new Error(text);
+      }
+      return res.json();
+    },
+    enabled: !!username,
+    retry: false,
   });
+
+  const target = data?.user;
+  const targetId = target?.id;
 
   const { data: followingState } = useQuery<{ following: boolean }>({
     queryKey: ["/api/users", targetId, "is-following", { followerId: me?.id ?? "" }],
@@ -46,22 +60,37 @@ export default function ProfilePage() {
       await apiRequest(method, `/api/users/${targetId}/follow`, { followerId: me.id });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users", targetId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/by-username", username] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", targetId, "is-following"] });
     },
   });
 
-  if (!usersList) {
+  if (isLoading) {
     return (
       <AppLayout>
         <div className="mx-auto max-w-3xl px-6 py-10">Loading…</div>
       </AppLayout>
     );
   }
-  if (!target) {
+  if (isError || !target) {
+    const notFound = error instanceof Error && error.message === "not_found";
     return (
       <AppLayout>
-        <div className="mx-auto max-w-3xl px-6 py-10">User not found.</div>
+        <div className="mx-auto max-w-3xl px-6 py-10">
+          {notFound ? (
+            <>
+              <p>User not found.</p>
+              {me && me.username.toLowerCase() === username && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  Your account hasn't finished syncing yet — try refreshing the
+                  page in a moment.
+                </p>
+              )}
+            </>
+          ) : (
+            <p>Couldn't load this profile. Please try again.</p>
+          )}
+        </div>
       </AppLayout>
     );
   }
@@ -113,9 +142,7 @@ export default function ProfilePage() {
         </header>
 
         <div className="space-y-5">
-          {isLoading ? (
-            <p className="text-muted-foreground">Loading clips…</p>
-          ) : (data?.annotations ?? []).length === 0 ? (
+          {(data?.annotations ?? []).length === 0 ? (
             <p className="text-muted-foreground">No clips yet.</p>
           ) : (
             (data?.annotations ?? []).map((a) => <FeedCard key={a.id} annotation={a} />)

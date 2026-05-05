@@ -49,6 +49,7 @@ export function DeleteAnnotationButton({
       queryClient.invalidateQueries({ queryKey: ["/api/feed"] });
       queryClient.invalidateQueries({ queryKey: ["/api/feed/most-viewed"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/by-username"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks/ids"] });
       queryClient.removeQueries({ queryKey: ["/api/annotations", annotationId] });

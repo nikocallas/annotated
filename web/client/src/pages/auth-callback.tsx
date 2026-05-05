@@ -99,23 +99,15 @@ export default function AuthCallbackPage() {
               {error?.kind === "x_no_email" ? (
                 <div className="text-sm text-muted-foreground mb-6 space-y-3 text-left">
                   <p>
-                    X didn't share an email address with Annotated, so we can't
-                    finish creating your account.
+                    X (Twitter) doesn't share an email address with Annotated
+                    over its OAuth 2.0 sign-in, so we can't finish creating
+                    your account.
                   </p>
                   <p>
-                    This usually happens when an X account doesn't have a
-                    verified email, or X's OAuth app isn't allowed to read it.
-                    Two ways forward:
+                    This is a limitation of X's OAuth — it isn't something
+                    Annotated can override from the browser. The fastest fix is
+                    to sign in with Google instead.
                   </p>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>
-                      Sign in with Google instead — it's the fastest path.
-                    </li>
-                    <li>
-                      Or verify and share your email on X (Settings → Your
-                      account → Account information → Email) and try again.
-                    </li>
-                  </ul>
                   <p className="text-xs opacity-80">
                     Provider error: <code>{error.message}</code>
                   </p>
@@ -126,8 +118,14 @@ export default function AuthCallbackPage() {
                 </p>
               )}
               <div className="flex items-center justify-center gap-4 text-sm">
-                <a href="/login" className="underline hover:text-foreground">
-                  Try a different sign-in
+                <a
+                  href="/login"
+                  className="underline hover:text-foreground"
+                  data-testid="link-auth-callback-retry"
+                >
+                  {error?.kind === "x_no_email"
+                    ? "Sign in with Google"
+                    : "Try a different sign-in"}
                 </a>
                 <a href="/" className="underline hover:text-foreground">
                   Return to Annotated
