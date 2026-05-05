@@ -136,14 +136,14 @@ async function hasOffscreenDoc() {
 }
 
 let creatingOffscreen = null;
-async function ensureOffscreenDoc() {
+async function ensureOffscreenDoc(reasons = ["USER_MEDIA"], justification = "Record audio commentary for an annotation.") {
   if (await hasOffscreenDoc()) return;
   if (!creatingOffscreen) {
     creatingOffscreen = chrome.offscreen
       .createDocument({
         url: OFFSCREEN_DOC_PATH,
-        reasons: ["USER_MEDIA"],
-        justification: "Record audio commentary for an annotation.",
+        reasons,
+        justification,
       })
       .finally(() => { creatingOffscreen = null; });
   }
@@ -402,6 +402,78 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   }
+  // Tab-capture clip recording — used by the publish flow when the
+  // active tab is a YouTube/podcast page. We mint a media stream id with
+  // chrome.tabCapture (must run from a user gesture, which the side panel's
+  // Publish button counts as) then hand it off to the offscreen doc, which
+  // owns the MediaRecorder. On stop, the offscreen doc returns the encoded
+  // clip blob as base64 plus an optional poster frame.
+  if (message?.type === "CAPTURE_TAB_CLIP") {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const active = tabs[0];
+        if (!active?.id) return sendResponse({ error: "no_active_tab" });
+        // tabCapture.getMediaStreamId resolves with a string id callable from
+        // the offscreen document. We pass our offscreen page's documentUrl as
+        // consumerTabId is not allowed for offscreen — `targetTabId` alone is
+        // the supported shape.
+        const streamId = await new Promise((resolve, reject) => {
+          try {
+            chrome.tabCapture.getMediaStreamId(
+              { targetTabId: active.id },
+              (sid) => {
+                if (chrome.runtime.lastError) {
+                  reject(new Error(chrome.runtime.lastError.message));
+                } else if (!sid) {
+                  reject(new Error("getMediaStreamId returned empty id"));
+                } else {
+                  resolve(sid);
+                }
+              },
+            );
+          } catch (err) {
+            reject(err);
+          }
+        });
+
+        await ensureOffscreenDoc(
+          ["USER_MEDIA", "DISPLAY_MEDIA"],
+          "Capture a short fair-use clip from the active tab for the annotation.",
+        );
+        // Seek the active tab's player to the clip start before we begin
+        // recording so we capture the right span. The content script's
+        // SET_MEDIA_TIME also unpauses playback.
+        await ensureContentScript(active.id);
+        try {
+          await chrome.tabs.sendMessage(active.id, {
+            type: "SET_MEDIA_TIME",
+            time: Number(message.startSec) || 0,
+            play: true,
+          });
+        } catch {}
+
+        const res = await callOffscreen("OFFSCREEN_RECORD_TAB_CLIP", {
+          streamId,
+          durationMs: Math.min(95_000, Math.max(1000, Number(message.durationMs) || 0)),
+        });
+
+        // Pause the page playback after capture so the user isn't left with
+        // the tab still playing.
+        try {
+          await chrome.tabs.sendMessage(active.id, { type: "PAUSE_MEDIA" });
+        } catch {}
+
+        await closeOffscreenDocIfIdle();
+        sendResponse(res);
+      } catch (err) {
+        await closeOffscreenDocIfIdle();
+        sendResponse({ error: err?.message || String(err) });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type === "CANCEL_RECORDING") {
     (async () => {
       try {

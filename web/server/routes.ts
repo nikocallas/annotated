@@ -423,6 +423,130 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
   );
 
+  // ---- CLIP MEDIA UPLOAD -------------------------------------------------
+  // The Chrome extension captures the active tab's video stream for the user-
+  // selected ≤90s range, then POSTs the resulting blob (base64) here. We
+  // upload it to the public `clip-media` Supabase Storage bucket using the
+  // service role key (server-only), then update the annotation row's
+  // clip_media_url + clip_status='ready' so the feed renders the native
+  // <video> asset instead of the processing facade.
+  //
+  // When SUPABASE_SERVICE_ROLE_KEY is missing we fall back to storing the
+  // clip inline as a data: URL. That is bandwidth-heavy in the feed but keeps
+  // the published-clip path working in environments without storage configured.
+  app.post(
+    "/api/annotations/:id/clip-video",
+    asyncHandler(async (req, res) => {
+      const annotationId = String(req.params.id);
+      const { userId, base64, mime, durationMs, thumbnailBase64, thumbnailMime } = (req.body || {}) as {
+        userId?: string;
+        base64?: string;
+        mime?: string;
+        durationMs?: number;
+        thumbnailBase64?: string;
+        thumbnailMime?: string;
+      };
+      if (!userId) return res.status(401).json({ error: "Sign in to upload a clip" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const annotation = await storage.getAnnotation(annotationId);
+      if (!annotation) return res.status(404).json({ error: "Annotation not found" });
+      if (annotation.userId !== userId) {
+        return res.status(403).json({ error: "You can only attach clips to your own annotations" });
+      }
+      if (!base64 || typeof base64 !== "string") {
+        return res.status(400).json({ error: "clip data is required" });
+      }
+      if (typeof durationMs === "number" && durationMs > 95_000) {
+        return res.status(400).json({ error: "Clip cannot exceed 90 seconds" });
+      }
+      const approxBytes = Math.floor((base64.length * 3) / 4);
+      // 24MB raw — generous bound for ≤90s 480p WebM/MP4. Larger uploads are
+      // out of spec and likely indicate a misconfigured recording resolution.
+      if (approxBytes > 24_000_000) {
+        return res.status(413).json({
+          error: "Clip too large; keep recordings under 90 seconds and ≤480p",
+        });
+      }
+      const safeMime =
+        typeof mime === "string" && /^(video|audio)\/(mp4|webm|x-matroska|mpeg)$/i.test(mime)
+          ? mime
+          : "video/webm";
+      const ext = safeMime.includes("mp4")
+        ? "mp4"
+        : safeMime.includes("mpeg")
+        ? "mp3"
+        : safeMime.startsWith("audio/")
+        ? "webm"
+        : "webm";
+
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      let clipUrl: string;
+      let storageBackend: "supabase" | "data-url" = "data-url";
+      if (supabaseUrl && serviceKey) {
+        const admin = createClient(supabaseUrl, serviceKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const objectPath = `${userId}/${annotationId}.${ext}`;
+        const buffer = Buffer.from(base64, "base64");
+        const { error: upErr } = await admin.storage
+          .from("clip-media")
+          .upload(objectPath, buffer, {
+            contentType: safeMime,
+            upsert: true,
+            cacheControl: "31536000",
+          });
+        if (upErr) {
+          // Surface the storage error rather than silently corrupting state.
+          // The extension treats this as a clip-upload failure and shows a
+          // toast; the annotation is still published with clip_status='failed'.
+          console.error("[clip-video] supabase upload failed", upErr);
+          await storage.updateAnnotation(annotationId, { clipStatus: "failed" });
+          return res.status(502).json({ error: `Clip upload failed: ${upErr.message}` });
+        }
+        const { data: pub } = admin.storage.from("clip-media").getPublicUrl(objectPath);
+        clipUrl = pub.publicUrl;
+        storageBackend = "supabase";
+
+        // Optional thumbnail (poster frame extracted from the first captured
+        // frame). Keeps the feed thumbnail aligned with the actual clipped
+        // moment instead of the YouTube hqdefault.
+        if (thumbnailBase64 && typeof thumbnailBase64 === "string") {
+          const thumbExt = thumbnailMime?.includes("png") ? "png" : "jpg";
+          const thumbContentType = thumbnailMime?.startsWith("image/") ? thumbnailMime : "image/jpeg";
+          const thumbPath = `${userId}/${annotationId}-poster.${thumbExt}`;
+          const { error: tErr } = await admin.storage
+            .from("clip-media")
+            .upload(thumbPath, Buffer.from(thumbnailBase64, "base64"), {
+              contentType: thumbContentType,
+              upsert: true,
+              cacheControl: "31536000",
+            });
+          if (!tErr) {
+            const { data: tPub } = admin.storage.from("clip-media").getPublicUrl(thumbPath);
+            await storage.updateAnnotation(annotationId, { clipThumbnailUrl: tPub.publicUrl });
+          }
+        }
+      } else {
+        clipUrl = `data:${safeMime};base64,${base64}`;
+      }
+
+      await storage.updateAnnotation(annotationId, {
+        clipMediaUrl: clipUrl,
+        clipStatus: "ready",
+      });
+
+      return res.status(201).json({
+        ok: true,
+        url: clipUrl,
+        bytes: approxBytes,
+        mime: safeMime,
+        backend: storageBackend,
+      });
+    })
+  );
+
   // ---- ANNOTATIONS / CLIPS ----------------------------------------------
   app.get(
     "/api/annotations/:id",

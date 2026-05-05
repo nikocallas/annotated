@@ -1215,6 +1215,48 @@ async function onPublish(node, publishBtn, errorEl) {
     state.publish.status = "published";
     state.publish.annotationId = result.annotation.id;
     state.publish.pageUrlAtPublish = state.pageMeta?.url || sourceUrl;
+
+    // For video/podcast clips on a real page (i.e. not a manual-URL fallback),
+    // capture the active tab's stream for the selected range and upload it as
+    // the clip's media asset. Failures are logged and surfaced to the user but
+    // never undo the publish — the annotation simply stays in
+    // clip_status='processing'/'failed' and renders the existing facade.
+    const canCapture =
+      !manualUrl &&
+      (payload.sourceType === "youtube" || payload.sourceType === "podcast") &&
+      isExtension() &&
+      typeof chrome.tabCapture !== "undefined";
+    if (canCapture) {
+      publishBtn.textContent = "Capturing clip…";
+      try {
+        const dur = (payload.clipEndSec - payload.clipStartSec);
+        const cap = await sendBg({
+          type: "CAPTURE_TAB_CLIP",
+          startSec: payload.clipStartSec,
+          durationMs: Math.min(95_000, Math.max(1000, dur * 1000)),
+        });
+        if (cap?.error) {
+          toast(`Clip capture failed: ${cap.error}`, "error");
+        } else if (cap?.base64) {
+          publishBtn.textContent = "Uploading clip…";
+          await api(`/api/annotations/${result.annotation.id}/clip-video`, {
+            method: "POST",
+            body: JSON.stringify({
+              userId: state.user.id,
+              base64: cap.base64,
+              mime: cap.mime,
+              durationMs: dur * 1000,
+              thumbnailBase64: cap.thumbnailBase64 || null,
+              thumbnailMime: cap.thumbnailMime || null,
+            }),
+          });
+        }
+      } catch (capErr) {
+        console.warn("[Annotated] clip capture/upload failed", capErr);
+        toast(`Clip capture failed: ${capErr.message || capErr}`, "error");
+      }
+    }
+
     // Auto-reset after PUBLISH_RESET_MS
     if (state.publish.resetTimer) clearTimeout(state.publish.resetTimer);
     state.publish.resetTimer = setTimeout(() => resetPublishState(), PUBLISH_RESET_MS);

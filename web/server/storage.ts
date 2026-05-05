@@ -509,6 +509,7 @@ export class SupabaseStorage implements IStorage {
   async updateAnnotation(id: string, patch: Partial<Annotation>) {
     const update: Partial<AnnotationRow> = {};
     if ("clipMediaUrl" in patch) update.clip_media_url = patch.clipMediaUrl ?? null;
+    if ("clipThumbnailUrl" in patch) update.clip_thumbnail_url = patch.clipThumbnailUrl ?? null;
     if ("clipStatus" in patch && patch.clipStatus) update.clip_status = patch.clipStatus;
     if ("commentaryText" in patch) update.commentary_text = patch.commentaryText ?? null;
     if ("commentaryAudioUrl" in patch) update.commentary_audio_url = patch.commentaryAudioUrl ?? null;

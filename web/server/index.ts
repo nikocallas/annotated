@@ -17,8 +17,10 @@ declare module "http" {
 app.use(
   express.json({
     // Bump from default 100kb to accommodate inline audio commentary (capped
-    // at ~90s of 32kbps Opus ≈ 360KB, base64 + JSON envelope ≈ 600KB).
-    limit: "2mb",
+    // at ~90s of 32kbps Opus ≈ 360KB, base64 + JSON envelope ≈ 600KB) and
+    // captured-tab video clips uploaded by the extension (capped at ≤90s,
+    // ≤480p — typically 4–10MB base64).
+    limit: "32mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
