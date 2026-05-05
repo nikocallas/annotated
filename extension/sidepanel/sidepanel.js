@@ -5,7 +5,7 @@
 const DEFAULT_API_BASE = "https://annotatedextension.com";
 const MAX_CLIP_SECONDS = 90;
 const SUPPORT_EMAIL = "support@annotatedextension.com";
-const PUBLISH_RESET_MS = 5000;
+const PUBLISH_RESET_MS = 10000;
 
 const CLAIM_REASONS = [
   ["uses_too_much", "Uses too much of my original work"],

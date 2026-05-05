@@ -48,6 +48,7 @@ export interface IStorage {
   }): Promise<AnnotationWithRelations[]>;
   createAnnotation(input: InsertAnnotation & { userId: string }): Promise<Annotation>;
   updateAnnotation(id: string, patch: Partial<Annotation>): Promise<Annotation | undefined>;
+  deleteAnnotation(id: string): Promise<void>;
 
   // Comments
   listComments(annotationId: string): Promise<(Comment & { user: User })[]>;
@@ -395,6 +396,11 @@ export class SupabaseStorage implements IStorage {
       if (error) throw error;
     }
     return this.getAnnotation(id);
+  }
+  async deleteAnnotation(id: string) {
+    // Cascading FKs (comments, claims, bookmarks) clean up automatically.
+    const { error } = await this.client.from("annotations").delete().eq("id", id);
+    if (error) throw error;
   }
 
   async listComments(annotationId: string) {
@@ -749,6 +755,18 @@ export class MemoryStorage implements IStorage {
     const next = { ...cur, ...patch };
     this.annotations.set(id, next);
     return next;
+  }
+  async deleteAnnotation(id: string) {
+    this.annotations.delete(id);
+    for (const cid of Array.from(this.comments.keys())) {
+      if (this.comments.get(cid)?.annotationId === id) this.comments.delete(cid);
+    }
+    for (const bid of Array.from(this.bookmarks.keys())) {
+      if (this.bookmarks.get(bid)?.annotationId === id) this.bookmarks.delete(bid);
+    }
+    for (const clid of Array.from(this.claims.keys())) {
+      if (this.claims.get(clid)?.annotationId === id) this.claims.delete(clid);
+    }
   }
 
   async listComments(annotationId: string) {

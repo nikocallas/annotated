@@ -5,6 +5,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { ClipPreview } from "@/components/ClipPreview";
 import { CommentThread } from "@/components/CommentThread";
 import { FileClaimButton } from "@/components/FileClaimButton";
+import { DeleteAnnotationButton } from "@/components/DeleteAnnotationButton";
 import { SourceBadge, hostname } from "@/components/SourceBadge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -304,6 +305,12 @@ export default function AnnotationDetailPage() {
                   <Share2 className="w-4 h-4 mr-1.5" />
                   Share
                 </Button>
+                <DeleteAnnotationButton
+                  annotationId={a.id}
+                  ownerId={a.user.id}
+                  variant="detail"
+                  redirectTo={`/u/${a.user.username}`}
+                />
               </div>
             </div>
 

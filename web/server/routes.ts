@@ -447,6 +447,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
   );
 
+  // Owner-only delete. The Express API mirrors the bookmark/follow pattern:
+  // the actor's userId comes in via body or query string. Ownership is checked
+  // server-side; comments / claims / bookmarks cascade away via FK.
+  app.delete(
+    "/api/annotations/:id",
+    asyncHandler(async (req, res) => {
+      const id = String(req.params.id);
+      const userId =
+        (req.body?.userId as string) || (req.query.userId as string) || "";
+      if (!userId) return res.status(401).json({ error: "Sign in to delete a clip" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const ann = await storage.getAnnotation(id);
+      if (!ann) return res.status(404).json({ error: "Annotation not found" });
+      if (ann.userId !== userId) {
+        return res.status(403).json({ error: "You can only delete your own annotations" });
+      }
+      await storage.deleteAnnotation(id);
+      return res.json({ ok: true, deleted: id });
+    })
+  );
+
   // ---- COMMENTS ----------------------------------------------------------
   app.get(
     "/api/annotations/:id/comments",

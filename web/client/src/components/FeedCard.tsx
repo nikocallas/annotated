@@ -8,6 +8,7 @@ import { SourceBadge, timeAgo, hostname } from "./SourceBadge";
 import { MessageCircle, Mic, Bookmark, Share2, Eye } from "lucide-react";
 import { SiX } from "react-icons/si";
 import { ClipPreview } from "./ClipPreview";
+import { DeleteAnnotationButton } from "./DeleteAnnotationButton";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -198,6 +199,11 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
                 <Share2 className="w-3.5 h-3.5" />
                 Share
               </button>
+              <DeleteAnnotationButton
+                annotationId={a.id}
+                ownerId={a.user.id}
+                variant="card"
+              />
             </div>
           </div>
         </div>
