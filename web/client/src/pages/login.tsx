@@ -2,13 +2,11 @@ import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { supabaseConfigured } from "@/lib/supabase";
-import { useLocation } from "wouter";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
   const { loginWithProvider } = useAuth();
-  const [, setLocation] = useLocation();
   const [busy, setBusy] = useState<"x" | "google" | null>(null);
   const { toast } = useToast();
 
@@ -21,7 +19,7 @@ export default function LoginPage() {
       // resolves immediately and we route to the feed.
       if (!supabaseConfigured) {
         toast({ title: "Signed in", description: "Demo session active." });
-        setLocation("/");
+        window.location.assign("/feed");
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Sign-in failed";

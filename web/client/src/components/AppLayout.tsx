@@ -78,7 +78,15 @@ export function AppLayout({
                     <AvatarFallback>{user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
                 </Link>
-                <Button variant="ghost" size="icon" onClick={() => { void logout(); }} aria-label="Sign out" data-testid="button-logout">
+                <Button variant="ghost" size="icon" onClick={() => {
+                  // Profile pages disappear the moment we sign out, so we
+                  // route the user to /login rather than leave them on a
+                  // page that's about to render its empty state.
+                  const onProfile = location.startsWith("/u/");
+                  void logout().then(() => {
+                    if (onProfile) window.location.assign("/login");
+                  });
+                }} aria-label="Sign out" data-testid="button-logout">
                   <LogOut className="w-4 h-4" />
                 </Button>
               </>

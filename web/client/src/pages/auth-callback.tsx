@@ -51,8 +51,8 @@ export default function AuthCallbackPage() {
       }
       if (!code) {
         // No code present — Supabase may have already established the session
-        // (e.g. user navigated back). Just bounce home.
-        window.location.replace("/");
+        // (e.g. user navigated back). Bounce to the feed.
+        window.location.replace("/feed");
         return;
       }
       const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
@@ -61,8 +61,8 @@ export default function AuthCallbackPage() {
         setError(classifyError(exchangeError.message));
         return;
       }
-      // Session established. Send user back to the app root (hash-routed feed).
-      window.location.replace("/");
+      // Session established. Send user to the feed.
+      window.location.replace("/feed");
     })();
   }, []);
 
