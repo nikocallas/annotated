@@ -9,6 +9,7 @@ import {
   insertClaimSchema,
   CLAIM_REASON_LABELS,
   type ClaimReasonCategory,
+  type VoteValue,
 } from "@shared/schema";
 import { dispatchClaimEmails } from "./claim-email";
 import {
@@ -240,13 +241,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     asyncHandler(async (req, res) => {
       const raw = String(req.params.username || "");
       const username = raw.toLowerCase();
+      const viewerUserId = (req.query.viewerUserId as string) || undefined;
       const user = await storage.getUserByUsername(username);
       if (!user) return res.status(404).json({ error: "User not found" });
       const [followers, following] = await Promise.all([
         storage.followerCount(user.id),
         storage.followingCount(user.id),
       ]);
-      const annotations = await storage.listAnnotations({ userId: user.id, limit: 100 });
+      const annotations = await storage.listAnnotations({ userId: user.id, limit: 100, viewerUserId });
       return res.json({ user, followers, following, annotations });
     })
   );
@@ -254,13 +256,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(
     "/api/users/:id",
     asyncHandler(async (req, res) => {
+      const viewerUserId = (req.query.viewerUserId as string) || undefined;
       const user = await storage.getUser(String(req.params.id));
       if (!user) return res.status(404).json({ error: "User not found" });
       const [followers, following] = await Promise.all([
         storage.followerCount(user.id),
         storage.followingCount(user.id),
       ]);
-      const annotations = await storage.listAnnotations({ userId: user.id, limit: 100 });
+      const annotations = await storage.listAnnotations({ userId: user.id, limit: 100, viewerUserId });
       return res.json({ user, followers, following, annotations });
     })
   );
@@ -300,9 +303,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/api/feed",
     asyncHandler(async (req, res) => {
       const followerOf = (req.query.followerOf as string) || undefined;
+      const viewerUserId = (req.query.userId as string) || undefined;
       const limit = Math.min(100, Number(req.query.limit ?? 60));
       const shuffle = req.query.shuffle === "1" || req.query.shuffle === "true";
-      const annotations = await storage.listAnnotations({ followerOf, limit });
+      const annotations = await storage.listAnnotations({ followerOf, limit, viewerUserId });
       if (shuffle) {
         // Fisher–Yates with a per-request seed so each feed load reorders.
         for (let i = annotations.length - 1; i > 0; i--) {
@@ -421,7 +425,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(
     "/api/annotations/:id",
     asyncHandler(async (req, res) => {
-      const ann = await storage.getAnnotationWithUser(String(req.params.id));
+      const viewerUserId = (req.query.userId as string) || undefined;
+      const ann = await storage.getAnnotationWithUser(String(req.params.id), viewerUserId);
       if (!ann) return res.status(404).json({ error: "Annotation not found" });
       return res.json(ann);
     })
@@ -517,20 +522,84 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post(
     "/api/annotations/:id/comments",
     asyncHandler(async (req, res) => {
+      const annotationId = String(req.params.id);
+      const parentIdRaw = req.body?.parentId;
+      const parentId =
+        typeof parentIdRaw === "string" && parentIdRaw.length > 0 ? parentIdRaw : null;
       const parsed = insertCommentSchema.safeParse({
-        annotationId: String(req.params.id),
+        annotationId,
         userId: req.body?.userId,
         body: req.body?.body,
+        parentId,
       });
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.flatten() });
       }
-      const ann = await storage.getAnnotation(String(req.params.id));
+      const ann = await storage.getAnnotation(annotationId);
       if (!ann) return res.status(404).json({ error: "Annotation not found" });
       const user = await storage.getUser(parsed.data.userId);
       if (!user) return res.status(401).json({ error: "User not found" });
+      // Validate parent comment belongs to this annotation if provided.
+      if (parsed.data.parentId) {
+        const parent = await storage.getComment(parsed.data.parentId);
+        if (!parent || parent.annotationId !== annotationId) {
+          return res.status(400).json({ error: "Parent comment not found on this annotation" });
+        }
+      }
       const comment = await storage.createComment(parsed.data);
       return res.status(201).json({ ...comment, user });
+    })
+  );
+
+  // ---- VOTES -------------------------------------------------------------
+  // Mirrors the bookmark/follow API shape: actor's userId comes via the body
+  // (or query string for DELETE). Votes are unique per (user, annotation),
+  // and the same user re-voting in the same direction toggles to clear,
+  // matching common Reddit/HN conventions.
+  app.get(
+    "/api/annotations/:id/votes",
+    asyncHandler(async (req, res) => {
+      const id = String(req.params.id);
+      const userId = (req.query.userId as string) || "";
+      const summary = await storage.getVoteSummary(id);
+      const viewerVote = userId ? await storage.getViewerVote(userId, id) : null;
+      return res.json({ ...summary, viewerVote });
+    })
+  );
+
+  app.post(
+    "/api/annotations/:id/vote",
+    asyncHandler(async (req, res) => {
+      const id = String(req.params.id);
+      const userId = (req.body?.userId as string) || "";
+      const value = Number(req.body?.value);
+      if (!userId) return res.status(401).json({ error: "Sign in to vote" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const ann = await storage.getAnnotation(id);
+      if (!ann) return res.status(404).json({ error: "Annotation not found" });
+      if (value !== 1 && value !== -1) {
+        return res.status(400).json({ error: "value must be 1 or -1" });
+      }
+      // Toggle off if the user re-votes in the same direction.
+      const current = await storage.getViewerVote(userId, id);
+      const result =
+        current === value
+          ? await storage.clearVote(userId, id)
+          : await storage.setVote(userId, id, value as VoteValue);
+      return res.json(result);
+    })
+  );
+
+  app.delete(
+    "/api/annotations/:id/vote",
+    asyncHandler(async (req, res) => {
+      const id = String(req.params.id);
+      const userId =
+        (req.body?.userId as string) || (req.query.userId as string) || "";
+      if (!userId) return res.status(401).json({ error: "Sign in to vote" });
+      const result = await storage.clearVote(userId, id);
+      return res.json(result);
     })
   );
 

@@ -9,6 +9,7 @@ import { MessageCircle, Mic, Bookmark, Share2, Eye } from "lucide-react";
 import { SiX } from "react-icons/si";
 import { ClipPreview } from "./ClipPreview";
 import { DeleteAnnotationButton } from "./DeleteAnnotationButton";
+import { VoteButtons } from "./VoteButtons";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -146,6 +147,21 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
 
           {/* Footer */}
           <div className="flex items-center gap-1 text-xs text-muted-foreground pt-1 border-t border-card-border/60 -mx-5 -mb-5 mt-1 px-3 py-2">
+            <span
+              className="inline-flex items-center px-1"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <VoteButtons
+                annotationId={a.id}
+                stopPropagation
+                initial={{
+                  score: a.voteScore ?? 0,
+                  upvotes: a.upvotes ?? 0,
+                  downvotes: a.downvotes ?? 0,
+                  viewerVote: a.viewerVote ?? null,
+                }}
+              />
+            </span>
             <span className="inline-flex items-center gap-1 px-2">
               <MessageCircle className="w-3.5 h-3.5" />
               {a.commentCount} {a.commentCount === 1 ? "note" : "notes"}

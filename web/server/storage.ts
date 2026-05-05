@@ -10,6 +10,9 @@ import {
   type InsertClaim,
   type AnnotationWithRelations,
   type Bookmark,
+  type Vote,
+  type VoteValue,
+  type CommentWithReplies,
 } from "@shared/schema";
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -40,19 +43,30 @@ export interface IStorage {
 
   // Annotations
   getAnnotation(id: string): Promise<Annotation | undefined>;
-  getAnnotationWithUser(id: string): Promise<AnnotationWithRelations | undefined>;
+  getAnnotationWithUser(
+    id: string,
+    viewerUserId?: string,
+  ): Promise<AnnotationWithRelations | undefined>;
   listAnnotations(opts?: {
     userId?: string;
     limit?: number;
     followerOf?: string;
+    viewerUserId?: string;
   }): Promise<AnnotationWithRelations[]>;
   createAnnotation(input: InsertAnnotation & { userId: string }): Promise<Annotation>;
   updateAnnotation(id: string, patch: Partial<Annotation>): Promise<Annotation | undefined>;
   deleteAnnotation(id: string): Promise<void>;
 
-  // Comments
-  listComments(annotationId: string): Promise<(Comment & { user: User })[]>;
+  // Comments (threaded — replies hang under their parent)
+  listComments(annotationId: string): Promise<CommentWithReplies[]>;
   createComment(input: InsertComment): Promise<Comment>;
+  getComment(id: string): Promise<Comment | undefined>;
+
+  // Votes
+  setVote(userId: string, annotationId: string, value: VoteValue): Promise<{ score: number; upvotes: number; downvotes: number; viewerVote: VoteValue }>;
+  clearVote(userId: string, annotationId: string): Promise<{ score: number; upvotes: number; downvotes: number; viewerVote: null }>;
+  getViewerVote(userId: string, annotationId: string): Promise<VoteValue | null>;
+  getVoteSummary(annotationId: string): Promise<{ score: number; upvotes: number; downvotes: number }>;
 
   // Follows
   follow(followerId: string, followingId: string): Promise<void>;
@@ -190,6 +204,7 @@ type CommentRow = {
   id: string;
   annotation_id: string;
   user_id: string;
+  parent_id?: string | null;
   body: string;
   created_at: number;
 };
@@ -199,9 +214,71 @@ function commentFromRow(r: CommentRow): Comment {
     id: r.id,
     annotationId: r.annotation_id,
     userId: r.user_id,
+    parentId: r.parent_id ?? null,
     body: r.body,
     createdAt: Number(r.created_at),
   };
+}
+
+type VoteRow = {
+  id: string;
+  user_id: string;
+  annotation_id: string;
+  value: number;
+  created_at: number;
+};
+
+function voteFromRow(r: VoteRow): Vote {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    annotationId: r.annotation_id,
+    value: Number(r.value),
+    createdAt: Number(r.created_at),
+  };
+}
+
+// Convert a flat list of comments + a user lookup into the nested tree the
+// detail page renders. Replies of replies get flattened into the nearest
+// top-level ancestor's reply list — so the UI never has to indent more than
+// one level, matching the design constraint.
+function nestComments(
+  rows: Comment[],
+  userMap: Map<string, User>,
+): CommentWithReplies[] {
+  // Build a parent → ancestor lookup so we can collapse deep chains.
+  const byId = new Map<string, Comment>();
+  for (const r of rows) byId.set(r.id, r);
+  const topAncestor = (id: string): string => {
+    let cur = byId.get(id);
+    let safety = 0;
+    while (cur?.parentId && byId.has(cur.parentId) && safety < 100) {
+      cur = byId.get(cur.parentId);
+      safety++;
+    }
+    return cur?.id ?? id;
+  };
+  const tops = rows
+    .filter((r) => !r.parentId)
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const repliesByTop = new Map<string, (Comment & { user: User })[]>();
+  for (const r of rows) {
+    if (!r.parentId) continue;
+    const top = topAncestor(r.parentId);
+    if (!byId.has(top)) continue;
+    const u = userMap.get(r.userId);
+    if (!u) continue;
+    const arr = repliesByTop.get(top) ?? [];
+    arr.push({ ...r, user: u });
+    repliesByTop.set(top, arr);
+  }
+  return tops
+    .filter((t) => userMap.has(t.userId))
+    .map((t) => ({
+      ...t,
+      user: userMap.get(t.userId)!,
+      replies: (repliesByTop.get(t.id) ?? []).sort((a, b) => a.createdAt - b.createdAt),
+    }));
 }
 
 type ClaimRow = {
@@ -298,7 +375,7 @@ export class SupabaseStorage implements IStorage {
     if (error) throw error;
     return data ? annotationFromRow(data as AnnotationRow) : undefined;
   }
-  async getAnnotationWithUser(id: string) {
+  async getAnnotationWithUser(id: string, viewerUserId?: string) {
     const ann = await this.getAnnotation(id);
     if (!ann) return undefined;
     const user = await this.getUser(ann.userId);
@@ -308,9 +385,19 @@ export class SupabaseStorage implements IStorage {
       .select("*", { count: "exact", head: true })
       .eq("annotation_id", id);
     if (error) throw error;
-    return { ...ann, user, commentCount: Number(count ?? 0) };
+    const summary = await this.getVoteSummary(id);
+    const viewerVote = viewerUserId ? await this.getViewerVote(viewerUserId, id) : null;
+    return {
+      ...ann,
+      user,
+      commentCount: Number(count ?? 0),
+      voteScore: summary.score,
+      upvotes: summary.upvotes,
+      downvotes: summary.downvotes,
+      viewerVote,
+    };
   }
-  async listAnnotations(opts: { userId?: string; limit?: number; followerOf?: string } = {}) {
+  async listAnnotations(opts: { userId?: string; limit?: number; followerOf?: string; viewerUserId?: string } = {}) {
     const limit = opts.limit ?? 50;
     let query = this.client.from("annotations").select("*").order("created_at", { ascending: false }).limit(limit);
     if (opts.userId) {
@@ -354,9 +441,38 @@ export class SupabaseStorage implements IStorage {
       const aid = (row as { annotation_id: string }).annotation_id;
       countMap.set(aid, (countMap.get(aid) ?? 0) + 1);
     }
+    // Aggregate votes for the entire batch in one query.
+    const { data: voteRows, error: vErr } = await this.client
+      .from("votes")
+      .select("annotation_id, user_id, value")
+      .in("annotation_id", annIds);
+    if (vErr) throw vErr;
+    const upMap = new Map<string, number>();
+    const downMap = new Map<string, number>();
+    const viewerVoteMap = new Map<string, VoteValue>();
+    for (const row of voteRows ?? []) {
+      const r = row as { annotation_id: string; user_id: string; value: number };
+      if (Number(r.value) === 1) upMap.set(r.annotation_id, (upMap.get(r.annotation_id) ?? 0) + 1);
+      else if (Number(r.value) === -1) downMap.set(r.annotation_id, (downMap.get(r.annotation_id) ?? 0) + 1);
+      if (opts.viewerUserId && r.user_id === opts.viewerUserId) {
+        viewerVoteMap.set(r.annotation_id, (Number(r.value) === 1 ? 1 : -1) as VoteValue);
+      }
+    }
     return rows
       .filter((r) => userMap.has(r.userId))
-      .map((r) => ({ ...r, user: userMap.get(r.userId)!, commentCount: countMap.get(r.id) ?? 0 }));
+      .map((r) => {
+        const upvotes = upMap.get(r.id) ?? 0;
+        const downvotes = downMap.get(r.id) ?? 0;
+        return {
+          ...r,
+          user: userMap.get(r.userId)!,
+          commentCount: countMap.get(r.id) ?? 0,
+          voteScore: upvotes - downvotes,
+          upvotes,
+          downvotes,
+          viewerVote: viewerVoteMap.get(r.id) ?? null,
+        };
+      });
   }
   async createAnnotation(input: InsertAnnotation & { userId: string }) {
     const row: Annotation = {
@@ -408,7 +524,7 @@ export class SupabaseStorage implements IStorage {
       .from("comments")
       .select("*")
       .eq("annotation_id", annotationId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true });
     if (error) throw error;
     const rows = (data ?? []).map((r) => commentFromRow(r as CommentRow));
     if (!rows.length) return [];
@@ -424,7 +540,7 @@ export class SupabaseStorage implements IStorage {
         return [u.id, u] as const;
       })
     );
-    return rows.filter((r) => map.has(r.userId)).map((r) => ({ ...r, user: map.get(r.userId)! }));
+    return nestComments(rows.filter((r) => map.has(r.userId)), map);
   }
   async createComment(input: InsertComment) {
     const row: Comment = {
@@ -432,17 +548,93 @@ export class SupabaseStorage implements IStorage {
       createdAt: now(),
       annotationId: input.annotationId,
       userId: input.userId,
+      parentId: input.parentId ?? null,
       body: input.body,
     };
     const { error } = await this.client.from("comments").insert({
       id: row.id,
       annotation_id: row.annotationId,
       user_id: row.userId,
+      parent_id: row.parentId,
       body: row.body,
       created_at: row.createdAt,
     });
     if (error) throw error;
     return row;
+  }
+  async getComment(id: string) {
+    const { data, error } = await this.client
+      .from("comments")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? commentFromRow(data as CommentRow) : undefined;
+  }
+
+  async setVote(userId: string, annotationId: string, value: VoteValue) {
+    const { data: existing, error } = await this.client
+      .from("votes")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("annotation_id", annotationId)
+      .maybeSingle();
+    if (error) throw error;
+    if (existing) {
+      const { error: uErr } = await this.client
+        .from("votes")
+        .update({ value, created_at: now() })
+        .eq("id", (existing as { id: string }).id);
+      if (uErr) throw uErr;
+    } else {
+      const { error: iErr } = await this.client.from("votes").insert({
+        id: randomUUID(),
+        user_id: userId,
+        annotation_id: annotationId,
+        value,
+        created_at: now(),
+      });
+      if (iErr) throw iErr;
+    }
+    const summary = await this.getVoteSummary(annotationId);
+    return { ...summary, viewerVote: value };
+  }
+  async clearVote(userId: string, annotationId: string) {
+    const { error } = await this.client
+      .from("votes")
+      .delete()
+      .eq("user_id", userId)
+      .eq("annotation_id", annotationId);
+    if (error) throw error;
+    const summary = await this.getVoteSummary(annotationId);
+    return { ...summary, viewerVote: null };
+  }
+  async getViewerVote(userId: string, annotationId: string) {
+    const { data, error } = await this.client
+      .from("votes")
+      .select("value")
+      .eq("user_id", userId)
+      .eq("annotation_id", annotationId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    const v = Number((data as { value: number }).value);
+    return (v === 1 ? 1 : v === -1 ? -1 : null) as VoteValue | null;
+  }
+  async getVoteSummary(annotationId: string) {
+    const { data, error } = await this.client
+      .from("votes")
+      .select("value")
+      .eq("annotation_id", annotationId);
+    if (error) throw error;
+    let upvotes = 0;
+    let downvotes = 0;
+    for (const row of data ?? []) {
+      const v = Number((row as { value: number }).value);
+      if (v === 1) upvotes++;
+      else if (v === -1) downvotes++;
+    }
+    return { score: upvotes - downvotes, upvotes, downvotes };
   }
 
   async follow(followerId: string, followingId: string) {
@@ -605,9 +797,36 @@ export class SupabaseStorage implements IStorage {
       const aid = (row as { annotation_id: string }).annotation_id;
       countMap.set(aid, (countMap.get(aid) ?? 0) + 1);
     }
+    const { data: voteRows } = await this.client
+      .from("votes")
+      .select("annotation_id, user_id, value")
+      .in("annotation_id", annIds);
+    const upMap = new Map<string, number>();
+    const downMap = new Map<string, number>();
+    const viewerVoteMap = new Map<string, VoteValue>();
+    for (const row of voteRows ?? []) {
+      const r = row as { annotation_id: string; user_id: string; value: number };
+      if (Number(r.value) === 1) upMap.set(r.annotation_id, (upMap.get(r.annotation_id) ?? 0) + 1);
+      else if (Number(r.value) === -1) downMap.set(r.annotation_id, (downMap.get(r.annotation_id) ?? 0) + 1);
+      if (r.user_id === userId) {
+        viewerVoteMap.set(r.annotation_id, (Number(r.value) === 1 ? 1 : -1) as VoteValue);
+      }
+    }
     return rows
       .filter((r) => userMap.has(r.userId))
-      .map((r) => ({ ...r, user: userMap.get(r.userId)!, commentCount: countMap.get(r.id) ?? 0 }));
+      .map((r) => {
+        const upvotes = upMap.get(r.id) ?? 0;
+        const downvotes = downMap.get(r.id) ?? 0;
+        return {
+          ...r,
+          user: userMap.get(r.userId)!,
+          commentCount: countMap.get(r.id) ?? 0,
+          voteScore: upvotes - downvotes,
+          upvotes,
+          downvotes,
+          viewerVote: viewerVoteMap.get(r.id) ?? null,
+        };
+      });
   }
 
   async incrementViewCount(annotationId: string) {
@@ -646,7 +865,16 @@ export class SupabaseStorage implements IStorage {
       .from("comments")
       .select("*", { count: "exact", head: true })
       .eq("annotation_id", ann.id);
-    return { ...ann, user, commentCount: Number(count ?? 0) };
+    const summary = await this.getVoteSummary(ann.id);
+    return {
+      ...ann,
+      user,
+      commentCount: Number(count ?? 0),
+      voteScore: summary.score,
+      upvotes: summary.upvotes,
+      downvotes: summary.downvotes,
+      viewerVote: null,
+    };
   }
 }
 
@@ -662,6 +890,27 @@ export class MemoryStorage implements IStorage {
   private comments = new Map<string, Comment>();
   private claims = new Map<string, Claim>();
   private bookmarks = new Map<string, Bookmark>();
+  private votes = new Map<string, Vote>();
+
+  private voteSummary(annotationId: string) {
+    let upvotes = 0;
+    let downvotes = 0;
+    for (const v of Array.from(this.votes.values())) {
+      if (v.annotationId !== annotationId) continue;
+      if (v.value === 1) upvotes++;
+      else if (v.value === -1) downvotes++;
+    }
+    return { score: upvotes - downvotes, upvotes, downvotes };
+  }
+  private viewerVoteFor(userId: string | undefined, annotationId: string): VoteValue | null {
+    if (!userId) return null;
+    for (const v of Array.from(this.votes.values())) {
+      if (v.userId === userId && v.annotationId === annotationId) {
+        return (v.value === 1 ? 1 : v.value === -1 ? -1 : null) as VoteValue | null;
+      }
+    }
+    return null;
+  }
 
   async getUser(id: string) {
     return this.users.get(id);
@@ -693,15 +942,24 @@ export class MemoryStorage implements IStorage {
   async getAnnotation(id: string) {
     return this.annotations.get(id);
   }
-  async getAnnotationWithUser(id: string) {
+  async getAnnotationWithUser(id: string, viewerUserId?: string) {
     const ann = this.annotations.get(id);
     if (!ann) return undefined;
     const user = this.users.get(ann.userId);
     if (!user) return undefined;
     const cc = Array.from(this.comments.values()).filter((c) => c.annotationId === id).length;
-    return { ...ann, user, commentCount: cc };
+    const summary = this.voteSummary(id);
+    return {
+      ...ann,
+      user,
+      commentCount: cc,
+      voteScore: summary.score,
+      upvotes: summary.upvotes,
+      downvotes: summary.downvotes,
+      viewerVote: this.viewerVoteFor(viewerUserId, id),
+    };
   }
-  async listAnnotations(opts: { userId?: string; limit?: number; followerOf?: string } = {}) {
+  async listAnnotations(opts: { userId?: string; limit?: number; followerOf?: string; viewerUserId?: string } = {}) {
     const limit = opts.limit ?? 50;
     let rows = Array.from(this.annotations.values());
     if (opts.userId) {
@@ -719,11 +977,18 @@ export class MemoryStorage implements IStorage {
     rows = rows.slice(0, limit);
     return rows
       .filter((r) => this.users.has(r.userId))
-      .map((r) => ({
-        ...r,
-        user: this.users.get(r.userId)!,
-        commentCount: Array.from(this.comments.values()).filter((c) => c.annotationId === r.id).length,
-      }));
+      .map((r) => {
+        const summary = this.voteSummary(r.id);
+        return {
+          ...r,
+          user: this.users.get(r.userId)!,
+          commentCount: Array.from(this.comments.values()).filter((c) => c.annotationId === r.id).length,
+          voteScore: summary.score,
+          upvotes: summary.upvotes,
+          downvotes: summary.downvotes,
+          viewerVote: this.viewerVoteFor(opts.viewerUserId, r.id),
+        };
+      });
   }
   async createAnnotation(input: InsertAnnotation & { userId: string }) {
     const row: Annotation = {
@@ -767,15 +1032,21 @@ export class MemoryStorage implements IStorage {
     for (const clid of Array.from(this.claims.keys())) {
       if (this.claims.get(clid)?.annotationId === id) this.claims.delete(clid);
     }
+    for (const vid of Array.from(this.votes.keys())) {
+      if (this.votes.get(vid)?.annotationId === id) this.votes.delete(vid);
+    }
   }
 
   async listComments(annotationId: string) {
     const rows = Array.from(this.comments.values())
       .filter((c) => c.annotationId === annotationId)
-      .sort((a, b) => b.createdAt - a.createdAt);
-    return rows
-      .filter((r) => this.users.has(r.userId))
-      .map((r) => ({ ...r, user: this.users.get(r.userId)! }));
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const userMap = new Map<string, User>();
+    for (const r of rows) {
+      const u = this.users.get(r.userId);
+      if (u) userMap.set(u.id, u);
+    }
+    return nestComments(rows, userMap);
   }
   async createComment(input: InsertComment) {
     const row: Comment = {
@@ -783,10 +1054,49 @@ export class MemoryStorage implements IStorage {
       createdAt: now(),
       annotationId: input.annotationId,
       userId: input.userId,
+      parentId: input.parentId ?? null,
       body: input.body,
     };
     this.comments.set(row.id, row);
     return row;
+  }
+  async getComment(id: string) {
+    return this.comments.get(id);
+  }
+
+  async setVote(userId: string, annotationId: string, value: VoteValue) {
+    const existingId = Array.from(this.votes.entries()).find(
+      ([, v]) => v.userId === userId && v.annotationId === annotationId,
+    )?.[0];
+    if (existingId) {
+      const cur = this.votes.get(existingId)!;
+      this.votes.set(existingId, { ...cur, value, createdAt: now() });
+    } else {
+      const v: Vote = {
+        id: randomUUID(),
+        userId,
+        annotationId,
+        value,
+        createdAt: now(),
+      };
+      this.votes.set(v.id, v);
+    }
+    const summary = this.voteSummary(annotationId);
+    return { ...summary, viewerVote: value };
+  }
+  async clearVote(userId: string, annotationId: string) {
+    for (const id of Array.from(this.votes.keys())) {
+      const v = this.votes.get(id)!;
+      if (v.userId === userId && v.annotationId === annotationId) this.votes.delete(id);
+    }
+    const summary = this.voteSummary(annotationId);
+    return { ...summary, viewerVote: null };
+  }
+  async getViewerVote(userId: string, annotationId: string) {
+    return this.viewerVoteFor(userId, annotationId);
+  }
+  async getVoteSummary(annotationId: string) {
+    return this.voteSummary(annotationId);
   }
 
   async follow(followerId: string, followingId: string) {
@@ -868,11 +1178,18 @@ export class MemoryStorage implements IStorage {
       .sort((a, b) => b.createdAt - a.createdAt);
     return rows
       .filter((r) => this.users.has(r.userId))
-      .map((r) => ({
-        ...r,
-        user: this.users.get(r.userId)!,
-        commentCount: Array.from(this.comments.values()).filter((c) => c.annotationId === r.id).length,
-      }));
+      .map((r) => {
+        const summary = this.voteSummary(r.id);
+        return {
+          ...r,
+          user: this.users.get(r.userId)!,
+          commentCount: Array.from(this.comments.values()).filter((c) => c.annotationId === r.id).length,
+          voteScore: summary.score,
+          upvotes: summary.upvotes,
+          downvotes: summary.downvotes,
+          viewerVote: this.viewerVoteFor(userId, r.id),
+        };
+      });
   }
 
   async incrementViewCount(annotationId: string) {
@@ -891,7 +1208,16 @@ export class MemoryStorage implements IStorage {
     const user = this.users.get(top.userId);
     if (!user) return undefined;
     const cc = Array.from(this.comments.values()).filter((c) => c.annotationId === top.id).length;
-    return { ...top, user, commentCount: cc };
+    const summary = this.voteSummary(top.id);
+    return {
+      ...top,
+      user,
+      commentCount: cc,
+      voteScore: summary.score,
+      upvotes: summary.upvotes,
+      downvotes: summary.downvotes,
+      viewerVote: null,
+    };
   }
 }
 

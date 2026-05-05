@@ -7,6 +7,8 @@ import { CommentThread } from "@/components/CommentThread";
 import { FileClaimButton } from "@/components/FileClaimButton";
 import { DeleteAnnotationButton } from "@/components/DeleteAnnotationButton";
 import { SourceBadge, hostname } from "@/components/SourceBadge";
+import { SourceCredit } from "@/components/SourceCredit";
+import { VoteButtons } from "@/components/VoteButtons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -33,7 +35,13 @@ export default function AnnotationDetailPage() {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery<AnnotationWithRelations>({
-    queryKey: ["/api/annotations", id],
+    queryKey: ["/api/annotations", id, { userId: user?.id ?? "" }],
+    queryFn: async () => {
+      const url = user ? `/api/annotations/${id}?userId=${user.id}` : `/api/annotations/${id}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
     enabled: !!id,
   });
 
@@ -266,11 +274,21 @@ export default function AnnotationDetailPage() {
               </Card>
             )}
 
-            {/* Action row: Mark / Post on X / Share */}
+            {/* Action row: Vote / Mark / Post on X / Share */}
             <div
-              className="flex flex-wrap items-center gap-1 border-t border-b border-card-border/60 -mx-1 px-1 py-2"
+              className="flex flex-wrap items-center gap-2 border-t border-b border-card-border/60 -mx-1 px-1 py-2"
               data-testid="row-actions"
             >
+              <VoteButtons
+                annotationId={a.id}
+                size="md"
+                initial={{
+                  score: a.voteScore ?? 0,
+                  upvotes: a.upvotes ?? 0,
+                  downvotes: a.downvotes ?? 0,
+                  viewerVote: a.viewerVote ?? null,
+                }}
+              />
               <span className="text-xs text-muted-foreground px-2">
                 {a.commentCount} {a.commentCount === 1 ? "note" : "notes"}
               </span>
@@ -427,6 +445,11 @@ export default function AnnotationDetailPage() {
                 <ExternalLink className="w-3 h-3" />
               </a>
             </Card>
+
+            {/* Source credits — sits directly under "About the source" so the
+                attribution is visible on every annotation, with a link back to
+                the original work. */}
+            <SourceCredit annotation={a} />
 
             {/* Transcript module — only for video/podcast. We do not fetch
                 real transcripts; the panel exists with a polite empty state

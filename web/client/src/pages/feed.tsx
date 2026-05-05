@@ -293,13 +293,15 @@ function FeedList({
     fetcher: () => Promise<AnnotationWithRelations[]>;
     enabled: boolean;
   }>(() => {
+    const viewerParam = user ? `&userId=${user.id}` : "";
+    const viewerKey = user?.id ?? "";
     switch (tab) {
       case "following":
         return {
-          queryKey: ["/api/feed", { followerOf: user?.id ?? "" }],
+          queryKey: ["/api/feed", { followerOf: user?.id ?? "", viewer: viewerKey }],
           fetcher: async () => {
             if (!user) return [];
-            const res = await fetch(`/api/feed?followerOf=${user.id}`);
+            const res = await fetch(`/api/feed?followerOf=${user.id}${viewerParam}`);
             return res.json();
           },
           enabled: !!user,
@@ -318,9 +320,9 @@ function FeedList({
       case "latest":
       default:
         return {
-          queryKey: ["/api/feed", { shuffle: 1 }],
+          queryKey: ["/api/feed", { shuffle: 1, viewer: viewerKey }],
           fetcher: async () => {
-            const res = await fetch("/api/feed?shuffle=1");
+            const res = await fetch(`/api/feed?shuffle=1${viewerParam}`);
             return res.json();
           },
           enabled: true,

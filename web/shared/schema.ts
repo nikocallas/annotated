@@ -100,20 +100,36 @@ export const insertAnnotationSchema = createInsertSchema(annotations)
 export type InsertAnnotation = z.infer<typeof insertAnnotationSchema>;
 export type Annotation = typeof annotations.$inferSelect;
 
-// COMMENTS
+// COMMENTS — threaded via optional parent_id self-reference
 export const comments = sqliteTable("comments", {
   id: text("id").primaryKey(),
   annotationId: text("annotation_id").notNull(),
   userId: text("user_id").notNull(),
+  parentId: text("parent_id"),
   body: text("body").notNull(),
   createdAt: integer("created_at").notNull(),
 });
 
 export const insertCommentSchema = createInsertSchema(comments)
   .omit({ id: true, createdAt: true })
-  .extend({ body: z.string().min(1).max(2000) });
+  .extend({
+    body: z.string().min(1).max(2000),
+    parentId: z.string().optional().nullable(),
+  });
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
+
+// VOTES — per-user upvote/downvote on annotations.
+export const votes = sqliteTable("votes", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  annotationId: text("annotation_id").notNull(),
+  value: integer("value").notNull(), // +1 | -1
+  createdAt: integer("created_at").notNull(),
+});
+
+export type Vote = typeof votes.$inferSelect;
+export type VoteValue = 1 | -1;
 
 // CLAIMS — fair-use disputes
 export const claims = sqliteTable("claims", {
@@ -167,4 +183,20 @@ export type Claim = typeof claims.$inferSelect;
 export interface AnnotationWithRelations extends Annotation {
   user: User;
   commentCount: number;
+  // Net score (upvotes - downvotes). Always present; defaults to 0 when no votes.
+  voteScore: number;
+  upvotes: number;
+  downvotes: number;
+  // The current viewer's vote on this annotation, if any. Server fills in only
+  // when the request supplies a userId; otherwise null.
+  viewerVote: VoteValue | null;
+}
+
+// Comment shape returned by the API; includes the author and the (optional)
+// list of replies. Replies are returned at most one nesting level deep — the
+// API still allows arbitrary depth in the table, but the UI flattens deeper
+// chains under the original top-level comment to keep the view readable.
+export interface CommentWithReplies extends Comment {
+  user: User;
+  replies: (Comment & { user: User })[];
 }
