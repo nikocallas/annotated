@@ -27,7 +27,7 @@ import {
   Users,
   Bookmark as BookmarkIcon,
 } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 
 type SortKey = "latest" | "most-viewed" | "most-popular" | "most-commented";
@@ -89,7 +89,6 @@ export default function FeedPage() {
   const [sort, setSort] = useState<SortKey>(readInitialSort);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [tab, setTab] = useState<FeedTab>("latest");
-  const [, setLocation] = useLocation();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -103,13 +102,11 @@ export default function FeedPage() {
   }, [sort]);
 
   const handleTabSelect = (next: FeedTab) => {
-    const meta = FEED_TABS.find((t) => t.key === next);
-    if (meta?.requiresAuth && !user) {
-      setLocation("/login");
-      return;
-    }
     setTab(next);
   };
+
+  const activeTabMeta = FEED_TABS.find((t) => t.key === tab);
+  const tabLocked = !!activeTabMeta?.requiresAuth && !user;
 
   return (
     <AppLayout feedHeader>
@@ -119,14 +116,20 @@ export default function FeedPage() {
 
         {/* Center feed */}
         <div className="min-w-0">
-          <TopFilters
-            filter={filter}
-            onFilterChange={setFilter}
-            sort={sort}
-            onSortChange={setSort}
-          />
-          <div className="mt-5">
-            <FeedList tab={tab} sort={sort} filter={filter} />
+          {!tabLocked && (
+            <TopFilters
+              filter={filter}
+              onFilterChange={setFilter}
+              sort={sort}
+              onSortChange={setSort}
+            />
+          )}
+          <div className={tabLocked ? "" : "mt-5"}>
+            {tabLocked ? (
+              <LockedTabPrompt tab={tab} />
+            ) : (
+              <FeedList tab={tab} sort={sort} filter={filter} />
+            )}
           </div>
         </div>
 
@@ -398,6 +401,57 @@ function FeedList({
       {filtered.map((a) => (
         <FeedCard key={a.id} annotation={a} bookmarked={bookmarkIds.has(a.id)} />
       ))}
+    </div>
+  );
+}
+
+// ---------- Locked tab prompt (signed-out For You / Following / Bookmarks) --
+
+const LOCKED_COPY: Record<
+  Exclude<FeedTab, "latest">,
+  { title: string; description: string; icon: typeof Sparkles }
+> = {
+  "for-you": {
+    title: "Sign in to view For You",
+    description:
+      "Sign in to get a personalized stream of clips picked for the people and topics you follow.",
+    icon: Sparkles,
+  },
+  following: {
+    title: "Sign in to view Following",
+    description:
+      "Sign in to see the latest annotations from the creators you follow, all in one place.",
+    icon: Users,
+  },
+  bookmarks: {
+    title: "Sign in to view Bookmarks",
+    description:
+      "Sign in to save clips for later and find them all in your Bookmarks.",
+    icon: BookmarkIcon,
+  },
+};
+
+function LockedTabPrompt({ tab }: { tab: FeedTab }) {
+  if (tab === "latest") return null;
+  const copy = LOCKED_COPY[tab];
+  const Icon = copy.icon;
+  return (
+    <div
+      className="rounded-lg border border-card-border bg-card p-8 sm:p-10 flex flex-col items-center text-center"
+      data-testid={`feed-locked-${tab}`}
+    >
+      <div className="w-12 h-12 rounded-full bg-[hsl(var(--primary)/0.10)] flex items-center justify-center mb-4">
+        <Icon className="w-5 h-5 text-foreground" aria-hidden />
+      </div>
+      <h2 className="text-lg sm:text-xl font-semibold mb-2">{copy.title}</h2>
+      <p className="text-sm text-muted-foreground max-w-md mb-5 leading-relaxed">
+        {copy.description}
+      </p>
+      <Link href="/login">
+        <Button size="default" data-testid={`button-feed-locked-signin-${tab}`}>
+          Sign in
+        </Button>
+      </Link>
     </div>
   );
 }
