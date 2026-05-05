@@ -22,21 +22,23 @@ import {
   Mic,
   LayoutGrid,
   Eye,
-  Flame,
-  MessageCircle,
   ArrowUpDown,
+  Sparkles,
+  Users,
+  Bookmark as BookmarkIcon,
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 
 type SortKey = "latest" | "most-viewed" | "most-popular" | "most-commented";
 type FilterKey = "all" | "youtube" | "article" | "podcast";
+type FeedTab = "for-you" | "following" | "latest" | "bookmarks";
 
-const SORT_OPTIONS: { key: SortKey; label: string; icon: typeof Clock }[] = [
-  { key: "latest", label: "Latest", icon: Clock },
-  { key: "most-viewed", label: "Most Viewed", icon: Eye },
-  { key: "most-popular", label: "Most Popular", icon: Flame },
-  { key: "most-commented", label: "Most Commented", icon: MessageCircle },
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "latest", label: "Latest" },
+  { key: "most-viewed", label: "Most Viewed" },
+  { key: "most-popular", label: "Most Popular" },
+  { key: "most-commented", label: "Most Commented" },
 ];
 
 const SORT_KEYS = SORT_OPTIONS.map((o) => o.key);
@@ -48,6 +50,13 @@ const FILTER_OPTIONS: { key: FilterKey; label: string; icon: typeof LayoutGrid }
   { key: "youtube", label: "Videos", icon: Video },
   { key: "article", label: "Readings", icon: FileText },
   { key: "podcast", label: "Podcasts", icon: Mic },
+];
+
+const FEED_TABS: { key: FeedTab; label: string; icon: typeof Sparkles; requiresAuth: boolean }[] = [
+  { key: "for-you", label: "For You", icon: Sparkles, requiresAuth: true },
+  { key: "following", label: "Following", icon: Users, requiresAuth: true },
+  { key: "latest", label: "Latest", icon: Clock, requiresAuth: false },
+  { key: "bookmarks", label: "Bookmarks", icon: BookmarkIcon, requiresAuth: true },
 ];
 
 function readInitialSort(): SortKey {
@@ -79,6 +88,8 @@ export default function FeedPage() {
   const { user } = useAuth();
   const [sort, setSort] = useState<SortKey>(readInitialSort);
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [tab, setTab] = useState<FeedTab>("latest");
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -91,11 +102,20 @@ export default function FeedPage() {
     }
   }, [sort]);
 
+  const handleTabSelect = (next: FeedTab) => {
+    const meta = FEED_TABS.find((t) => t.key === next);
+    if (meta?.requiresAuth && !user) {
+      setLocation("/login");
+      return;
+    }
+    setTab(next);
+  };
+
   return (
     <AppLayout feedHeader>
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_300px] gap-6 lg:gap-8">
         {/* Left sidebar */}
-        <LeftSidebar sort={sort} onSortChange={setSort} />
+        <LeftSidebar tab={tab} onTabChange={handleTabSelect} />
 
         {/* Center feed */}
         <div className="min-w-0">
@@ -106,7 +126,7 @@ export default function FeedPage() {
             onSortChange={setSort}
           />
           <div className="mt-5">
-            <FeedList sort={sort} filter={filter} />
+            <FeedList tab={tab} sort={sort} filter={filter} />
           </div>
         </div>
 
@@ -130,30 +150,30 @@ export default function FeedPage() {
 // ---------- Left sidebar -----------------------------------------------------
 
 function LeftSidebar({
-  sort,
-  onSortChange,
+  tab,
+  onTabChange,
 }: {
-  sort: SortKey;
-  onSortChange: (s: SortKey) => void;
+  tab: FeedTab;
+  onTabChange: (t: FeedTab) => void;
 }) {
   return (
     <aside className="hidden lg:block">
       <nav className="sticky top-20 space-y-1" aria-label="Feed navigation">
-        {SORT_OPTIONS.map((opt) => {
+        {FEED_TABS.map((opt) => {
           const Icon = opt.icon;
-          const active = sort === opt.key;
+          const active = tab === opt.key;
           return (
             <button
               key={opt.key}
               type="button"
-              onClick={() => onSortChange(opt.key)}
+              onClick={() => onTabChange(opt.key)}
               className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium hover-elevate ${
                 active
                   ? "bg-sidebar-accent text-foreground"
                   : "text-muted-foreground"
               }`}
               aria-current={active ? "page" : undefined}
-              data-testid={`sidebar-sort-${opt.key}`}
+              data-testid={`sidebar-tab-${opt.key}`}
             >
               <Icon className="w-4 h-4" />
               {opt.label}
@@ -166,7 +186,7 @@ function LeftSidebar({
             <p className="text-xs text-muted-foreground leading-relaxed mb-3">
               Great conversations start with great company.
             </p>
-            <Link href="/install">
+            <Link href="/invite">
               <Button size="sm" className="w-full" data-testid="button-invite-annotated">
                 Invite to Annotated
               </Button>
@@ -225,9 +245,9 @@ function TopFilters({
           <SelectTrigger
             aria-label="Sort feed"
             data-testid="select-feed-sort"
-            className="rounded-full border border-card-border bg-card px-3 py-1.5 h-auto text-sm font-medium hover-elevate w-[170px]"
+            className="rounded-full border border-card-border bg-card px-4 py-1.5 h-auto text-sm font-medium hover-elevate min-w-[200px] gap-2 whitespace-nowrap [&>span]:line-clamp-none [&>span]:whitespace-nowrap"
           >
-            <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+            <ArrowUpDown className="w-3.5 h-3.5 opacity-70 shrink-0" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="end" className="rounded-xl">
@@ -255,17 +275,63 @@ function applyTypeFilter(rows: AnnotationWithRelations[], filter: FilterKey) {
   return rows.filter((a) => a.sourceType === filter);
 }
 
-function FeedList({ sort, filter }: { sort: SortKey; filter: FilterKey }) {
+function FeedList({
+  tab,
+  sort,
+  filter,
+}: {
+  tab: FeedTab;
+  sort: SortKey;
+  filter: FilterKey;
+}) {
   const { user } = useAuth();
 
-  // Single feed source — sorting happens client-side so the dropdown can
-  // resort instantly without a refetch.
+  // Different tabs hit different endpoints; sort + filter still apply
+  // client-side after fetch.
+  const queryDescriptor = useMemo<{
+    queryKey: readonly unknown[];
+    fetcher: () => Promise<AnnotationWithRelations[]>;
+    enabled: boolean;
+  }>(() => {
+    switch (tab) {
+      case "following":
+        return {
+          queryKey: ["/api/feed", { followerOf: user?.id ?? "" }],
+          fetcher: async () => {
+            if (!user) return [];
+            const res = await fetch(`/api/feed?followerOf=${user.id}`);
+            return res.json();
+          },
+          enabled: !!user,
+        };
+      case "bookmarks":
+        return {
+          queryKey: ["/api/bookmarks", { userId: user?.id ?? "" }],
+          fetcher: async () => {
+            if (!user) return [];
+            const res = await fetch(`/api/bookmarks?userId=${user.id}`);
+            return res.json();
+          },
+          enabled: !!user,
+        };
+      case "for-you":
+      case "latest":
+      default:
+        return {
+          queryKey: ["/api/feed", { shuffle: 1 }],
+          fetcher: async () => {
+            const res = await fetch("/api/feed?shuffle=1");
+            return res.json();
+          },
+          enabled: true,
+        };
+    }
+  }, [tab, user]);
+
   const { data: all = [], isLoading } = useQuery<AnnotationWithRelations[]>({
-    queryKey: ["/api/feed", { shuffle: 1 }],
-    queryFn: async () => {
-      const res = await fetch("/api/feed?shuffle=1");
-      return res.json();
-    },
+    queryKey: queryDescriptor.queryKey,
+    queryFn: queryDescriptor.fetcher,
+    enabled: queryDescriptor.enabled,
     staleTime: 0,
   });
 
@@ -418,8 +484,12 @@ function PeopleWorthFollowing() {
                   <div className="text-xs text-muted-foreground truncate">@{u.username}</div>
                 </div>
               </Link>
-              <div className="ml-auto">
-                <FollowButton targetUserId={u.id} targetUsername={u.username} />
+              <div className="ml-auto shrink-0">
+                <FollowButton
+                  targetUserId={u.id}
+                  targetUsername={u.username}
+                  className="min-w-[88px] px-3"
+                />
               </div>
             </li>
           ))}

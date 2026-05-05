@@ -12,6 +12,7 @@ import LoginPage from "@/pages/login";
 import ProfilePage from "@/pages/profile";
 import AnnotationDetailPage from "@/pages/annotation-detail";
 import InstallPage from "@/pages/install";
+import InvitePage from "@/pages/invite";
 
 function AppRouter() {
   return (
@@ -20,6 +21,7 @@ function AppRouter() {
       <Route path="/following" component={FollowingPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/install" component={InstallPage} />
+      <Route path="/invite" component={InvitePage} />
       <Route path="/u/:username" component={ProfilePage} />
       <Route path="/a/:id" component={AnnotationDetailPage} />
       <Route component={NotFound} />
