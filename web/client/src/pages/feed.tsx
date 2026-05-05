@@ -503,13 +503,6 @@ function PeopleWorthFollowing() {
         >
           Suggested follows
         </h3>
-        <Link
-          href="/"
-          className="text-xs text-muted-foreground hover:text-foreground"
-          data-testid="link-rail-people-see-all"
-        >
-          See all
-        </Link>
       </div>
       {isLoading ? (
         <div className="space-y-3">
