@@ -1,6 +1,6 @@
 import type { Annotation } from "@shared/schema";
 import { formatRange } from "./SourceBadge";
-import { Play, Mic, ExternalLink, Loader2 } from "lucide-react";
+import { Play, Mic, Loader2 } from "lucide-react";
 
 const MAX_CLIP_SECONDS = 90;
 
@@ -22,10 +22,6 @@ function clampClipRange(startSec: number, endSec: number): { start: number; end:
   let end = Math.max(start + 1, Math.floor(endSec));
   if (end - start > MAX_CLIP_SECONDS) end = start + MAX_CLIP_SECONDS;
   return { start, end };
-}
-
-function sourceLinkAt(url: string, start: number) {
-  return `${url}${url.includes("?") ? "&" : "?"}t=${start}s`;
 }
 
 // Native <video> element bound to a clipped MP4 asset. When the
@@ -70,16 +66,7 @@ function ClippedVideoAsset({
         <span data-testid={`clip-range-${a.id}`}>
           Clip {range} • {end - start}s • 240p
         </span>
-        <a
-          href={sourceLinkAt(a.sourceUrl, start)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary hover:underline font-mono"
-          data-testid={`clip-source-link-${a.id}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          View source ↗
-        </a>
+        <span className="font-mono">clipped MP4</span>
       </div>
     </div>
   );
@@ -88,10 +75,7 @@ function ClippedVideoAsset({
 // Clip facade — shown when the source is a video and we DO NOT have a clipped
 // asset yet. This deliberately does not embed the YouTube iframe player or any
 // full-source media. The user sees a thumbnail, the selected range, the clip
-// duration, a "Clip processing" / "Clip preview unavailable" status, and a
-// link to the original source. Clicking the card never plays the full video
-// in-place; the source link opens the original on a new tab, deep-linked to
-// the clip start.
+// duration, and a "Clip processing" / "Clip preview unavailable" status.
 function VideoClipFacade({
   annotation,
   videoId,
@@ -116,8 +100,6 @@ function VideoClipFacade({
   const poster =
     thumbnailUrl ||
     (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null);
-  const sourceHref = sourceLinkAt(a.sourceUrl, start);
-
   const statusText =
     status === "processing"
       ? "Clip processing"
@@ -135,14 +117,10 @@ function VideoClipFacade({
         e.stopPropagation();
       }}
     >
-      <a
-        href={sourceHref}
-        target="_blank"
-        rel="noopener noreferrer"
+      <div
         className="group relative block w-full aspect-video bg-foreground/10"
         data-testid={`clip-video-thumb-${a.id}`}
-        onClick={(e) => e.stopPropagation()}
-        aria-label={`Watch the full video on the source site (clip ${range})`}
+        aria-label={`Video clip preview (${range})`}
       >
         {poster ? (
           <img
@@ -172,29 +150,19 @@ function VideoClipFacade({
         <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs font-mono px-2 py-0.5 rounded">
           {range} • {dur}s
         </div>
-      </a>
+      </div>
       <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between gap-3">
         <span data-testid={`clip-range-${a.id}`}>
           {statusText} • {range} • {dur}s
         </span>
-        <a
-          href={sourceHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-primary hover:underline shrink-0"
-          data-testid={`clip-source-link-${a.id}`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          Watch the full video <ExternalLink className="w-3 h-3" />
-        </a>
+        <span className="shrink-0 font-mono">awaiting MP4</span>
       </div>
     </div>
   );
 }
 
 // Non-embeddable video shell — used when we don't even have start/end times
-// or a YouTube id (e.g. raw URL). Keeps source attribution + a link out;
-// never embeds the full source.
+// or a YouTube id (e.g. raw URL). Never embeds or links to the full source.
 function NonEmbeddableVideoShell({
   annotation,
   range,
@@ -224,16 +192,12 @@ function NonEmbeddableVideoShell({
           {range ? `Clip ${range}${dur != null ? ` • ${dur}s` : ""}` : "Clip preview unavailable"}
         </div>
       </div>
-      <a
-        href={start != null ? sourceLinkAt(a.sourceUrl, start) : a.sourceUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
+      <span
+        className="text-xs text-muted-foreground shrink-0"
         data-testid={`clip-video-source-link-${a.id}`}
-        onClick={(e) => e.stopPropagation()}
       >
-        Open source <ExternalLink className="w-3 h-3" />
-      </a>
+        MP4 unavailable
+      </span>
     </div>
   );
 }

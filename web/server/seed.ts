@@ -5,6 +5,9 @@ type SeedAnnotation = Omit<InsertAnnotation, "userId">;
 
 let seeded: Promise<void> | null = null;
 
+const DEMO_CLIP_MEDIA_URL = "/media/annotated-demo.mp4";
+const DEMO_CLIP_POSTER_URL = "/media/annotated-demo-poster.jpg";
+
 /**
  * Idempotent demo data seed.
  *
@@ -100,6 +103,13 @@ async function doSeed() {
   for (let i = 0; i < annotations.length; i++) {
     const data = annotations[i];
     const ann = await storage.createAnnotation({ ...data, userId: niko.id });
+    if (data.sourceType === "youtube") {
+      await storage.updateAnnotation(ann.id, {
+        clipMediaUrl: DEMO_CLIP_MEDIA_URL,
+        clipThumbnailUrl: DEMO_CLIP_POSTER_URL,
+        clipStatus: "ready",
+      });
+    }
     createdAnnIds.push(ann.id);
   }
 
