@@ -248,16 +248,72 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
         const active = tabs[0];
         if (!active?.id) return sendResponse({ ok: false, error: "no_active_tab" });
+
+        // Try the content-script path first: it knows how to read selections
+        // inside <input>/<textarea> via selectionStart/selectionEnd.
         const injected = await ensureContentScript(active.id);
-        if (!injected) return sendResponse({ ok: false, error: "restricted_page" });
-        const resp = await chrome.tabs
-          .sendMessage(active.id, { type: "REQUEST_SELECTION" })
-          .catch((err) => ({ ok: false, error: err?.message || "send_failed" }));
-        if (resp && typeof resp === "object" && resp.text != null) {
-          // Cache it so subsequent GET_ACTIVE_TAB_STATE returns it.
-          tabState.set(active.id, { ...(tabState.get(active.id) ?? {}), selection: resp });
+        let payload = null;
+        if (injected) {
+          const resp = await chrome.tabs
+            .sendMessage(active.id, { type: "REQUEST_SELECTION" })
+            .catch(() => null);
+          if (resp && typeof resp === "object" && typeof resp.text === "string") {
+            payload = resp;
+          }
         }
-        sendResponse({ ok: true, selection: resp });
+
+        // Fallback: read window.getSelection() via scripting.executeScript so
+        // we still work when the content script is racing or missing. This
+        // also covers the case where the side panel was opened on a tab that
+        // had activeTab granted but the SW state lost the injectedTabs entry.
+        if (!payload || !payload.text) {
+          try {
+            const [result] = await chrome.scripting.executeScript({
+              target: { tabId: active.id, allFrames: false },
+              func: () => {
+                try {
+                  const ae = document.activeElement;
+                  if (ae && (ae.tagName === "TEXTAREA" || (ae.tagName === "INPUT" && /^(text|search|url|email)$/i.test(ae.type)))) {
+                    const start = ae.selectionStart, end = ae.selectionEnd;
+                    if (start != null && end != null && end > start) {
+                      return { text: (ae.value || "").slice(start, end), url: location.href, title: document.title };
+                    }
+                  }
+                  const sel = window.getSelection?.();
+                  return {
+                    text: sel ? sel.toString() : "",
+                    url: location.href,
+                    title: document.title,
+                  };
+                } catch (e) {
+                  return { text: "", error: String(e) };
+                }
+              },
+            });
+            const r = result?.result;
+            if (r && typeof r.text === "string" && (r.text || !payload)) {
+              payload = { ...r, capturedAt: Date.now() };
+            }
+          } catch (err) {
+            if (!injected) {
+              return sendResponse({ ok: false, error: "restricted_page" });
+            }
+          }
+        }
+
+        if (!payload) {
+          return sendResponse({ ok: injected, error: injected ? "no_selection" : "restricted_page" });
+        }
+
+        // Normalize whitespace the same way TEXT_SELECTED does.
+        if (payload.text) {
+          payload.text = payload.text.replace(/\s+\n/g, "\n").trim();
+        }
+
+        if (payload.text) {
+          tabState.set(active.id, { ...(tabState.get(active.id) ?? {}), selection: payload });
+        }
+        sendResponse({ ok: true, selection: payload });
       } catch (err) {
         sendResponse({ ok: false, error: err?.message || String(err) });
       }

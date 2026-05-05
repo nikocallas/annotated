@@ -312,7 +312,7 @@ html.dark .badge.x { background: rgba(255,255,255,0.10); }
   border: 1px dashed var(--border); border-radius: var(--radius);
 }
 
-/* ---- Clip range scrubber ------------------------------------------------ */
+/* ---- Clip time cards (replaces the old dual-handle slider) -------------- */
 .clip-range-meta {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 11px; color: var(--muted);
@@ -320,26 +320,50 @@ html.dark .badge.x { background: rgba(255,255,255,0.10); }
 }
 .clip-range-meta .max-tag { color: var(--muted); font-weight: 600; }
 
-.range-fields {
-  display: grid; grid-template-columns: 1fr auto 1fr auto; align-items: end; gap: 6px;
-}
-.range-fields .dash { padding: 0 2px; color: var(--muted); padding-bottom: 8px; }
-.range-fields .total {
-  text-align: right; font-size: 11px; color: var(--muted);
-  font-family: ui-monospace, Menlo, monospace; padding-bottom: 6px;
-}
-.range-fields .total .total-value { display: block; color: var(--text); font-size: 13px; font-weight: 600; }
+.clip-howto { margin: 0; line-height: 1.5; }
+.clip-howto strong { color: var(--text); font-weight: 600; }
 
-.time-stepper {
-  display: grid; grid-template-columns: auto 1fr auto; align-items: stretch; gap: 4px;
+.time-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
-.time-stepper .time-input { border-radius: 7px; }
+.time-card-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+}
+.time-card-label {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.time-card-value {
+  font: 600 18px/1 ui-monospace, Menlo, monospace;
+  color: var(--text);
+}
+.time-card-actions {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.time-card-set {
+  margin-left: auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--gradient-primary); color: var(--primary-foreground);
+  border: 1px solid transparent; border-radius: 8px;
+  padding: 6px 12px; font: 600 12px/1 'Inter', sans-serif;
+  cursor: pointer;
+  transition: filter 0.12s, transform 0.06s;
+}
+.time-card-set:hover:not(:disabled) { filter: brightness(1.05); }
+.time-card-set:active:not(:disabled) { transform: translateY(1px); }
+.time-card-set:disabled { opacity: 0.55; cursor: not-allowed; }
+.time-card-set:focus-visible { outline: 2px solid var(--primary-ring); outline-offset: 2px; }
+
 .step-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; min-width: 26px; padding: 0;
+  min-width: 36px; padding: 0 8px; height: 28px;
   border-radius: 7px; border: 1px solid var(--border);
   background: var(--surface-2); color: var(--text);
-  font: 700 14px/1 'Inter', sans-serif;
+  font: 600 12px/1 ui-monospace, Menlo, monospace;
   cursor: pointer; user-select: none;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
@@ -350,72 +374,13 @@ html.dark .badge.x { background: rgba(255,255,255,0.10); }
 .step-btn:focus-visible { outline: 2px solid var(--primary-ring); outline-offset: 1px; }
 .step-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.time-input {
-  width: 100%; padding: 7px 8px; border-radius: 7px;
-  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
-  font: 600 13px/1.2 ui-monospace, Menlo, monospace;
-  text-align: center;
+.clip-summary {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0 0;
 }
-.time-input:focus { outline: 2px solid var(--primary-ring); outline-offset: -1px; border-color: var(--primary); }
+.clip-summary .preview-clip-btn { margin-left: auto; }
 
-/* Dual-handle slider (two stacked range inputs sharing a track) */
-.dual-range {
-  position: relative; height: 28px; padding: 0 0;
-  display: flex; align-items: center;
-}
-.dual-range .rail {
-  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
-  height: 4px; border-radius: 999px; background: var(--border);
-}
-.dual-range .selected-range {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  height: 4px; border-radius: 999px; background: var(--gradient-primary);
-}
-.dual-range input[type="range"] {
-  -webkit-appearance: none; appearance: none;
-  position: absolute; left: 0; right: 0; top: 0; height: 28px; width: 100%;
-  background: transparent; pointer-events: none; margin: 0;
-}
-.dual-range input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; pointer-events: auto;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #fff;
-  border: 2px solid var(--primary);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
-  cursor: grab;
-}
-.dual-range input[type="range"]:active::-webkit-slider-thumb { cursor: grabbing; }
-.dual-range input[type="range"]::-moz-range-thumb {
-  pointer-events: auto;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: #fff;
-  border: 2px solid var(--primary);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
-  cursor: grab;
-}
-.dual-range input[type="range"]::-moz-range-track { background: transparent; }
-
-.range-tick-row {
-  display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);
-  font-family: ui-monospace, Menlo, monospace;
-  margin-top: 2px;
-}
-
-.mark-row {
-  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-}
-.mark-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: transparent; color: var(--text);
-  border: 1px solid var(--border); border-radius: 999px;
-  padding: 4px 10px; font: 600 11px/1 'Inter', sans-serif;
-  text-transform: uppercase; letter-spacing: 0.04em;
-  cursor: pointer; transition: background 0.12s, border-color 0.12s;
-}
-.mark-btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--primary-ring); }
-.mark-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.mark-btn .mark-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
-.mark-btn.preview { margin-left: auto; color: var(--primary); border-color: var(--primary-ring); }
+.now-playing { margin-top: 2px; }
 
 /* ---- Feed-style preview card ------------------------------------------- */
 .preview-card {

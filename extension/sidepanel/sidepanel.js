@@ -215,23 +215,6 @@ if (isExtension()) {
           resetPublishState();
           return;
         }
-      } else if (state.publish.status !== "published") {
-        // Live updates from same page (currentTime/duration changes) — only
-        // refresh the input fields if the user hasn't started editing the
-        // range manually.
-        if (!state.clipRange.userTouched) {
-          // Keep start at currentTime if available, leave end alone.
-          // (We do NOT reseed end aggressively to avoid clobbering edits.)
-          const cur = Math.max(0, Math.floor(msg.data?.currentTime || 0));
-          if (cur && Math.abs(cur - state.clipRange.start) > 1) {
-            state.clipRange.start = cur;
-            const dur = Number.isFinite(msg.data?.duration) ? Math.floor(msg.data.duration) : null;
-            const desiredEnd = Math.min(cur + 30, dur != null ? dur : cur + 30);
-            if (desiredEnd > state.clipRange.end || state.clipRange.end <= state.clipRange.start) {
-              state.clipRange.end = desiredEnd;
-            }
-          }
-        }
       }
       patchPageCard();
       patchPreviewCard();
@@ -239,19 +222,9 @@ if (isExtension()) {
     }
     if (msg?.type === "MEDIA_TIME_UPDATE") {
       const data = msg.data || {};
-      // Only auto-import the user's page-side scrub when the side panel range
-      // hasn't been actively edited; otherwise we'd clobber their work.
-      if (data.reason === "seek" && !state.clipRange.userTouched && state.publish.status !== "published") {
-        const cur = Math.max(0, Math.floor(data.currentTime || 0));
-        if (cur >= 0) {
-          state.clipRange.start = cur;
-          const dur = Number.isFinite(data.duration) ? Math.floor(data.duration) : null;
-          const desiredEnd = Math.min(cur + 30, dur != null ? dur : cur + 30);
-          state.clipRange.end = Math.max(desiredEnd, cur + 1);
-          patchRangeInputs();
-        }
-      }
-      // Keep meta currentTime fresh for preview/UI without re-rendering.
+      // Keep meta currentTime fresh for the "Page playhead: …" indicator and
+      // for the Use-current-time buttons. We no longer auto-clobber Start
+      // when the user scrubs — that lives behind explicit Use current time.
       if (state.pageMeta) {
         state.pageMeta = {
           ...state.pageMeta,
@@ -259,6 +232,7 @@ if (isExtension()) {
           duration: data.duration ?? state.pageMeta.duration,
         };
       }
+      patchRangeInputs();
     }
     if (msg?.type === "ACTIVE_TAB_CHANGED") {
       // Tab switched/navigated. Refresh meta and reset publish UI if shown.
@@ -471,22 +445,27 @@ async function importSelectionFromActiveTab() {
   const status = document.querySelector("[data-clip-text-status]");
   if (status) status.textContent = "Reading selection…";
   const resp = await sendBg({ type: "REQUEST_SELECTION" });
-  const text = resp?.selection?.text || "";
+  const text = (resp?.selection?.text || "").trim();
   if (!text) {
     if (status) {
-      status.textContent = resp?.error === "restricted_page"
-        ? "This page can't be read by extensions. Paste the passage instead."
-        : "No text is highlighted on the page. Highlight a passage and try again.";
+      const why = resp?.error;
+      status.textContent =
+        why === "restricted_page"
+          ? "This page can't be read by extensions. Paste the passage here instead."
+          : why === "no_active_tab"
+            ? "Couldn't find the active tab. Click the page once and try again."
+            : "No text is highlighted on the page. Highlight a passage and try again, or paste it here.";
     }
     return;
   }
   if (resp?.selection?.url) {
     state.selection = resp.selection;
   }
+  // Force=true overrides the manual-edit guard on explicit user action.
   applySelectionToClipText(text, { force: true });
 }
 
-function buildClipTextField({ rows = 6, placeholder = "Highlight text on the page, or paste it here…" } = {}) {
+function buildClipTextField({ rows = 6, placeholder = "highlight text on page and import selection, or paste it here..." } = {}) {
   const wrap = document.createElement("div");
   wrap.className = "clip-flex";
   const initial = state.form.clipText || state.selection?.text || "";
@@ -499,7 +478,7 @@ function buildClipTextField({ rows = 6, placeholder = "Highlight text on the pag
     </div>
     <textarea id="clip-text-area" data-clip-text rows="${rows}" placeholder="${placeholder}"></textarea>
     <p class="muted small clip-text-status" data-clip-text-status>
-      Highlight text on the page — it appears here automatically. Long text scrolls inside this box.
+      highlight text on page and import selection, or paste it here...
     </p>
   `;
   const ta = $("[data-clip-text]", wrap);
@@ -540,18 +519,18 @@ function renderArticleClip() {
   return buildClipTextField({ rows: 6 });
 }
 
-// Build the dual-handle range slider for video/podcast clips.
+// Build the Start/End time card UI for video/podcast clips. The user scrubs
+// the page's native player; the side panel just shows their current Start
+// and End values and lets them snap to the page's currentTime.
 function renderRangeClip(kind) {
   const wrap = document.createElement("div");
-  wrap.className = "clip-flex";
+  wrap.className = "clip-flex clip-time-cards";
   const meta = state.pageMeta || {};
   const duration = Number.isFinite(meta.duration) && meta.duration > 0 ? Math.floor(meta.duration) : null;
 
   if (state.clipRange.start == null || state.clipRange.end == null) {
     seedClipRangeFromMeta();
   }
-  const start = Math.max(0, state.clipRange.start);
-  const end = Math.max(start + 1, state.clipRange.end);
 
   wrap.innerHTML = `
     <div class="clip-range-meta">
@@ -559,129 +538,65 @@ function renderRangeClip(kind) {
       <span class="max-tag">Max ${MAX_CLIP_SECONDS} seconds</span>
     </div>
 
-    <div class="range-fields">
-      <div class="time-stepper" data-time-stepper="start">
-        <button type="button" class="step-btn" data-step="start" data-dir="-1" aria-label="Decrease start by 1 second">−</button>
-        <input class="time-input" type="text" inputmode="numeric" data-clip-start-mmss aria-label="Start (mm:ss)" />
-        <button type="button" class="step-btn" data-step="start" data-dir="1" aria-label="Increase start by 1 second">+</button>
+    <p class="muted small clip-howto">
+      Scrub the ${kind === "podcast" ? "podcast" : "video"} on the page to the moment you want, then tap
+      <strong>Use current time</strong> for the start and the end.
+    </p>
+
+    <div class="time-card" data-time-card="start">
+      <div class="time-card-row">
+        <span class="time-card-label">Start</span>
+        <span class="time-card-value mono" data-clip-start-display>0:00</span>
       </div>
-      <div class="dash">–</div>
-      <div class="time-stepper" data-time-stepper="end">
-        <button type="button" class="step-btn" data-step="end" data-dir="-1" aria-label="Decrease end by 1 second">−</button>
-        <input class="time-input" type="text" inputmode="numeric" data-clip-end-mmss aria-label="End (mm:ss)" />
-        <button type="button" class="step-btn" data-step="end" data-dir="1" aria-label="Increase end by 1 second">+</button>
-      </div>
-      <div class="total">
-        <span class="total-value mono" data-duration-value>${end - start}s</span>
-        <span data-duration-of-max>${MAX_CLIP_SECONDS}s max</span>
+      <div class="time-card-actions">
+        <button type="button" class="step-btn" data-step="start" data-dir="-1" aria-label="Decrease start by 1 second">−1s</button>
+        <button type="button" class="step-btn" data-step="start" data-dir="1" aria-label="Increase start by 1 second">+1s</button>
+        <button type="button" class="time-card-set" data-set-current="start">
+          Use current time
+        </button>
       </div>
     </div>
 
-    <div class="dual-range" data-dual-range>
-      <div class="rail"></div>
-      <div class="selected-range" data-selected-range></div>
-      <input type="range" min="0" step="1" data-range-start aria-label="Start" />
-      <input type="range" min="0" step="1" data-range-end aria-label="End" />
+    <div class="time-card" data-time-card="end">
+      <div class="time-card-row">
+        <span class="time-card-label">End</span>
+        <span class="time-card-value mono" data-clip-end-display>0:00</span>
+      </div>
+      <div class="time-card-actions">
+        <button type="button" class="step-btn" data-step="end" data-dir="-1" aria-label="Decrease end by 1 second">−1s</button>
+        <button type="button" class="step-btn" data-step="end" data-dir="1" aria-label="Increase end by 1 second">+1s</button>
+        <button type="button" class="time-card-set" data-set-current="end">
+          Use current time
+        </button>
+      </div>
     </div>
 
-    <div class="range-tick-row">
-      <span class="mono" data-tick-zero>0:00</span>
-      <span class="mono" data-tick-end>${duration != null ? fmt(duration) : "—"}</span>
-    </div>
-
-    <div class="mark-row">
-      <button type="button" class="mark-btn" data-mark-in title="Set start to current playback time">
-        <span class="mark-dot"></span> Mark in
-      </button>
-      <button type="button" class="mark-btn" data-mark-out title="Set end to current playback time">
-        <span class="mark-dot"></span> Mark out
-      </button>
-      <button type="button" class="mark-btn preview" data-preview-clip title="Seek the page video to start and play">
-        ▶ Preview
+    <div class="clip-summary">
+      <span class="muted small">Clip length:</span>
+      <span class="mono" data-clip-length>0:00 / ${fmt(MAX_CLIP_SECONDS)} max</span>
+      <button type="button" class="btn btn-outline btn-sm preview-clip-btn" data-preview-clip title="Seek the page player to the start and play">
+        ▶ Preview clip
       </button>
     </div>
 
-    <div class="muted small mono" data-now-playing></div>
+    <div class="muted small mono now-playing" data-now-playing></div>
     <div class="duration-display" data-duration-display></div>
   `;
 
-  const startInput = $("[data-clip-start-mmss]", wrap);
-  const endInput = $("[data-clip-end-mmss]", wrap);
-  const rangeStart = $("[data-range-start]", wrap);
-  const rangeEnd = $("[data-range-end]", wrap);
-  const selectedRange = $("[data-selected-range]", wrap);
-  const durValue = $("[data-duration-value]", wrap);
+  const startDisplay = $("[data-clip-start-display]", wrap);
+  const endDisplay = $("[data-clip-end-display]", wrap);
+  const lengthDisplay = $("[data-clip-length]", wrap);
   const durDisplay = $("[data-duration-display]", wrap);
   const nowPlaying = $("[data-now-playing]", wrap);
-  const tickEnd = $("[data-tick-end]", wrap);
-
-  // The slider's max is the video duration when known, otherwise generous
-  // upper bound that covers most podcast episodes (3 hours).
-  const sliderMax = duration != null ? Math.max(duration, end + 1) : 10800;
-  rangeStart.max = String(sliderMax);
-  rangeEnd.max = String(sliderMax);
 
   function fmtNow() {
-    if (!meta.currentTime && meta.currentTime !== 0) {
+    const m = state.pageMeta || {};
+    if (m.currentTime == null) {
       nowPlaying.textContent = "";
       return;
     }
-    const dur = Number.isFinite(meta.duration) ? ` / ${fmt(meta.duration)}` : "";
-    nowPlaying.textContent = `Now playing at ${fmt(meta.currentTime)}${dur}`;
-  }
-
-  function update() {
-    const s = Math.max(0, Math.floor(state.clipRange.start));
-    const e = Math.max(s + 1, Math.floor(state.clipRange.end));
-    const dur = e - s;
-    rangeStart.value = String(s);
-    rangeEnd.value = String(e);
-    startInput.value = fmt(s);
-    endInput.value = fmt(e);
-    durValue.textContent = `${dur}s`;
-    if (dur > MAX_CLIP_SECONDS) {
-      durDisplay.classList.add("over");
-      durDisplay.textContent = `${dur - MAX_CLIP_SECONDS}s over the ${MAX_CLIP_SECONDS}s limit`;
-    } else {
-      durDisplay.classList.remove("over");
-      durDisplay.textContent = "";
-    }
-    const max = Number(rangeStart.max);
-    const startPct = (s / max) * 100;
-    const endPct = (e / max) * 100;
-    selectedRange.style.left = `${startPct}%`;
-    selectedRange.style.right = `${100 - endPct}%`;
-    if (duration != null) tickEnd.textContent = fmt(duration);
-    fmtNow();
-    patchPreviewCard();
-  }
-
-  // Throttle seek messages to the page so a fast drag doesn't flood the
-  // content script. The trailing call ensures the final position is honored.
-  let lastSeekAt = 0;
-  let pendingSeekTimer = null;
-  let pendingSeekTime = null;
-  function seekPage(time) {
-    pendingSeekTime = time;
-    const now = Date.now();
-    const elapsed = now - lastSeekAt;
-    const minGap = 90;
-    if (elapsed >= minGap) {
-      lastSeekAt = now;
-      const t = pendingSeekTime;
-      pendingSeekTime = null;
-      sendBg({ type: "SEEK_ACTIVE_TAB", time: t, play: false });
-      return;
-    }
-    if (pendingSeekTimer) return;
-    pendingSeekTimer = setTimeout(() => {
-      pendingSeekTimer = null;
-      if (pendingSeekTime == null) return;
-      lastSeekAt = Date.now();
-      const t = pendingSeekTime;
-      pendingSeekTime = null;
-      sendBg({ type: "SEEK_ACTIVE_TAB", time: t, play: false });
-    }, minGap - elapsed);
+    const dur = Number.isFinite(m.duration) ? ` / ${fmt(m.duration)}` : "";
+    nowPlaying.textContent = `Page playhead: ${fmt(m.currentTime)}${dur}`;
   }
 
   function clampRange() {
@@ -703,82 +618,31 @@ function renderRangeClip(kind) {
     }
   }
 
-  rangeStart.addEventListener("input", () => {
-    // Seek the page video as the user drags the start handle so they see
-    // exactly where they are scrubbing.
-    state.clipRange.start = Number(rangeStart.value);
-    if (state.clipRange.end <= state.clipRange.start) {
-      state.clipRange.end = state.clipRange.start + 1;
-    }
-    if (state.clipRange.end - state.clipRange.start > MAX_CLIP_SECONDS) {
-      state.clipRange.end = state.clipRange.start + MAX_CLIP_SECONDS;
-    }
-    state.clipRange.userTouched = true;
-    update();
-    seekPage(state.clipRange.start);
-  });
-  rangeEnd.addEventListener("input", () => {
-    state.clipRange.end = Number(rangeEnd.value);
-    if (state.clipRange.end <= state.clipRange.start) {
-      state.clipRange.end = state.clipRange.start + 1;
-    }
-    if (state.clipRange.end - state.clipRange.start > MAX_CLIP_SECONDS) {
-      state.clipRange.start = state.clipRange.end - MAX_CLIP_SECONDS;
-      if (state.clipRange.start < 0) state.clipRange.start = 0;
-    }
-    state.clipRange.userTouched = true;
-    update();
-    seekPage(state.clipRange.end);
-  });
-  // On release, send a final non-throttled seek to guarantee the page lands
-  // on the chosen value even if the trailing throttle is still pending.
-  function finalSeek(which) {
-    if (pendingSeekTimer) { clearTimeout(pendingSeekTimer); pendingSeekTimer = null; }
-    pendingSeekTime = null;
-    lastSeekAt = Date.now();
-    const t = which === "start" ? state.clipRange.start : state.clipRange.end;
-    sendBg({ type: "SEEK_ACTIVE_TAB", time: t, play: false });
-  }
-  rangeStart.addEventListener("change", () => finalSeek("start"));
-  rangeEnd.addEventListener("change", () => finalSeek("end"));
-
-  function parseMmss(value) {
-    if (!value) return null;
-    const trimmed = String(value).trim();
-    if (/^\d+$/.test(trimmed)) return Number(trimmed);
-    const m = trimmed.match(/^(\d+):(\d{1,2})(?:\.(\d+))?$/);
-    if (!m) return null;
-    return Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(`0.${m[3]}`) : 0);
-  }
-  function commitMmss(input, key) {
-    const parsed = parseMmss(input.value);
-    if (parsed == null) return update();
-    if (key === "start") {
-      state.clipRange.start = Math.max(0, Math.floor(parsed));
-      if (state.clipRange.end <= state.clipRange.start) {
-        state.clipRange.end = state.clipRange.start + 1;
-      }
+  function update() {
+    const s = Math.max(0, Math.floor(state.clipRange.start));
+    const e = Math.max(s + 1, Math.floor(state.clipRange.end));
+    const dur = e - s;
+    startDisplay.textContent = fmt(s);
+    endDisplay.textContent = fmt(e);
+    lengthDisplay.textContent = `${fmt(dur)} / ${fmt(MAX_CLIP_SECONDS)} max`;
+    if (dur > MAX_CLIP_SECONDS) {
+      durDisplay.classList.add("over");
+      durDisplay.textContent = `${dur - MAX_CLIP_SECONDS}s over the ${MAX_CLIP_SECONDS}s limit`;
     } else {
-      state.clipRange.end = Math.max(state.clipRange.start + 1, Math.floor(parsed));
-      if (state.clipRange.end - state.clipRange.start > MAX_CLIP_SECONDS) {
-        state.clipRange.end = state.clipRange.start + MAX_CLIP_SECONDS;
-      }
+      durDisplay.classList.remove("over");
+      durDisplay.textContent = "";
     }
-    state.clipRange.userTouched = true;
-    update();
+    fmtNow();
+    patchPreviewCard();
   }
-  startInput.addEventListener("change", () => commitMmss(startInput, "start"));
-  endInput.addEventListener("change", () => commitMmss(endInput, "end"));
-  startInput.addEventListener("blur", () => commitMmss(startInput, "start"));
-  endInput.addEventListener("blur", () => commitMmss(endInput, "end"));
 
-  // +/- 1s nudge buttons next to start and end. Each click adjusts the
-  // boundary by exactly one second, clamps to 0/duration and the 90s cap,
-  // then seeks the page so the user previews the new position.
+  // +/- 1s nudges. Each click adjusts the boundary by exactly one second,
+  // clamps to 0/duration and the 90s cap, then seeks the page player so the
+  // user previews the new position on the page itself.
   $$("[data-step]", wrap).forEach((btn) => {
     btn.addEventListener("click", () => {
-      const which = btn.dataset.step; // "start" | "end"
-      const dir = Number(btn.dataset.dir); // 1 | -1
+      const which = btn.dataset.step;
+      const dir = Number(btn.dataset.dir);
       if (which === "start") {
         state.clipRange.start = Math.floor(state.clipRange.start) + dir;
       } else {
@@ -787,38 +651,42 @@ function renderRangeClip(kind) {
       clampRange();
       state.clipRange.userTouched = true;
       update();
-      finalSeek(which);
+      const t = which === "start" ? state.clipRange.start : state.clipRange.end;
+      sendBg({ type: "SEEK_ACTIVE_TAB", time: t, play: false });
     });
   });
 
-  $("[data-mark-in]", wrap).addEventListener("click", async () => {
-    const resp = await sendBg({ type: "PAUSE_ACTIVE_TAB" });
-    const time = await sendBg({
-      type: "SEEK_ACTIVE_TAB",
-      time: 0,
-      play: false,
+  // "Use current time" buttons — snap start or end to the page player's
+  // currentTime. The user has scrubbed the page video; this captures it.
+  $$("[data-set-current]", wrap).forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const which = btn.dataset.setCurrent;
+        const refresh = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
+        const cur = Math.max(
+          0,
+          Math.floor(refresh?.pageMeta?.currentTime ?? state.pageMeta?.currentTime ?? 0),
+        );
+        if (which === "start") {
+          state.clipRange.start = cur;
+          if (state.clipRange.end <= state.clipRange.start) {
+            state.clipRange.end = state.clipRange.start + 1;
+          }
+        } else {
+          let next = Math.max(state.clipRange.start + 1, cur);
+          if (next - state.clipRange.start > MAX_CLIP_SECONDS) {
+            next = state.clipRange.start + MAX_CLIP_SECONDS;
+          }
+          state.clipRange.end = next;
+        }
+        clampRange();
+        state.clipRange.userTouched = true;
+        update();
+      } finally {
+        btn.disabled = false;
+      }
     });
-    // Get current time via the cache-update path: ask the BG for fresh state.
-    const refresh = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
-    const cur = refresh?.pageMeta?.currentTime ?? state.pageMeta?.currentTime ?? 0;
-    state.clipRange.start = Math.max(0, Math.floor(cur));
-    if (state.clipRange.end <= state.clipRange.start) {
-      state.clipRange.end = state.clipRange.start + 1;
-    }
-    state.clipRange.userTouched = true;
-    update();
-  });
-
-  $("[data-mark-out]", wrap).addEventListener("click", async () => {
-    const refresh = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
-    const cur = refresh?.pageMeta?.currentTime ?? state.pageMeta?.currentTime ?? 0;
-    let next = Math.max(state.clipRange.start + 1, Math.floor(cur));
-    if (next - state.clipRange.start > MAX_CLIP_SECONDS) {
-      next = state.clipRange.start + MAX_CLIP_SECONDS;
-    }
-    state.clipRange.end = next;
-    state.clipRange.userTouched = true;
-    update();
   });
 
   $("[data-preview-clip]", wrap).addEventListener("click", () => {
@@ -830,24 +698,24 @@ function renderRangeClip(kind) {
 }
 
 function patchRangeInputs() {
-  const startMmss = document.querySelector("[data-clip-start-mmss]");
-  const endMmss = document.querySelector("[data-clip-end-mmss]");
-  const rangeStart = document.querySelector("[data-range-start]");
-  const rangeEnd = document.querySelector("[data-range-end]");
-  if (!startMmss || !endMmss || !rangeStart || !rangeEnd) return;
+  const startDisplay = document.querySelector("[data-clip-start-display]");
+  const endDisplay = document.querySelector("[data-clip-end-display]");
+  const lengthDisplay = document.querySelector("[data-clip-length]");
+  const nowPlaying = document.querySelector("[data-now-playing]");
+  if (!startDisplay || !endDisplay || !lengthDisplay) return;
   const s = Math.max(0, Math.floor(state.clipRange.start));
   const e = Math.max(s + 1, Math.floor(state.clipRange.end));
-  startMmss.value = fmt(s);
-  endMmss.value = fmt(e);
-  rangeStart.value = String(s);
-  rangeEnd.value = String(e);
-  const selectedRange = document.querySelector("[data-selected-range]");
-  const durValue = document.querySelector("[data-duration-value]");
-  if (durValue) durValue.textContent = `${e - s}s`;
-  if (selectedRange) {
-    const max = Number(rangeStart.max) || 10800;
-    selectedRange.style.left = `${(s / max) * 100}%`;
-    selectedRange.style.right = `${100 - (e / max) * 100}%`;
+  startDisplay.textContent = fmt(s);
+  endDisplay.textContent = fmt(e);
+  lengthDisplay.textContent = `${fmt(e - s)} / ${fmt(MAX_CLIP_SECONDS)} max`;
+  if (nowPlaying) {
+    const m = state.pageMeta || {};
+    if (m.currentTime != null) {
+      const dur = Number.isFinite(m.duration) ? ` / ${fmt(m.duration)}` : "";
+      nowPlaying.textContent = `Page playhead: ${fmt(m.currentTime)}${dur}`;
+    } else {
+      nowPlaying.textContent = "";
+    }
   }
 }
 
@@ -862,7 +730,7 @@ function renderUnknownClip() {
     below, or expand <em>Use a different URL</em> above and paste a link.
   `;
   wrap.appendChild(intro);
-  wrap.appendChild(buildClipTextField({ rows: 4, placeholder: "Paste a passage to clip" }));
+  wrap.appendChild(buildClipTextField({ rows: 4, placeholder: "highlight text on page and import selection, or paste it here..." }));
   return wrap;
 }
 
