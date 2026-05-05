@@ -1,14 +1,23 @@
 // Annotated — Content script
-// Runs on every page. Detects source type, extracts metadata, and forwards
-// text selections to the side panel via the background service worker.
+// Runs on every page on demand (injected by the SW under activeTab). Detects
+// source type, extracts metadata, and forwards text selections to the side
+// panel via the background service worker.
 
 (function () {
+  if (window.__annotatedContent) return; // idempotent
+  window.__annotatedContent = true;
+
+  function metaContent(selector) {
+    return document.querySelector(selector)?.getAttribute("content") || "";
+  }
+
   function getYouTubeMeta() {
     const url = location.href;
     let videoId = null;
     try {
       const u = new URL(url);
       videoId = u.searchParams.get("v");
+      if (!videoId && /youtu\.be\//.test(url)) videoId = u.pathname.replace(/^\//, "");
     } catch {}
     const titleEl =
       document.querySelector("h1.ytd-watch-metadata") ||
@@ -23,90 +32,132 @@
       videoId,
       title: titleEl?.textContent?.trim() || document.title,
       author: channelEl?.textContent?.trim() || "",
+      publication: "YouTube",
       duration: video?.duration ?? null,
       currentTime: video?.currentTime ?? null,
       ogImage:
-        document.querySelector('meta[property="og:image"]')?.getAttribute("content") || "",
+        metaContent('meta[property="og:image"]') ||
+        (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : ""),
+    };
+  }
+
+  function getXMeta() {
+    // Best-effort detection of an X/Twitter post page: /username/status/123
+    const url = location.href;
+    const m = url.match(/(?:x\.com|twitter\.com)\/([^/]+)\/status\/(\d+)/i);
+    return {
+      url,
+      sourceType: "x",
+      title:
+        metaContent('meta[property="og:title"]') ||
+        metaContent('meta[name="twitter:title"]') ||
+        document.title,
+      author: m?.[1] ? `@${m[1]}` : "",
+      publication: "X",
+      description:
+        metaContent('meta[property="og:description"]') ||
+        metaContent('meta[name="twitter:description"]'),
+      ogImage:
+        metaContent('meta[property="og:image"]') || metaContent('meta[name="twitter:image"]'),
     };
   }
 
   function getArticleMeta() {
-    const meta = (selector, attr) =>
-      document.querySelector(selector)?.getAttribute(attr) || "";
     return {
       url: location.href,
       sourceType: "article",
       title:
-        meta('meta[property="og:title"]', "content") ||
-        meta('meta[name="twitter:title"]', "content") ||
+        metaContent('meta[property="og:title"]') ||
+        metaContent('meta[name="twitter:title"]') ||
         document.title,
       author:
-        meta('meta[name="author"]', "content") ||
-        meta('meta[property="article:author"]', "content") ||
-        meta('meta[name="byl"]', "content") ||
+        metaContent('meta[name="author"]') ||
+        metaContent('meta[property="article:author"]') ||
+        metaContent('meta[name="byl"]') ||
         "",
       publication:
-        meta('meta[property="og:site_name"]', "content") || location.hostname.replace(/^www\./, ""),
+        metaContent('meta[property="og:site_name"]') ||
+        location.hostname.replace(/^www\./, ""),
       description:
-        meta('meta[name="description"]', "content") ||
-        meta('meta[property="og:description"]', "content") ||
-        "",
+        metaContent('meta[name="description"]') ||
+        metaContent('meta[property="og:description"]'),
       ogImage:
-        meta('meta[property="og:image"]', "content") || meta('meta[name="twitter:image"]', "content"),
+        metaContent('meta[property="og:image"]') ||
+        metaContent('meta[name="twitter:image"]'),
     };
   }
 
   function getPodcastMeta() {
     const audio = document.querySelector("audio");
+    const video = document.querySelector("video");
+    const media = audio || video;
     return {
       url: location.href,
       sourceType: "podcast",
-      title: document.title,
-      author: document.querySelector('meta[name="author"]')?.getAttribute("content") || "",
-      duration: audio?.duration ?? null,
-      currentTime: audio?.currentTime ?? null,
+      title:
+        metaContent('meta[property="og:title"]') ||
+        document.title,
+      author:
+        metaContent('meta[name="author"]') ||
+        metaContent('meta[property="og:site_name"]') ||
+        "",
+      publication: location.hostname.replace(/^www\./, ""),
+      duration: media?.duration ?? null,
+      currentTime: media?.currentTime ?? null,
       ogImage:
-        document.querySelector('meta[property="og:image"]')?.getAttribute("content") || "",
+        metaContent('meta[property="og:image"]') || metaContent('meta[name="twitter:image"]'),
     };
   }
 
   function detect() {
     const url = location.href;
-    if (/youtube\.com\/watch|youtu\.be\//.test(url)) return getYouTubeMeta();
-    // Podcast heuristics: <audio> tag or known podcast hosts.
+    const host = location.hostname.replace(/^www\./, "");
+    if (/youtube\.com\/watch|youtu\.be\//.test(url) || host === "youtube.com") {
+      return getYouTubeMeta();
+    }
+    if (host === "x.com" || host === "twitter.com") {
+      return getXMeta();
+    }
     if (
-      document.querySelector("audio") ||
-      /overcast\.fm|podcasts\.apple\.com|spotify\.com\/episode|pca\.st/.test(url)
+      /podcasts\.apple\.com|spotify\.com\/episode|overcast\.fm|pca\.st/.test(url) ||
+      document.querySelector("audio")
     ) {
       return getPodcastMeta();
     }
-    // Default to article — most pages have an <article> or article meta.
     return getArticleMeta();
   }
 
   function send() {
-    try {
-      chrome.runtime.sendMessage({ type: "PAGE_META", data: detect() });
-    } catch {}
+    try { chrome.runtime.sendMessage({ type: "PAGE_META", data: detect() }); } catch {}
   }
 
   send();
 
-  // Re-send on SPA navigations (YouTube / news sites)
+  // SPA routes (YouTube, news sites, X) update without full reload.
   let lastUrl = location.href;
-  new MutationObserver(() => {
+  const obs = new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       setTimeout(send, 600);
     }
-  }).observe(document, { subtree: true, childList: true });
+  });
+  obs.observe(document, { subtree: true, childList: true });
 
-  // Text selection capture
+  // Periodically refresh playback time for YouTube/podcast so the side panel
+  // can pre-fill clip start.
+  setInterval(() => {
+    const m = detect();
+    if (m.sourceType === "youtube" || m.sourceType === "podcast") {
+      try { chrome.runtime.sendMessage({ type: "PAGE_META", data: m }); } catch {}
+    }
+  }, 2500);
+
+  // Capture text selections.
   let selectionTimeout;
   document.addEventListener("mouseup", () => {
     clearTimeout(selectionTimeout);
     selectionTimeout = setTimeout(() => {
-      const sel = window.getSelection();
+      const sel = window.getSelection?.();
       if (!sel) return;
       const text = sel.toString().trim();
       if (text.length < 4) return;
@@ -119,7 +170,6 @@
     }, 80);
   });
 
-  // Service worker can ask us to resend on demand.
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "REQUEST_PAGE_META") send();
   });

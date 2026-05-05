@@ -3,11 +3,9 @@
 // without a build step.
 
 const DEFAULT_API_BASE = "https://annotatedextension.com";
+const MAX_CLIP_SECONDS = 90;
 
 // -------------------- Theme (light/dark) ------------------------------------
-// Mirrors the web app at annotatedextension.com: persisted to localStorage
-// under "annotated-theme", "system" by default, toggle button switches between
-// explicit light/dark.
 const THEME_KEY = "annotated-theme";
 function systemTheme() {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -34,14 +32,14 @@ window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change",
 
 const state = {
   apiBase: DEFAULT_API_BASE,
-  user: null,                // current logged-in user (in-memory; chrome.storage.local in real auth)
+  user: null,
   tab: "clip",
   pageMeta: null,
   selection: null,
   detailId: null,
-  recording: null,
-  audioBlob: null,
-  audioRecorderState: { recorder: null, start: 0, chunks: [] },
+  audio: null, // { dataUrl, mime, durationMs }
+  recording: { active: false, startedAt: 0, error: null, timer: null },
+  manualSource: { url: "", title: "" },
 };
 
 // -------------------- Utilities ---------------------------------------------
@@ -67,10 +65,6 @@ async function api(path, options = {}) {
       ...options,
     });
   } catch (err) {
-    // fetch() rejects with TypeError ("Failed to fetch") on network errors,
-    // CORS rejections, or when the extension lacks host_permissions for the
-    // target origin. Give the user something more actionable than the raw
-    // browser message.
     const detail = err?.message || String(err);
     throw new Error(`Couldn't reach ${state.apiBase} (${detail}). Check your internet connection or reload the extension.`);
   }
@@ -91,7 +85,21 @@ function toast(message, kind = "info") {
   setTimeout(() => {
     el.classList.remove("show");
     setTimeout(() => el.remove(), 250);
-  }, 2400);
+  }, 2600);
+}
+
+function sendBg(message) {
+  return new Promise((resolve) => {
+    if (!isExtension() || !chrome.runtime?.sendMessage) return resolve(null);
+    try {
+      chrome.runtime.sendMessage(message, (resp) => {
+        if (chrome.runtime.lastError) return resolve({ error: chrome.runtime.lastError.message });
+        resolve(resp);
+      });
+    } catch (err) {
+      resolve({ error: err?.message || String(err) });
+    }
+  });
 }
 
 // -------------------- Routing/tabs ------------------------------------------
@@ -102,13 +110,9 @@ function setTab(tab) {
   $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
   render();
 }
+function showDetail(id) { state.detailId = id; render(); }
 
-function showDetail(id) {
-  state.detailId = id;
-  render();
-}
-
-// -------------------- Persisted user (chrome.storage if available) ----------
+// -------------------- Persisted user ----------------------------------------
 
 async function loadUser() {
   if (!isExtension() || !chrome.storage?.local) return;
@@ -130,29 +134,43 @@ async function clearUser() {
   }
 }
 
-// -------------------- Page detection from current tab -----------------------
+// -------------------- Active-tab detection ----------------------------------
 
-function requestActiveTabState() {
-  if (!isExtension() || !chrome.runtime?.sendMessage) return;
-  chrome.runtime.sendMessage({ type: "GET_ACTIVE_TAB_STATE" }, (resp) => {
-    if (chrome.runtime.lastError) return;
-    if (resp?.pageMeta) state.pageMeta = resp.pageMeta;
-    if (resp?.selection) state.selection = resp.selection;
-    render();
-  });
+async function refreshActiveTab() {
+  if (!isExtension()) return;
+  const resp = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
+  if (resp?.pageMeta) state.pageMeta = resp.pageMeta;
+  if (resp?.selection) state.selection = resp.selection;
+  render();
 }
 
 if (isExtension()) {
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "PAGE_META_UPDATE") {
       state.pageMeta = msg.data;
-      render();
+      // Don't full-render mid-typing; just patch source-detection bits.
+      patchPageCard();
     }
     if (msg?.type === "TEXT_SELECTION_UPDATE") {
       state.selection = msg.data;
-      render();
+      const ta = document.querySelector("[data-clip-text]");
+      if (ta && !ta.value.trim() && msg.data?.text) ta.value = msg.data.text;
+    }
+    if (msg?.type === "RECORDER_AUTO_STOPPED") {
+      // Auto-stop after 90s — pull the blob via stop too is unnecessary; the
+      // offscreen sends the payload directly. But our flow always asks the SW
+      // to STOP before reading the blob; auto-stop is informational only.
+      toast("Recording reached 90s limit");
+    }
+    if (msg?.type === "RECORDER_ERROR") {
+      setRecordingError(msg.data?.message || "Recorder error");
     }
   });
+  // Re-pull active tab whenever the side panel regains focus.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshActiveTab();
+  });
+  window.addEventListener("focus", () => refreshActiveTab());
 }
 
 // -------------------- Renderers ---------------------------------------------
@@ -162,12 +180,8 @@ function tpl(id) { return $(id).content.cloneNode(true); }
 async function render() {
   const root = $("#content");
   root.innerHTML = "";
-  if (!state.user) {
-    return root.appendChild(renderLogin());
-  }
-  if (state.detailId) {
-    return root.appendChild(await renderDetail(state.detailId));
-  }
+  if (!state.user) return root.appendChild(renderLogin());
+  if (state.detailId) return root.appendChild(await renderDetail(state.detailId));
   if (state.tab === "clip") return root.appendChild(renderClip());
   if (state.tab === "feed") return root.appendChild(await renderFeed());
   if (state.tab === "profile") return root.appendChild(await renderProfile());
@@ -194,40 +208,61 @@ function renderLogin() {
       }
     });
   });
-  // Fallback: open the production sign-in page in a new tab. Useful when the
-  // in-sidebar flow can't reach the API (rare, but gives users a way out).
   const openWebBtn = $("[data-open-web-signin]", node);
   if (openWebBtn) {
     openWebBtn.addEventListener("click", (e) => {
       e.preventDefault();
       const url = `${state.apiBase}/login`;
-      if (isExtension() && chrome.tabs?.create) {
-        chrome.tabs.create({ url });
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
+      if (isExtension() && chrome.tabs?.create) chrome.tabs.create({ url });
+      else window.open(url, "_blank", "noopener,noreferrer");
     });
   }
   return node;
 }
 
-function renderClip() {
-  const node = tpl("#clip-view");
+// Update only the page-card region (so live updates from the SW don't trash
+// what the user has typed into the textareas/inputs).
+function patchPageCard() {
   const meta = state.pageMeta;
-  const badgeEl = $("[data-badge]", node);
-  const titleEl = $("[data-title]", node);
-  const authorEl = $("[data-author]", node);
-  const hostEl = $("[data-host]", node);
-  const sourceLinkEl = $("[data-source-link]", node);
+  const card = document.querySelector("[data-page-card]");
+  if (!card) return;
+  applyMetaTo(card, meta);
 
-  const sourceType = meta?.sourceType ?? "article";
-  const url = meta?.url ?? "";
+  // Re-render the clip section if the source type changed.
+  const desired = meta?.sourceType || "unknown";
+  const sec = document.querySelector("[data-clip-section]");
+  if (!sec) return;
+  if (sec.dataset.kind !== desired) {
+    sec.dataset.kind = desired;
+    sec.innerHTML = "";
+    sec.appendChild(buildClipSection(desired));
+  }
+}
 
-  badgeEl.textContent = sourceType === "youtube" ? "Video" : sourceType === "podcast" ? "Podcast" : sourceType === "article" ? "Article" : "Unknown";
+function applyMetaTo(scope, meta) {
+  const badgeEl = $("[data-badge]", scope);
+  const titleEl = $("[data-title]", scope);
+  const authorEl = $("[data-author]", scope);
+  const hostEl = $("[data-host]", scope);
+  const sourceLinkEl = $("[data-source-link]", scope);
+  if (!badgeEl) return;
+
+  const sourceType = meta?.sourceType || "unknown";
+  const url = meta?.url || "";
+
+  const labels = {
+    youtube: "Video",
+    podcast: "Podcast",
+    article: "Article",
+    x: "Post",
+    unknown: "Tab",
+  };
+  badgeEl.textContent = labels[sourceType] || "Tab";
   badgeEl.className = `badge ${sourceType}`;
-  titleEl.textContent = meta?.title || "Open a tab to detect a source";
-  authorEl.textContent = meta?.author ? `By ${meta.author}` : "";
+  titleEl.textContent = meta?.title || "Open Annotated on a tab to detect a source";
+  authorEl.textContent = meta?.author ? `By ${meta.author}` : meta?.publication || "";
   hostEl.textContent = url ? hostname(url) : "";
+
   if (url) {
     sourceLinkEl.href = url;
     sourceLinkEl.textContent = `View source on ${hostname(url)} ↗`;
@@ -235,120 +270,46 @@ function renderClip() {
   } else {
     sourceLinkEl.style.display = "none";
   }
+}
 
-  // Clip-type specific UI
+function buildClipSection(sourceType) {
+  if (sourceType === "youtube" || sourceType === "podcast") return renderRangeClip(sourceType);
+  if (sourceType === "article" || sourceType === "x") return renderArticleClip(sourceType);
+  return renderUnknownClip();
+}
+
+function renderClip() {
+  const node = tpl("#clip-view");
+  applyMetaTo(node, state.pageMeta);
+
+  // Manual URL fallback (always available, expanded-on-demand).
+  const manualBlock = $("[data-manual-source]", node);
+  const sourceUrlInput = $("[data-source-url]", manualBlock);
+  const manualTitleInput = $("[data-manual-title]", manualBlock);
+  sourceUrlInput.value = state.manualSource.url || "";
+  manualTitleInput.value = state.manualSource.title || "";
+  sourceUrlInput.addEventListener("input", () => { state.manualSource.url = sourceUrlInput.value; });
+  manualTitleInput.addEventListener("input", () => { state.manualSource.title = manualTitleInput.value; });
+
+  $("[data-refresh-tab]", node).addEventListener("click", () => {
+    refreshActiveTab();
+  });
+
+  // Clip-type-specific UI
+  const sourceType = state.pageMeta?.sourceType || "unknown";
   const clipSection = $("[data-clip-section]", node);
-  if (sourceType === "article") {
-    clipSection.appendChild(renderArticleClip());
-  } else if (sourceType === "youtube") {
-    clipSection.appendChild(renderRangeClip("youtube"));
-  } else if (sourceType === "podcast") {
-    clipSection.appendChild(renderRangeClip("podcast"));
-  } else {
-    clipSection.appendChild(renderManualUrl());
-  }
+  clipSection.dataset.kind = sourceType;
+  clipSection.appendChild(buildClipSection(sourceType));
 
   // Audio recorder
-  const recordToggle = $("[data-record-toggle]", node);
-  const recordDot = $("[data-record-dot]", node);
-  const recordLabel = $("[data-record-label]", node);
-  const recordTime = $("[data-record-time]", node);
-  const audioPreview = $("[data-audio-preview]", node);
-
-  let timerId = null;
-  recordToggle.addEventListener("click", async () => {
-    const rec = state.audioRecorderState;
-    if (rec.recorder && rec.recorder.state === "recording") {
-      rec.recorder.stop();
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      const chunks = [];
-      recorder.ondataavailable = (e) => chunks.push(e.data);
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: "audio/webm" });
-        state.audioBlob = blob;
-        audioPreview.src = URL.createObjectURL(blob);
-        audioPreview.hidden = false;
-        recordDot.classList.remove("recording");
-        recordLabel.textContent = "Re-record";
-        clearInterval(timerId);
-        stream.getTracks().forEach((t) => t.stop());
-      };
-      rec.recorder = recorder;
-      rec.start = Date.now();
-      rec.chunks = chunks;
-      recorder.start();
-      recordDot.classList.add("recording");
-      recordLabel.textContent = "Stop recording";
-      timerId = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - rec.start) / 1000);
-        recordTime.textContent = fmt(elapsed);
-      }, 250);
-    } catch (err) {
-      toast("Microphone permission denied", "error");
-    }
-  });
+  bindRecorder(node);
 
   // Publish
   const publishBtn = $("[data-publish]", node);
   const errorEl = $("[data-error]", node);
   publishBtn.addEventListener("click", async () => {
     errorEl.hidden = true;
-    const commentary = $("[data-commentary]", node).value.trim();
-    const payload = {
-      userId: state.user.id,
-      sourceUrl: $("[data-source-url]", node)?.value?.trim() || meta?.url || "",
-      sourceType,
-      sourceTitle: meta?.title || $("[data-manual-title]", node)?.value || null,
-      sourceAuthor: meta?.author || null,
-      sourcePublication: meta?.publication || (meta?.url ? hostname(meta.url) : null),
-      sourceImage: meta?.ogImage || null,
-      commentaryText: commentary || null,
-      commentaryAudioUrl: null, // TODO(prod): upload state.audioBlob to /api/upload, set url here
-    };
-
-    if (sourceType === "article") {
-      payload.clipText = $("[data-clip-text]", node)?.value?.trim();
-      if (!payload.clipText) {
-        errorEl.hidden = false; errorEl.textContent = "Highlight or paste a passage to clip.";
-        return;
-      }
-    } else {
-      payload.clipStartSec = Number($("[data-clip-start]", node)?.value || 0);
-      payload.clipEndSec = Number($("[data-clip-end]", node)?.value || 0);
-      const dur = payload.clipEndSec - payload.clipStartSec;
-      if (dur <= 0) {
-        errorEl.hidden = false; errorEl.textContent = "Clip end must be greater than start.";
-        return;
-      }
-      if (dur > 90) {
-        errorEl.hidden = false; errorEl.textContent = `Clip is ${dur}s. Max allowed is 90s.`;
-        return;
-      }
-    }
-
-    if (!payload.sourceUrl) {
-      errorEl.hidden = false; errorEl.textContent = "Source URL is required (every clip links to source).";
-      return;
-    }
-
-    publishBtn.disabled = true;
-    publishBtn.textContent = "Publishing…";
-    try {
-      const result = await api("/api/clips", { method: "POST", body: JSON.stringify(payload) });
-      toast("Annotation published");
-      state.audioBlob = null;
-      // Show the new annotation
-      showDetail(result.annotation.id);
-    } catch (err) {
-      errorEl.hidden = false; errorEl.textContent = err.message;
-    } finally {
-      publishBtn.disabled = false;
-      publishBtn.textContent = "Publish annotation";
-    }
+    await onPublish(node, publishBtn, errorEl);
   });
 
   return node;
@@ -356,26 +317,24 @@ function renderClip() {
 
 function renderArticleClip() {
   const wrap = document.createElement("div");
-  wrap.style.display = "flex";
-  wrap.style.flexDirection = "column";
-  wrap.style.gap = "8px";
+  wrap.className = "clip-flex";
   const initial = state.selection?.text || "";
   wrap.innerHTML = `
     <label class="label">Highlighted passage</label>
-    <textarea data-clip-text rows="5" placeholder="Highlight text on the page, or paste it here…">${escapeHtml(initial)}</textarea>
+    <textarea data-clip-text rows="5" placeholder="Highlight text on the page, or paste it here…"></textarea>
     <p class="muted small">Tip: select text on the page — it appears here automatically.</p>
   `;
+  const ta = $("[data-clip-text]", wrap);
+  if (initial) ta.value = initial;
   return wrap;
 }
 
 function renderRangeClip(kind) {
   const meta = state.pageMeta || {};
   const wrap = document.createElement("div");
-  wrap.style.display = "flex";
-  wrap.style.flexDirection = "column";
-  wrap.style.gap = "10px";
+  wrap.className = "clip-flex";
   const startDefault = Math.floor(meta.currentTime || 0);
-  const endDefault = Math.min(startDefault + 30, startDefault + 90);
+  const endDefault = startDefault + 30;
   wrap.innerHTML = `
     <label class="label">${kind === "youtube" ? "Video clip range" : "Audio clip range"}</label>
     <div class="range-row">
@@ -392,6 +351,7 @@ function renderRangeClip(kind) {
       <span>Duration: <span class="mono" data-duration-value>${endDefault - startDefault}s</span></span>
       <span class="mono">≤ 90s · ${kind === "youtube" ? "240p downscale" : "AAC 128kbps"}</span>
     </div>
+    ${meta.currentTime != null ? `<div class="muted small mono">Now playing at ${fmt(meta.currentTime)}${meta.duration ? ` / ${fmt(meta.duration)}` : ""}</div>` : ""}
   `;
   const startInput = $("[data-clip-start]", wrap);
   const endInput = $("[data-clip-end]", wrap);
@@ -400,27 +360,268 @@ function renderRangeClip(kind) {
   function updateDuration() {
     const dur = Number(endInput.value) - Number(startInput.value);
     durVal.textContent = `${dur}s`;
-    durRow.classList.toggle("over", dur > 90 || dur <= 0);
+    durRow.classList.toggle("over", dur > MAX_CLIP_SECONDS || dur <= 0);
   }
   startInput.addEventListener("input", updateDuration);
   endInput.addEventListener("input", updateDuration);
   return wrap;
 }
 
-function renderManualUrl() {
+function renderUnknownClip() {
   const wrap = document.createElement("div");
-  wrap.style.display = "flex";
-  wrap.style.flexDirection = "column";
-  wrap.style.gap = "8px";
+  wrap.className = "clip-flex";
   wrap.innerHTML = `
     <label class="label">No supported source detected</label>
-    <input type="url" data-source-url placeholder="Paste a YouTube, podcast, or article URL" />
-    <input type="text" data-manual-title placeholder="Title (optional)" />
+    <p class="muted small">
+      Open a YouTube video, podcast, article, or X post in another tab — the side
+      panel will pick it up automatically. Or expand <em>Use a different URL</em>
+      above and paste a link.
+    </p>
     <textarea data-clip-text rows="3" placeholder="Or paste an article passage to clip"></textarea>
-    <p class="muted small">For video/audio sources, switch back to the tab and reload — the side panel auto-detects YouTube and podcasts.</p>
   `;
   return wrap;
 }
+
+// -------------------- Audio recorder ----------------------------------------
+
+function bindRecorder(scope) {
+  const toggleBtn = $("[data-record-toggle]", scope);
+  const dot = $("[data-record-dot]", scope);
+  const label = $("[data-record-label]", scope);
+  const timeEl = $("[data-record-time]", scope);
+  const audioEl = $("[data-audio-preview]", scope);
+  const errBox = $("[data-record-error]", scope);
+  const errMsg = $("[data-record-error-msg]", scope);
+  const actions = $("[data-recorder-actions]", scope);
+  const discard = $("[data-record-discard]", scope);
+  const openSettings = $("[data-record-open-settings]", scope);
+  const retry = $("[data-record-retry]", scope);
+
+  function updateUi() {
+    const rec = state.recording;
+    if (rec.active) {
+      dot.classList.add("recording");
+      label.textContent = "Stop recording";
+      const elapsed = Math.floor((Date.now() - rec.startedAt) / 1000);
+      timeEl.textContent = `${fmt(elapsed)} / ${fmt(MAX_CLIP_SECONDS)}`;
+    } else {
+      dot.classList.remove("recording");
+      label.textContent = state.audio ? "Re-record" : "Record audio commentary";
+      timeEl.textContent = state.audio
+        ? `${fmt(Math.round((state.audio.durationMs || 0) / 1000))} attached`
+        : `0:00 / ${fmt(MAX_CLIP_SECONDS)}`;
+    }
+    if (state.audio?.dataUrl) {
+      audioEl.src = state.audio.dataUrl;
+      audioEl.hidden = false;
+      actions.hidden = false;
+    } else {
+      audioEl.removeAttribute("src");
+      audioEl.hidden = true;
+      actions.hidden = true;
+    }
+    if (state.recording.error) {
+      errMsg.textContent = state.recording.error;
+      errBox.hidden = false;
+    } else {
+      errBox.hidden = true;
+    }
+  }
+
+  function startTimer() {
+    stopTimer();
+    state.recording.timer = setInterval(updateUi, 250);
+  }
+  function stopTimer() {
+    if (state.recording.timer) {
+      clearInterval(state.recording.timer);
+      state.recording.timer = null;
+    }
+  }
+
+  toggleBtn.addEventListener("click", async () => {
+    if (state.recording.active) {
+      toggleBtn.disabled = true;
+      const resp = await sendBg({ type: "STOP_RECORDING" });
+      toggleBtn.disabled = false;
+      stopTimer();
+      state.recording.active = false;
+      if (resp?.error) {
+        setRecordingError(resp.error);
+      } else if (resp?.base64) {
+        state.audio = {
+          dataUrl: `data:${resp.mime || "audio/webm"};base64,${resp.base64}`,
+          mime: resp.mime || "audio/webm",
+          durationMs: resp.durationMs || 0,
+          bytes: resp.bytes || 0,
+        };
+      }
+      updateUi();
+      return;
+    }
+    state.recording.error = null;
+    updateUi();
+    toggleBtn.disabled = true;
+    const resp = await sendBg({ type: "START_RECORDING" });
+    toggleBtn.disabled = false;
+    if (resp?.error) {
+      const friendly = friendlyMicError(resp);
+      setRecordingError(friendly);
+    } else {
+      state.recording.active = true;
+      state.recording.startedAt = Date.now();
+      state.audio = null;
+      startTimer();
+    }
+    updateUi();
+  });
+
+  discard.addEventListener("click", () => {
+    state.audio = null;
+    updateUi();
+  });
+
+  openSettings.addEventListener("click", () => {
+    if (isExtension() && chrome.tabs?.create) {
+      chrome.tabs.create({ url: "chrome://settings/content/microphone" });
+    }
+  });
+
+  retry.addEventListener("click", () => {
+    state.recording.error = null;
+    updateUi();
+    toggleBtn.click();
+  });
+
+  function setRecordingErrorLocal(msg) {
+    state.recording.error = msg;
+    state.recording.active = false;
+    stopTimer();
+    updateUi();
+  }
+  // Expose to module-level setRecordingError used by SW listeners.
+  setRecordingError = setRecordingErrorLocal;
+
+  updateUi();
+}
+
+let setRecordingError = (msg) => { state.recording.error = msg; };
+
+function friendlyMicError(resp) {
+  const name = resp.name || "";
+  const msg = resp.error || "Microphone unavailable";
+  if (/NotAllowed|Denied/i.test(name) || /denied|permission/i.test(msg)) {
+    return "Chrome blocked microphone access for this extension.";
+  }
+  if (/NotFound/i.test(name)) return "No microphone detected on this device.";
+  if (/NotReadable/i.test(name)) return "Your microphone is in use by another app.";
+  return msg;
+}
+
+// -------------------- Publish flow ------------------------------------------
+
+async function uploadAudioIfPresent() {
+  if (!state.audio?.dataUrl) return null;
+  // Try the server upload route first; on failure, fall back to inlining the
+  // data URL (works for short clips). The data URL roundtrip guarantees the
+  // recording survives even when the upload endpoint isn't deployed yet.
+  try {
+    const result = await api("/api/upload/audio", {
+      method: "POST",
+      body: JSON.stringify({
+        userId: state.user.id,
+        base64: state.audio.dataUrl.split(",")[1],
+        mime: state.audio.mime,
+        durationMs: state.audio.durationMs,
+      }),
+    });
+    if (result?.url) return result.url;
+  } catch (err) {
+    console.warn("[Annotated] upload/audio failed; falling back to inline data URL", err);
+  }
+  return state.audio.dataUrl;
+}
+
+async function onPublish(node, publishBtn, errorEl) {
+  const meta = state.pageMeta || {};
+  const sourceType = meta.sourceType || "unknown";
+  const commentary = $("[data-commentary]", node).value.trim();
+
+  const manualUrl = state.manualSource.url?.trim() || "";
+  const manualTitle = state.manualSource.title?.trim() || "";
+  const sourceUrl = manualUrl || meta.url || "";
+  const finalSourceType = manualUrl
+    ? sourceTypeForUrl(manualUrl)
+    : sourceType === "x" ? "article" : sourceType;
+
+  const payload = {
+    userId: state.user.id,
+    sourceUrl,
+    sourceType: finalSourceType === "unknown" ? "article" : finalSourceType,
+    sourceTitle: manualTitle || meta.title || null,
+    sourceAuthor: meta.author || null,
+    sourcePublication: meta.publication || (sourceUrl ? hostname(sourceUrl) : null),
+    sourceImage: meta.ogImage || null,
+    commentaryText: commentary || null,
+    commentaryAudioUrl: null,
+  };
+
+  if (payload.sourceType === "article") {
+    payload.clipText = $("[data-clip-text]", node)?.value?.trim() || "";
+    if (!payload.clipText) {
+      return showError(errorEl, "Highlight or paste a passage to clip.");
+    }
+  } else {
+    payload.clipStartSec = Number($("[data-clip-start]", node)?.value || 0);
+    payload.clipEndSec = Number($("[data-clip-end]", node)?.value || 0);
+    const dur = payload.clipEndSec - payload.clipStartSec;
+    if (dur <= 0) return showError(errorEl, "Clip end must be greater than start.");
+    if (dur > MAX_CLIP_SECONDS) return showError(errorEl, `Clip is ${dur}s. Max allowed is ${MAX_CLIP_SECONDS}s.`);
+  }
+
+  if (!payload.sourceUrl) {
+    return showError(errorEl, "Source URL is required (every clip links back to its source).");
+  }
+
+  publishBtn.disabled = true;
+  publishBtn.textContent = "Publishing…";
+
+  try {
+    payload.commentaryAudioUrl = await uploadAudioIfPresent();
+    const result = await api("/api/clips", { method: "POST", body: JSON.stringify(payload) });
+    toast("Annotation published");
+    state.audio = null;
+    showDetail(result.annotation.id);
+  } catch (err) {
+    showError(errorEl, err.message);
+  } finally {
+    publishBtn.disabled = false;
+    publishBtn.textContent = "Publish annotation";
+  }
+}
+
+function sourceTypeForUrl(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    if (host.includes("youtube.com") || host === "youtu.be") return "youtube";
+    if (host === "x.com" || host === "twitter.com") return "article";
+    if (
+      host.includes("podcasts.apple.com") ||
+      host === "overcast.fm" ||
+      host === "pca.st" ||
+      host.includes("spotify.com")
+    ) return "podcast";
+  } catch {}
+  return "article";
+}
+
+function showError(el, msg) {
+  el.hidden = false;
+  el.textContent = msg;
+}
+
+// -------------------- Feed / profile / detail (unchanged) -------------------
 
 async function renderFeed() {
   const node = tpl("#feed-view");
@@ -525,6 +726,7 @@ async function renderDetail(id) {
       ${a.clipText ? `<div class="feed-card-quote">"${escapeHtml(a.clipText)}"</div>` : ""}
       ${a.clipStartSec != null ? `<div class="muted small mono">Clipped ${fmt(a.clipStartSec)} – ${fmt(a.clipEndSec)} (${a.clipEndSec - a.clipStartSec}s · ${a.sourceType === "youtube" ? "240p" : "audio"})</div>` : ""}
       ${a.commentaryText ? `<div style="border-left:2px solid var(--primary); padding:4px 0 4px 10px; font-size:14px;">${escapeHtml(a.commentaryText)}</div>` : ""}
+      ${a.commentaryAudioUrl ? `<audio controls src="${escapeAttr(a.commentaryAudioUrl)}" style="width:100%;"></audio>` : ""}
       <div style="display:flex; gap:8px; padding-top:8px; border-top:1px solid var(--border);">
         <a class="btn btn-outline btn-sm" href="${state.apiBase.replace(/\/api$/, "")}/#/a/${a.id}" target="_blank">Open landing page</a>
         <button class="btn btn-danger btn-sm" data-claim>⚠ File a claim</button>
@@ -582,10 +784,8 @@ function escapeAttr(s) { return escapeHtml(s); }
 // -------------------- Boot ---------------------------------------------------
 
 (async function init() {
-  // Tab buttons
   $$(".tab").forEach((btn) => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
 
-  // Theme toggle (light <-> dark; drops the "system" sentinel on first click).
   const themeBtn = document.querySelector("[data-theme-toggle]");
   if (themeBtn) {
     themeBtn.addEventListener("click", () => {
@@ -596,7 +796,6 @@ function escapeAttr(s) { return escapeHtml(s); }
     });
   }
 
-  // Allow API base override via URL param for development.
   try {
     const params = new URLSearchParams(location.search);
     const override = params.get("api");
@@ -604,6 +803,6 @@ function escapeAttr(s) { return escapeHtml(s); }
   } catch {}
 
   await loadUser();
-  requestActiveTabState();
+  refreshActiveTab();
   render();
 })();

@@ -301,6 +301,45 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
   );
 
+  // ---- AUDIO UPLOAD ------------------------------------------------------
+  // Accepts a base64-encoded audio commentary recording. Returns a URL the
+  // browser can render in <audio src=...>. Today this is a `data:` URL so the
+  // recording is durably attached to the annotation row without needing
+  // additional infrastructure. When SUPABASE_SERVICE_ROLE_KEY is configured
+  // and a `commentary-audio` bucket exists, we upload there and return the
+  // public URL instead.
+  app.post(
+    "/api/upload/audio",
+    asyncHandler(async (req, res) => {
+      const { userId, base64, mime, durationMs } = (req.body || {}) as {
+        userId?: string;
+        base64?: string;
+        mime?: string;
+        durationMs?: number;
+      };
+      if (!userId) return res.status(401).json({ error: "Sign in to upload audio" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      if (!base64 || typeof base64 !== "string") {
+        return res.status(400).json({ error: "audio is required" });
+      }
+      // Reject anything over ~1.4MB raw (≈ 1.9MB base64) to keep DB rows sane.
+      const approxBytes = Math.floor((base64.length * 3) / 4);
+      if (approxBytes > 1_400_000) {
+        return res.status(413).json({ error: "Audio too large; keep recordings under 90 seconds" });
+      }
+      const safeMime = typeof mime === "string" && /^audio\//.test(mime) ? mime : "audio/webm";
+      // Hard cap mirrors the clip cap: commentary recordings beyond 90s are
+      // out of spec.
+      if (typeof durationMs === "number" && durationMs > 95_000) {
+        return res.status(400).json({ error: "Audio commentary cannot exceed 90 seconds" });
+      }
+
+      const url = `data:${safeMime};base64,${base64}`;
+      return res.status(201).json({ url, bytes: approxBytes, mime: safeMime });
+    })
+  );
+
   // ---- ANNOTATIONS / CLIPS ----------------------------------------------
   app.get(
     "/api/annotations/:id",

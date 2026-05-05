@@ -80,15 +80,22 @@
 
     <template id="clip-view">
       <section class="view">
-        <div class="page-card">
+        <div class="page-card" data-page-card>
           <div class="page-card-meta">
             <span class="badge" data-badge>Detecting…</span>
             <span class="muted small" data-host></span>
+            <button class="link-mini" type="button" data-refresh-tab title="Re-detect current tab">↻</button>
           </div>
-          <div class="page-card-title" data-title>—</div>
+          <div class="page-card-title" data-title>Open Annotated on a tab to detect a source</div>
           <div class="page-card-author muted small" data-author></div>
           <a class="source-link" data-source-link target="_blank" rel="noopener noreferrer">View source ↗</a>
         </div>
+
+        <details class="manual-url" data-manual-source>
+          <summary>Use a different URL</summary>
+          <input type="url" data-source-url placeholder="https://example.com/article-or-video" />
+          <input type="text" data-manual-title placeholder="Title (optional)" />
+        </details>
 
         <div class="clip-section" data-clip-section>
           <!-- Clip-type-specific UI injected here -->
@@ -97,14 +104,34 @@
         <div class="commentary-section">
           <label class="label">Your commentary</label>
           <textarea data-commentary placeholder="Why does this matter?" rows="3"></textarea>
-          <div class="audio-recorder">
-            <button class="btn btn-ghost" data-record-toggle>
-              <span class="dot" data-record-dot></span>
-              <span data-record-label>Record audio</span>
-            </button>
-            <span data-record-time class="muted small mono"></span>
+
+          <div class="recorder" data-recorder>
+            <div class="recorder-row">
+              <button class="btn btn-ghost btn-sm" type="button" data-record-toggle>
+                <span class="dot" data-record-dot aria-hidden="true"></span>
+                <span data-record-label>Record audio commentary</span>
+              </button>
+              <span data-record-time class="muted small mono">0:00 / 1:30</span>
+            </div>
+            <audio data-audio-preview controls hidden></audio>
+            <div class="recorder-actions" data-recorder-actions hidden>
+              <button class="btn btn-ghost btn-sm" type="button" data-record-discard>Discard</button>
+              <span class="muted small" data-record-attached>Audio attached to publish ✓</span>
+            </div>
+            <div class="recorder-error" data-record-error hidden>
+              <strong>Microphone access blocked.</strong>
+              <span data-record-error-msg></span>
+              <p class="muted small">
+                Click the lock icon next to the URL bar in any tab and set
+                Microphone to Allow for the Annotated extension, or visit
+                <code>chrome://settings/content/microphone</code>.
+              </p>
+              <div class="recorder-error-actions">
+                <button class="btn btn-outline btn-sm" type="button" data-record-open-settings>Open mic settings</button>
+                <button class="btn btn-ghost btn-sm" type="button" data-record-retry>Try again</button>
+              </div>
+            </div>
           </div>
-          <audio data-audio-preview controls hidden></audio>
         </div>
 
         <div class="actions">
