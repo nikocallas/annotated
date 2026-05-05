@@ -242,29 +242,97 @@
   }, 2500);
 
   // ---- Text selections ---------------------------------------------------
+  // Capture text the user highlights on the page and forward it to the side
+  // panel so it can auto-populate the article/quote field. We listen on
+  // multiple events so plain mouse drags, keyboard selections, double/triple
+  // clicks, touch selections, and edits inside an <input>/<textarea> all
+  // surface. Shadow DOM is best-effort: window.getSelection() in shadow roots
+  // is generally not exposed, but selections in light DOM still work.
 
-  let selectionTimeout;
-  document.addEventListener("mouseup", () => {
-    clearTimeout(selectionTimeout);
-    selectionTimeout = setTimeout(() => {
-      const sel = window.getSelection?.();
-      if (!sel) return;
-      const text = sel.toString().trim();
-      if (text.length < 4) return;
+  function getSelectionText() {
+    // Prefer activeElement selection inside <input>/<textarea> — these are
+    // not reflected in window.getSelection().
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === "TEXTAREA" || (ae.tagName === "INPUT" && /^(text|search|url|email)$/i.test(ae.type)))) {
       try {
-        chrome.runtime.sendMessage({
-          type: "TEXT_SELECTED",
-          data: { text, url: location.href, title: document.title },
-        });
+        const start = ae.selectionStart;
+        const end = ae.selectionEnd;
+        if (start != null && end != null && end > start) {
+          return (ae.value || "").slice(start, end);
+        }
       } catch {}
-    }, 80);
-  });
+    }
+    const sel = window.getSelection?.();
+    if (!sel) return "";
+    return sel.toString();
+  }
+
+  let lastSentSelection = "";
+  let selectionTimeout;
+  function pushSelection(reason) {
+    const raw = getSelectionText();
+    const text = (raw || "").replace(/\s+\n/g, "\n").trim();
+    if (text.length < 2) return;
+    if (text === lastSentSelection) return;
+    lastSentSelection = text;
+    try {
+      chrome.runtime.sendMessage({
+        type: "TEXT_SELECTED",
+        data: {
+          text,
+          url: location.href,
+          title: document.title,
+          reason: reason || "selection",
+          capturedAt: Date.now(),
+        },
+      });
+    } catch {}
+  }
+
+  function scheduleSelectionPush(reason, delay = 80) {
+    clearTimeout(selectionTimeout);
+    selectionTimeout = setTimeout(() => pushSelection(reason), delay);
+  }
+
+  // Mouse / touch — wait for the user to release before reading the selection.
+  document.addEventListener("mouseup", () => scheduleSelectionPush("mouseup", 60));
+  document.addEventListener("touchend", () => scheduleSelectionPush("touchend", 80), { passive: true });
+
+  // Keyboard selections (Shift+arrow, Ctrl/Cmd+A, etc.) — listen on selectionchange
+  // which fires for all selection updates. Throttle to avoid flooding while
+  // the user holds Shift+arrow.
+  document.addEventListener("selectionchange", () => scheduleSelectionPush("selectionchange", 220));
+
+  // Double-click word selection lands faster via a dblclick listener.
+  document.addEventListener("dblclick", () => scheduleSelectionPush("dblclick", 30));
+
+  // Side-panel asking us for whatever's currently highlighted (the "import
+  // selection" button). Reply with current selection synchronously and also
+  // push it through the normal channel.
+  function getCurrentSelectionPayload() {
+    const raw = getSelectionText();
+    const text = (raw || "").replace(/\s+\n/g, "\n").trim();
+    return {
+      text,
+      url: location.href,
+      title: document.title,
+      capturedAt: Date.now(),
+    };
+  }
 
   // ---- Side-panel commands ----------------------------------------------
 
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg?.type === "REQUEST_PAGE_META") {
       send();
+      return false;
+    }
+    if (msg?.type === "REQUEST_SELECTION") {
+      const payload = getCurrentSelectionPayload();
+      // Force-resend even if it matches lastSentSelection so the side panel
+      // can override its manual-edit guard when the user explicitly asks.
+      lastSentSelection = "";
+      sendResponse(payload);
       return false;
     }
     if (msg?.type === "GET_MEDIA_TIME") {

@@ -55,7 +55,12 @@ const state = {
   // Clip range (seconds). null until user/source provides them.
   clipRange: { start: 0, end: 30, userTouched: false, lastSourceUrl: "" },
   // Form state — preserved across re-renders so the preview can stay live.
-  form: { commentary: "", clipText: "" },
+  // clipTextFromSelection mirrors the last text we auto-imported from the
+  // page selection. clipTextEdited flips true the first time the user types
+  // or pastes after that import; until then, fresh selections may overwrite
+  // the field. After an edit we leave their text alone unless they hit the
+  // "Import selection" button.
+  form: { commentary: "", clipText: "", clipTextFromSelection: "", clipTextEdited: false },
   // Publish lifecycle
   publish: {
     status: "idle", // idle | publishing | published
@@ -198,6 +203,11 @@ if (isExtension()) {
       if (msg.data?.url && msg.data.url !== state.clipRange.lastSourceUrl) {
         state.clipRange.lastSourceUrl = msg.data.url;
         state.clipRange.userTouched = false;
+        // New source — clear the auto-imported selection guard so the next
+        // highlight on this page will populate the field.
+        state.form.clipTextFromSelection = "";
+        state.form.clipTextEdited = false;
+        state.selection = null;
         seedClipRangeFromMeta();
         // If we're showing a "Published!" confirmation and the source changed,
         // reset back to clipping.
@@ -259,12 +269,7 @@ if (isExtension()) {
     }
     if (msg?.type === "TEXT_SELECTION_UPDATE") {
       state.selection = msg.data;
-      const ta = document.querySelector("[data-clip-text]");
-      if (ta && !ta.value.trim() && msg.data?.text) {
-        ta.value = msg.data.text;
-        state.form.clipText = msg.data.text;
-        patchPreviewCard();
-      }
+      applySelectionToClipText(msg.data?.text || "", { force: false });
     }
     if (msg?.type === "RECORDER_AUTO_STOPPED") {
       toast("Recording reached 90s limit");
@@ -437,25 +442,102 @@ function renderClip() {
   return node;
 }
 
-function renderArticleClip() {
+// Apply an incoming page selection to the clip-text field. Honors the
+// manual-edit guard: if the user has edited/pasted in the field since the
+// last auto-import, we leave it alone unless `force` is true (e.g. the
+// "Import selection" button).
+function applySelectionToClipText(text, { force = false } = {}) {
+  const next = (text || "").trim();
+  if (!next) return;
+  // Don't clobber identical text — this avoids resetting the textarea on
+  // every selectionchange tick when the user is just hovering.
+  if (next === state.form.clipTextFromSelection && next === state.form.clipText) return;
+  if (state.form.clipTextEdited && !force) return;
+  state.form.clipText = next;
+  state.form.clipTextFromSelection = next;
+  state.form.clipTextEdited = false;
+  const ta = document.querySelector("[data-clip-text]");
+  if (ta) {
+    ta.value = next;
+    // Scroll to top so the start of the passage is visible after import.
+    ta.scrollTop = 0;
+  }
+  const status = document.querySelector("[data-clip-text-status]");
+  if (status) status.textContent = "Imported from page selection";
+  patchPreviewCard();
+}
+
+async function importSelectionFromActiveTab() {
+  const status = document.querySelector("[data-clip-text-status]");
+  if (status) status.textContent = "Reading selection…";
+  const resp = await sendBg({ type: "REQUEST_SELECTION" });
+  const text = resp?.selection?.text || "";
+  if (!text) {
+    if (status) {
+      status.textContent = resp?.error === "restricted_page"
+        ? "This page can't be read by extensions. Paste the passage instead."
+        : "No text is highlighted on the page. Highlight a passage and try again.";
+    }
+    return;
+  }
+  if (resp?.selection?.url) {
+    state.selection = resp.selection;
+  }
+  applySelectionToClipText(text, { force: true });
+}
+
+function buildClipTextField({ rows = 6, placeholder = "Highlight text on the page, or paste it here…" } = {}) {
   const wrap = document.createElement("div");
   wrap.className = "clip-flex";
   const initial = state.form.clipText || state.selection?.text || "";
   wrap.innerHTML = `
-    <label class="label">Highlighted passage</label>
-    <textarea data-clip-text rows="5" placeholder="Highlight text on the page, or paste it here…"></textarea>
-    <p class="muted small">Tip: select text on the page — it appears here automatically.</p>
+    <div class="clip-text-head">
+      <label class="label" for="clip-text-area">Highlighted passage</label>
+      <button class="link-mini wide" type="button" data-import-selection title="Pull the current page selection into this field">
+        ↧ Import selection
+      </button>
+    </div>
+    <textarea id="clip-text-area" data-clip-text rows="${rows}" placeholder="${placeholder}"></textarea>
+    <p class="muted small clip-text-status" data-clip-text-status>
+      Highlight text on the page — it appears here automatically. Long text scrolls inside this box.
+    </p>
   `;
   const ta = $("[data-clip-text]", wrap);
   if (initial) {
     ta.value = initial;
     state.form.clipText = initial;
+    if (!state.form.clipTextFromSelection && state.selection?.text === initial) {
+      state.form.clipTextFromSelection = initial;
+    }
   }
   ta.addEventListener("input", () => {
     state.form.clipText = ta.value;
+    // Any input that diverges from the last imported selection counts as a
+    // manual edit, which freezes auto-import for this clip session.
+    state.form.clipTextEdited = ta.value !== state.form.clipTextFromSelection;
+    const status = $("[data-clip-text-status]", wrap);
+    if (status && state.form.clipTextEdited) {
+      status.textContent = "Edited — auto-import paused. Click ↧ Import selection to overwrite with the page highlight.";
+    }
     patchPreviewCard();
   });
+  ta.addEventListener("paste", () => {
+    // A paste counts as a manual edit on the next input tick.
+    setTimeout(() => {
+      state.form.clipText = ta.value;
+      state.form.clipTextEdited = ta.value !== state.form.clipTextFromSelection;
+      patchPreviewCard();
+    }, 0);
+  });
+  $("[data-import-selection]", wrap).addEventListener("click", (e) => {
+    e.preventDefault();
+    importSelectionFromActiveTab();
+  });
   return wrap;
+}
+
+function renderArticleClip() {
+  return buildClipTextField({ rows: 6 });
 }
 
 // Build the dual-handle range slider for video/podcast clips.
@@ -772,21 +854,15 @@ function patchRangeInputs() {
 function renderUnknownClip() {
   const wrap = document.createElement("div");
   wrap.className = "clip-flex";
-  wrap.innerHTML = `
-    <label class="label">No supported source detected</label>
-    <p class="muted small">
-      Open a YouTube video, podcast, article, or X post in another tab — the side
-      panel will pick it up automatically. Or expand <em>Use a different URL</em>
-      above and paste a link.
-    </p>
-    <textarea data-clip-text rows="3" placeholder="Or paste an article passage to clip"></textarea>
+  const intro = document.createElement("p");
+  intro.className = "muted small";
+  intro.innerHTML = `
+    Open a YouTube video, podcast, article, or X post in another tab — the
+    side panel will pick it up automatically. You can also paste a passage
+    below, or expand <em>Use a different URL</em> above and paste a link.
   `;
-  const ta = $("[data-clip-text]", wrap);
-  ta.value = state.form.clipText || "";
-  ta.addEventListener("input", () => {
-    state.form.clipText = ta.value;
-    patchPreviewCard();
-  });
+  wrap.appendChild(intro);
+  wrap.appendChild(buildClipTextField({ rows: 4, placeholder: "Paste a passage to clip" }));
   return wrap;
 }
 
@@ -1056,8 +1132,9 @@ function fillPreviewCard(card) {
   const quoteEl = $("[data-preview-quote]", card);
   if ((m.sourceType === "article" || m.sourceType === "unknown") && m.clipText) {
     quoteEl.hidden = false;
-    const trimmed = m.clipText.length > 200 ? `${m.clipText.slice(0, 200)}…` : m.clipText;
-    quoteEl.textContent = `"${trimmed}"`;
+    // Show the full passage — the .preview-quote CSS caps height and
+    // scrolls so the user can review without leaving the sidebar.
+    quoteEl.textContent = `"${m.clipText}"`;
   } else {
     quoteEl.hidden = true;
   }
@@ -1189,6 +1266,9 @@ function resetPublishState() {
   state.audio = null;
   state.form.commentary = "";
   state.form.clipText = "";
+  state.form.clipTextFromSelection = "";
+  state.form.clipTextEdited = false;
+  state.selection = null;
   state.clipRange.userTouched = false;
   seedClipRangeFromMeta();
   if (state.tab === "clip" && !state.detailId) {

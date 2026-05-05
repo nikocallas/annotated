@@ -242,6 +242,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "REQUEST_SELECTION") {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const active = tabs[0];
+        if (!active?.id) return sendResponse({ ok: false, error: "no_active_tab" });
+        const injected = await ensureContentScript(active.id);
+        if (!injected) return sendResponse({ ok: false, error: "restricted_page" });
+        const resp = await chrome.tabs
+          .sendMessage(active.id, { type: "REQUEST_SELECTION" })
+          .catch((err) => ({ ok: false, error: err?.message || "send_failed" }));
+        if (resp && typeof resp === "object" && resp.text != null) {
+          // Cache it so subsequent GET_ACTIVE_TAB_STATE returns it.
+          tabState.set(active.id, { ...(tabState.get(active.id) ?? {}), selection: resp });
+        }
+        sendResponse({ ok: true, selection: resp });
+      } catch (err) {
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type === "INJECT_ACTIVE_TAB") {
     (async () => {
       const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
