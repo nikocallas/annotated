@@ -156,4 +156,12 @@ async function doSeed() {
     userId: u3.id,
     body: "The cost-of-switching framing is the part I always lose people on. Glad someone said it cleanly.",
   });
+
+  // Seed some view counts so the "Most viewed clip" rail has signal in dev/demo.
+  // a1 is the platform top in this demo.
+  await storage.updateAnnotation(a1.id, { viewCount: 4823 } as Partial<typeof a1>);
+  await storage.updateAnnotation(a2.id, { viewCount: 1290 } as Partial<typeof a2>);
+  await storage.updateAnnotation(a3.id, { viewCount: 814 } as Partial<typeof a3>);
+  await storage.updateAnnotation(a4.id, { viewCount: 612 } as Partial<typeof a4>);
+  await storage.updateAnnotation(a5.id, { viewCount: 305 } as Partial<typeof a5>);
 }

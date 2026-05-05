@@ -1,16 +1,106 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useState } from "react";
 import type { AnnotationWithRelations } from "@shared/schema";
+import { useMutation } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
-import { SourceBadge, formatRange, timeAgo, hostname } from "./SourceBadge";
-import { ExternalLink, MessageCircle, Mic } from "lucide-react";
+import { SourceBadge, timeAgo, hostname } from "./SourceBadge";
+import { MessageCircle, Mic, Bookmark, Share2 } from "lucide-react";
+import { SiX } from "react-icons/si";
 import { ClipPreview } from "./ClipPreview";
-import { FollowButton } from "./FollowButton";
+import { useAuth } from "@/lib/auth-context";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
-export function FeedCard({ annotation }: { annotation: AnnotationWithRelations }) {
+interface FeedCardProps {
+  annotation: AnnotationWithRelations;
+  bookmarked?: boolean;
+}
+
+export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
   const a = annotation;
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [optimisticBookmarked, setOptimisticBookmarked] = useState<boolean | null>(null);
+  const isBookmarked = optimisticBookmarked ?? !!bookmarked;
+
+  const bookmarkMutation = useMutation({
+    mutationFn: async (action: "bookmark" | "unbookmark") => {
+      if (!user) return;
+      const method = action === "bookmark" ? "POST" : "DELETE";
+      await apiRequest(method, `/api/annotations/${a.id}/bookmark`, { userId: user.id });
+    },
+    onSuccess: (_data, action) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookmarks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookmarks/ids", { userId: user?.id ?? "" }] });
+      toast({
+        title: action === "bookmark" ? "Bookmarked" : "Bookmark removed",
+        description: a.sourceTitle ?? undefined,
+      });
+    },
+    onError: (err: unknown) => {
+      // revert optimistic state
+      setOptimisticBookmarked((prev) => (prev === null ? prev : !prev));
+      const message = err instanceof Error ? err.message : "Couldn't update bookmark";
+      toast({ title: "Couldn't update bookmark", description: message, variant: "destructive" });
+    },
+  });
+
+  const annotationUrl = typeof window !== "undefined"
+    ? `${window.location.origin}/a/${a.id}`
+    : `/a/${a.id}`;
+  const shareTitle = a.sourceTitle ?? "Annotated clip";
+  const shareText = a.commentaryText
+    ? `${shareTitle} — ${a.commentaryText.slice(0, 140)}`
+    : shareTitle;
+
+  const handleBookmark = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!user) {
+      toast({ title: "Sign in to bookmark", description: "Use X or Google to save clips." });
+      setLocation("/login");
+      return;
+    }
+    const next = !isBookmarked;
+    setOptimisticBookmarked(next);
+    bookmarkMutation.mutate(next ? "bookmark" : "unbookmark");
+  };
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const navAny = typeof navigator !== "undefined" ? (navigator as Navigator & { share?: (data: ShareData) => Promise<void> }) : null;
+    if (navAny?.share) {
+      try {
+        await navAny.share({ title: shareTitle, text: shareText, url: annotationUrl });
+        return;
+      } catch {
+        // user cancelled or share failed — fall through to clipboard
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(annotationUrl);
+      toast({ title: "Link copied", description: annotationUrl });
+    } catch {
+      toast({ title: "Couldn't copy", description: annotationUrl, variant: "destructive" });
+    }
+  };
+
+  const handlePostOnX = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const text = `${shareTitle} — clipped on @annotated`;
+    const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(annotationUrl)}`;
+    window.open(intent, "_blank", "noopener,noreferrer");
+  };
+
   return (
-    <Card className="overflow-hidden border-card-border bg-card hover-elevate" data-testid={`card-annotation-${a.id}`}>
+    <Card
+      className="overflow-hidden border-card-border bg-card hover-elevate"
+      data-testid={`card-annotation-${a.id}`}
+    >
       <Link href={`/a/${a.id}`} className="block">
         <div className="p-5 flex flex-col gap-4">
           <div className="flex items-center gap-3">
@@ -28,7 +118,6 @@ export function FeedCard({ annotation }: { annotation: AnnotationWithRelations }
               <div className="text-xs text-muted-foreground">{timeAgo(a.createdAt)}</div>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <FollowButton targetUserId={a.user.id} targetUsername={a.user.username} />
               <SourceBadge type={a.sourceType} />
             </div>
           </div>
@@ -55,28 +144,52 @@ export function FeedCard({ annotation }: { annotation: AnnotationWithRelations }
           )}
 
           {/* Footer */}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground pt-1">
-            <span className="inline-flex items-center gap-1">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground pt-1 border-t border-card-border/60 -mx-5 -mb-5 mt-1 px-3 py-2">
+            <span className="inline-flex items-center gap-1 px-2">
               <MessageCircle className="w-3.5 h-3.5" />
-              {a.commentCount} {a.commentCount === 1 ? "comment" : "comments"}
+              {a.commentCount} {a.commentCount === 1 ? "note" : "notes"}
             </span>
             {a.commentaryAudioUrl && (
-              <span className="inline-flex items-center gap-1">
+              <span className="inline-flex items-center gap-1 px-2">
                 <Mic className="w-3.5 h-3.5" />
-                Audio commentary
+                Audio
               </span>
             )}
-            <a
-              href={a.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto inline-flex items-center gap-1 text-primary hover:underline"
-              onClick={(e) => e.stopPropagation()}
-              data-testid={`link-source-${a.id}`}
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Source
-            </a>
+            <div className="ml-auto flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={handleBookmark}
+                aria-pressed={isBookmarked}
+                aria-label={isBookmarked ? "Remove bookmark" : "Bookmark"}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover-elevate text-xs ${
+                  isBookmarked ? "text-primary" : ""
+                }`}
+                data-testid={`button-bookmark-${a.id}`}
+              >
+                <Bookmark className={`w-3.5 h-3.5 ${isBookmarked ? "fill-current" : ""}`} />
+                {isBookmarked ? "Marked" : "Mark"}
+              </button>
+              <button
+                type="button"
+                onClick={handlePostOnX}
+                aria-label="Post on X"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover-elevate text-xs"
+                data-testid={`button-post-x-${a.id}`}
+              >
+                <SiX className="w-3 h-3" />
+                Post
+              </button>
+              <button
+                type="button"
+                onClick={handleShare}
+                aria-label="Share"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover-elevate text-xs"
+                data-testid={`button-share-${a.id}`}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                Share
+              </button>
+            </div>
           </div>
         </div>
       </Link>

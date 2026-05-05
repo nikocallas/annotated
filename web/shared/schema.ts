@@ -52,8 +52,19 @@ export const annotations = sqliteTable("annotations", {
   commentaryAudioUrl: text("commentary_audio_url"),
   // Meta
   isPublic: integer("is_public").notNull().default(1),
+  viewCount: integer("view_count").notNull().default(0),
   createdAt: integer("created_at").notNull(),
 });
+
+// BOOKMARKS — a user has saved an annotation for later
+export const bookmarks = sqliteTable("bookmarks", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  annotationId: text("annotation_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
+
+export type Bookmark = typeof bookmarks.$inferSelect;
 
 export const insertAnnotationSchema = createInsertSchema(annotations)
   .omit({ id: true, createdAt: true, clipStatus: true, clipMediaUrl: true })

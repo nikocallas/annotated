@@ -9,6 +9,7 @@ import {
   type Claim,
   type InsertClaim,
   type AnnotationWithRelations,
+  type Bookmark,
 } from "@shared/schema";
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -62,6 +63,17 @@ export interface IStorage {
   // Claims
   createClaim(input: InsertClaim): Promise<Claim>;
   listClaimsForAnnotation(annotationId: string): Promise<Claim[]>;
+
+  // Bookmarks
+  bookmark(userId: string, annotationId: string): Promise<void>;
+  unbookmark(userId: string, annotationId: string): Promise<void>;
+  isBookmarked(userId: string, annotationId: string): Promise<boolean>;
+  listBookmarkedAnnotations(userId: string): Promise<AnnotationWithRelations[]>;
+  listBookmarkIdsForUser(userId: string): Promise<string[]>;
+
+  // View count
+  incrementViewCount(annotationId: string): Promise<number>;
+  getMostViewedAnnotation(): Promise<AnnotationWithRelations | undefined>;
 }
 
 // ---------- Row shape helpers (snake_case ↔ camelCase) -----------------------
@@ -123,6 +135,7 @@ type AnnotationRow = {
   commentary_text: string | null;
   commentary_audio_url: string | null;
   is_public: number;
+  view_count?: number | null;
   created_at: number;
 };
 
@@ -144,6 +157,7 @@ function annotationFromRow(r: AnnotationRow): Annotation {
     commentaryText: r.commentary_text,
     commentaryAudioUrl: r.commentary_audio_url,
     isPublic: r.is_public,
+    viewCount: Number(r.view_count ?? 0),
     createdAt: Number(r.created_at),
   };
 }
@@ -166,6 +180,7 @@ function annotationToRow(a: Annotation): AnnotationRow {
     commentary_text: a.commentaryText ?? null,
     commentary_audio_url: a.commentaryAudioUrl ?? null,
     is_public: a.isPublic,
+    view_count: a.viewCount ?? 0,
     created_at: a.createdAt,
   };
 }
@@ -352,6 +367,7 @@ export class SupabaseStorage implements IStorage {
       commentaryText: input.commentaryText ?? null,
       commentaryAudioUrl: input.commentaryAudioUrl ?? null,
       isPublic: input.isPublic ?? 1,
+      viewCount: 0,
       userId: input.userId,
       sourceUrl: input.sourceUrl,
       sourceType: input.sourceType,
@@ -367,6 +383,7 @@ export class SupabaseStorage implements IStorage {
     if ("commentaryText" in patch) update.commentary_text = patch.commentaryText ?? null;
     if ("commentaryAudioUrl" in patch) update.commentary_audio_url = patch.commentaryAudioUrl ?? null;
     if ("isPublic" in patch && typeof patch.isPublic === "number") update.is_public = patch.isPublic;
+    if ("viewCount" in patch && typeof patch.viewCount === "number") update.view_count = patch.viewCount;
     if (Object.keys(update).length) {
       const { error } = await this.client.from("annotations").update(update).eq("id", id);
       if (error) throw error;
@@ -498,6 +515,121 @@ export class SupabaseStorage implements IStorage {
     if (error) throw error;
     return (data ?? []).map((r) => claimFromRow(r as ClaimRow));
   }
+
+  async bookmark(userId: string, annotationId: string) {
+    const { data: existing } = await this.client
+      .from("bookmarks")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("annotation_id", annotationId)
+      .maybeSingle();
+    if (existing) return;
+    const { error } = await this.client.from("bookmarks").insert({
+      id: randomUUID(),
+      user_id: userId,
+      annotation_id: annotationId,
+      created_at: now(),
+    });
+    if (error) throw error;
+  }
+  async unbookmark(userId: string, annotationId: string) {
+    const { error } = await this.client
+      .from("bookmarks")
+      .delete()
+      .eq("user_id", userId)
+      .eq("annotation_id", annotationId);
+    if (error) throw error;
+  }
+  async isBookmarked(userId: string, annotationId: string) {
+    const { data, error } = await this.client
+      .from("bookmarks")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("annotation_id", annotationId)
+      .maybeSingle();
+    if (error) throw error;
+    return !!data;
+  }
+  async listBookmarkIdsForUser(userId: string) {
+    const { data, error } = await this.client
+      .from("bookmarks")
+      .select("annotation_id")
+      .eq("user_id", userId);
+    if (error) throw error;
+    return (data ?? []).map((r: { annotation_id: string }) => r.annotation_id);
+  }
+  async listBookmarkedAnnotations(userId: string) {
+    const ids = await this.listBookmarkIdsForUser(userId);
+    if (ids.length === 0) return [];
+    const { data, error } = await this.client
+      .from("annotations")
+      .select("*")
+      .in("id", ids)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    const rows = (data ?? []).map((r) => annotationFromRow(r as AnnotationRow));
+    if (rows.length === 0) return [];
+    const userIds = Array.from(new Set(rows.map((r) => r.userId)));
+    const { data: userRows } = await this.client.from("users").select("*").in("id", userIds);
+    const userMap = new Map(
+      (userRows ?? []).map((r) => {
+        const u = userFromRow(r as UserRow);
+        return [u.id, u] as const;
+      })
+    );
+    const annIds = rows.map((r) => r.id);
+    const { data: countRows } = await this.client
+      .from("comments")
+      .select("annotation_id")
+      .in("annotation_id", annIds);
+    const countMap = new Map<string, number>();
+    for (const row of countRows ?? []) {
+      const aid = (row as { annotation_id: string }).annotation_id;
+      countMap.set(aid, (countMap.get(aid) ?? 0) + 1);
+    }
+    return rows
+      .filter((r) => userMap.has(r.userId))
+      .map((r) => ({ ...r, user: userMap.get(r.userId)!, commentCount: countMap.get(r.id) ?? 0 }));
+  }
+
+  async incrementViewCount(annotationId: string) {
+    // Best-effort increment. Read-modify-write is racy under concurrent load,
+    // but Supabase doesn't expose atomic increments via the JS client without
+    // an RPC; for view counters this is acceptable.
+    const { data, error } = await this.client
+      .from("annotations")
+      .select("view_count")
+      .eq("id", annotationId)
+      .maybeSingle();
+    if (error) throw error;
+    const current = Number((data as { view_count?: number } | null)?.view_count ?? 0);
+    const next = current + 1;
+    const { error: uErr } = await this.client
+      .from("annotations")
+      .update({ view_count: next })
+      .eq("id", annotationId);
+    if (uErr) throw uErr;
+    return next;
+  }
+  async getMostViewedAnnotation() {
+    const { data, error } = await this.client
+      .from("annotations")
+      .select("*")
+      .eq("is_public", 1)
+      .order("view_count", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return undefined;
+    const ann = annotationFromRow(data as AnnotationRow);
+    const user = await this.getUser(ann.userId);
+    if (!user) return undefined;
+    const { count } = await this.client
+      .from("comments")
+      .select("*", { count: "exact", head: true })
+      .eq("annotation_id", ann.id);
+    return { ...ann, user, commentCount: Number(count ?? 0) };
+  }
 }
 
 // ---------- In-memory fallback ----------------------------------------------
@@ -511,6 +643,7 @@ export class MemoryStorage implements IStorage {
   private annotations = new Map<string, Annotation>();
   private comments = new Map<string, Comment>();
   private claims = new Map<string, Claim>();
+  private bookmarks = new Map<string, Bookmark>();
 
   async getUser(id: string) {
     return this.users.get(id);
@@ -590,6 +723,7 @@ export class MemoryStorage implements IStorage {
       commentaryText: input.commentaryText ?? null,
       commentaryAudioUrl: input.commentaryAudioUrl ?? null,
       isPublic: input.isPublic ?? 1,
+      viewCount: 0,
       userId: input.userId,
       sourceUrl: input.sourceUrl,
       sourceType: input.sourceType,
@@ -667,6 +801,64 @@ export class MemoryStorage implements IStorage {
   }
   async listClaimsForAnnotation(annotationId: string) {
     return Array.from(this.claims.values()).filter((c) => c.annotationId === annotationId);
+  }
+
+  async bookmark(userId: string, annotationId: string) {
+    const dup = Array.from(this.bookmarks.values()).find(
+      (b) => b.userId === userId && b.annotationId === annotationId
+    );
+    if (dup) return;
+    const b: Bookmark = { id: randomUUID(), userId, annotationId, createdAt: now() };
+    this.bookmarks.set(b.id, b);
+  }
+  async unbookmark(userId: string, annotationId: string) {
+    for (const id of Array.from(this.bookmarks.keys())) {
+      const b = this.bookmarks.get(id)!;
+      if (b.userId === userId && b.annotationId === annotationId) this.bookmarks.delete(id);
+    }
+  }
+  async isBookmarked(userId: string, annotationId: string) {
+    return !!Array.from(this.bookmarks.values()).find(
+      (b) => b.userId === userId && b.annotationId === annotationId
+    );
+  }
+  async listBookmarkIdsForUser(userId: string) {
+    return Array.from(this.bookmarks.values())
+      .filter((b) => b.userId === userId)
+      .map((b) => b.annotationId);
+  }
+  async listBookmarkedAnnotations(userId: string) {
+    const ids = new Set(await this.listBookmarkIdsForUser(userId));
+    if (ids.size === 0) return [];
+    const rows = Array.from(this.annotations.values())
+      .filter((a) => ids.has(a.id))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    return rows
+      .filter((r) => this.users.has(r.userId))
+      .map((r) => ({
+        ...r,
+        user: this.users.get(r.userId)!,
+        commentCount: Array.from(this.comments.values()).filter((c) => c.annotationId === r.id).length,
+      }));
+  }
+
+  async incrementViewCount(annotationId: string) {
+    const cur = this.annotations.get(annotationId);
+    if (!cur) return 0;
+    const next = (cur.viewCount ?? 0) + 1;
+    this.annotations.set(annotationId, { ...cur, viewCount: next });
+    return next;
+  }
+  async getMostViewedAnnotation() {
+    const rows = Array.from(this.annotations.values())
+      .filter((a) => a.isPublic === 1)
+      .sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0));
+    const top = rows[0];
+    if (!top) return undefined;
+    const user = this.users.get(top.userId);
+    if (!user) return undefined;
+    const cc = Array.from(this.comments.values()).filter((c) => c.annotationId === top.id).length;
+    return { ...top, user, commentCount: cc };
   }
 }
 

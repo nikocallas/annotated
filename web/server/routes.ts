@@ -217,6 +217,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     })
   );
 
+  // Most-viewed annotation across the platform — surfaced on the feed right rail.
+  app.get(
+    "/api/feed/most-viewed",
+    asyncHandler(async (_req, res) => {
+      const top = await storage.getMostViewedAnnotation();
+      return res.json(top ?? null);
+    })
+  );
+
+  // ---- BOOKMARKS ---------------------------------------------------------
+  // Bookmarks are scoped per-user. The Express API uses unauthenticated
+  // request bodies to identify the actor (mirrors the existing follow API),
+  // so we accept userId in the body / query.
+  app.get(
+    "/api/bookmarks",
+    asyncHandler(async (req, res) => {
+      const userId = (req.query.userId as string) || "";
+      if (!userId) return res.json([]);
+      const list = await storage.listBookmarkedAnnotations(userId);
+      return res.json(list);
+    })
+  );
+
+  app.get(
+    "/api/bookmarks/ids",
+    asyncHandler(async (req, res) => {
+      const userId = (req.query.userId as string) || "";
+      if (!userId) return res.json({ ids: [] });
+      const ids = await storage.listBookmarkIdsForUser(userId);
+      return res.json({ ids });
+    })
+  );
+
+  app.post(
+    "/api/annotations/:id/bookmark",
+    asyncHandler(async (req, res) => {
+      const userId = (req.body?.userId as string) || "";
+      if (!userId) return res.status(400).json({ error: "userId required" });
+      await storage.bookmark(userId, String(req.params.id));
+      return res.json({ ok: true, bookmarked: true });
+    })
+  );
+
+  app.delete(
+    "/api/annotations/:id/bookmark",
+    asyncHandler(async (req, res) => {
+      const userId = (req.body?.userId as string) || (req.query.userId as string) || "";
+      if (!userId) return res.status(400).json({ error: "userId required" });
+      await storage.unbookmark(userId, String(req.params.id));
+      return res.json({ ok: true, bookmarked: false });
+    })
+  );
+
+  // Lightweight, anonymous view increment. Front-end calls this when a card
+  // becomes visible / a clip is opened. No auth required — view counts are
+  // public signal and not abuse-sensitive in this product.
+  app.post(
+    "/api/annotations/:id/view",
+    asyncHandler(async (req, res) => {
+      const next = await storage.incrementViewCount(String(req.params.id));
+      return res.json({ viewCount: next });
+    })
+  );
+
   // ---- ANNOTATIONS / CLIPS ----------------------------------------------
   app.get(
     "/api/annotations/:id",
