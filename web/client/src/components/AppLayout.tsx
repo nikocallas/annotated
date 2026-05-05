@@ -132,6 +132,7 @@ export function AppLayout({
           <DownloadExtensionButton size="sm" />
           <div className="flex gap-4 flex-wrap">
             <a href="/" className="hover:text-foreground">Home</a>
+            <a href="/demo" className="hover:text-foreground" data-testid="link-footer-demo">Demo Video</a>
             <a href="/support" className="hover:text-foreground" data-testid="link-footer-support">Support</a>
             <a href="/privacy" className="hover:text-foreground" data-testid="link-footer-privacy">Privacy</a>
             <a href="/tos" className="hover:text-foreground" data-testid="link-footer-tos">Terms</a>

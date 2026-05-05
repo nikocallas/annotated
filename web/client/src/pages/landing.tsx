@@ -62,6 +62,7 @@ export default function LandingPage() {
           <DownloadExtensionButton size="sm" />
           <div className="flex gap-5 flex-wrap">
             <a href="/feed" className="hover:text-foreground">Feed</a>
+            <a href="/demo" className="hover:text-foreground">Demo Video</a>
             <a href="/support" className="hover:text-foreground">Support</a>
             <a href="/privacy" className="hover:text-foreground">Privacy</a>
             <a href="/tos" className="hover:text-foreground">Terms</a>

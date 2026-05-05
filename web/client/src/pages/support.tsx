@@ -264,6 +264,7 @@ export default function SupportPage() {
           <div className="flex gap-4 flex-wrap">
             <a href="/" className="hover:text-foreground">Home</a>
             <a href="/feed" className="hover:text-foreground">Feed</a>
+            <a href="/demo" className="hover:text-foreground">Demo Video</a>
             <a href="/support" className="hover:text-foreground">Support</a>
             <a href="/privacy" className="hover:text-foreground">Privacy</a>
             <a href="/tos" className="hover:text-foreground">Terms</a>

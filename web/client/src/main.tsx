@@ -5,6 +5,7 @@ import PrivacyPage from "./pages/privacy";
 import TermsPage from "./pages/tos";
 import SupportPage from "./pages/support";
 import ClaimsPage from "./pages/claims";
+import DemoVideoPage from "./pages/demo-video";
 import AuthCallbackPage from "./pages/auth-callback";
 import { initThemeEarly } from "./lib/theme";
 import "./index.css";
@@ -45,6 +46,14 @@ if (path === "/privacy" || path === "/privacy/") {
 ) {
   document.title = "How claims work — Annotated";
   root.render(<ClaimsPage />);
+} else if (
+  path === "/demo" ||
+  path === "/demo/" ||
+  path === "/demo-video" ||
+  path === "/demo-video/"
+) {
+  document.title = "Demo Video — Annotated";
+  root.render(<DemoVideoPage />);
 } else if (path === "/auth/callback" || path === "/auth/callback/") {
   document.title = "Signing in — Annotated";
   root.render(<AuthCallbackPage />);
