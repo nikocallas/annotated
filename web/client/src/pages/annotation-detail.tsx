@@ -112,14 +112,14 @@ export default function AnnotationDetailPage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <AppLayout feedHeader>
         <div className="mx-auto max-w-[1200px] px-4 sm:px-6 py-10">Loading…</div>
       </AppLayout>
     );
   }
   if (!data) {
     return (
-      <AppLayout>
+      <AppLayout feedHeader>
         <div className="mx-auto max-w-[1200px] px-4 sm:px-6 py-10">
           <p className="text-muted-foreground">Annotation not found.</p>
         </div>
@@ -139,7 +139,7 @@ export default function AnnotationDetailPage() {
       : null;
 
   return (
-    <AppLayout>
+    <AppLayout feedHeader>
       <div
         className="mx-auto max-w-[1200px] px-4 sm:px-6 py-6 lg:py-8"
         data-testid={`page-annotation-${a.id}`}
