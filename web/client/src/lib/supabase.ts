@@ -22,6 +22,35 @@ export const supabase: SupabaseClient | null = supabaseConfigured
     })
   : null;
 
+// Production hosts where the deployed app lives. If we're running on one of
+// these, OAuth must come back to that exact origin — never localhost — even if
+// the page was somehow loaded with a different effective origin (proxy, etc.).
+const PRODUCTION_HOSTS = new Set([
+  "annotatedextension.com",
+  "www.annotatedextension.com",
+]);
+const CANONICAL_PRODUCTION_ORIGIN = "https://www.annotatedextension.com";
+
+// Build the OAuth callback URL Supabase should redirect back to. We always
+// prefer the current page's origin so local dev (localhost:5173, etc.) stays
+// working. In production builds we additionally guard against the origin
+// somehow resolving to localhost — that would dead-end users, since Supabase
+// echoes whatever Site URL is configured if redirectTo isn't allow-listed.
 export function getRedirectUrl(): string {
-  return `${window.location.origin}/auth/callback`;
+  const origin = window.location.origin;
+  const host = window.location.hostname;
+
+  if (PRODUCTION_HOSTS.has(host)) {
+    return `${origin}/auth/callback`;
+  }
+
+  // If we somehow ended up on a localhost origin in a non-dev build, fall back
+  // to the canonical production origin so users aren't dumped on a port that
+  // isn't running. import.meta.env.DEV is true only for `vite dev`.
+  const isDev = import.meta.env.DEV;
+  if (!isDev && (host === "localhost" || host === "127.0.0.1")) {
+    return `${CANONICAL_PRODUCTION_ORIGIN}/auth/callback`;
+  }
+
+  return `${origin}/auth/callback`;
 }

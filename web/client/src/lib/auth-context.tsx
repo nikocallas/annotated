@@ -74,9 +74,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(data.user);
       return;
     }
+    // For X (OAuth 2.0) we request users.read so Supabase can read the user
+    // profile. X/Twitter OAuth 2.0 does not expose email — that's why Supabase
+    // returns "Error getting user email from external provider" if the X app
+    // hasn't been set up to provide one. The auth-callback page surfaces a
+    // helpful message when this happens.
+    const scopes =
+      provider === "x"
+        ? "users.read tweet.read offline.access"
+        : "openid email profile";
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: getRedirectUrl() },
+      options: {
+        redirectTo: getRedirectUrl(),
+        scopes,
+      },
     });
     if (error) throw error;
     // Browser is redirected away to the OAuth provider here; nothing else to do.

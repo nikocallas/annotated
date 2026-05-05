@@ -109,19 +109,45 @@ OAuth.
 
 The web app uses Supabase Auth as the OAuth broker. To wire up real sign-in:
 
-1. In the Supabase dashboard, enable the **Google** and **Twitter** providers
-   under *Authentication → Providers* with the client IDs / secrets from the
-   respective developer consoles.
-2. Set the **Site URL** to `https://annotatedextension.com` and add
-   `https://annotatedextension.com/auth/callback` (plus any preview domain you
-   want to support) to the **Redirect URLs** allowlist.
+1. In the Supabase dashboard, enable the **Google** and **Twitter / X**
+   providers under *Authentication → Providers* with the client IDs /
+   secrets from the respective developer consoles.
+2. Set the **Site URL** to `https://www.annotatedextension.com` and add
+   **all** of the following to the **Redirect URLs** allowlist:
+   - `https://www.annotatedextension.com/auth/callback`
+   - `https://annotatedextension.com/auth/callback`
+   - `http://localhost:5000/auth/callback` and `http://localhost:5173/auth/callback` (only if you actively develop locally)
+   - any preview domain you want to support, e.g. `https://*.vercel.app/auth/callback`
+
+   If `redirectTo` doesn't match an entry on this list, Supabase silently
+   falls back to the **Site URL** — that's how a misconfigured project
+   ends up bouncing real users to `localhost:3000` after a successful
+   OAuth handshake. Keep the Site URL pointed at the production domain.
 3. In each provider's developer console, add the Supabase project's OAuth
    callback (e.g. `https://cpqmjujhcwpavrsjadjz.supabase.co/auth/v1/callback`)
    as an authorized redirect URI.
 
 The frontend always passes `${window.location.origin}/auth/callback` as the
-redirect target, so previews on `*.vercel.app` work as long as the URL is in
-Supabase's allowlist.
+redirect target on production hosts; if the origin somehow resolves to
+`localhost` in a non-dev build it falls back to the canonical
+`https://www.annotatedextension.com/auth/callback` (see
+`web/client/src/lib/supabase.ts`).
+
+#### X (Twitter) and email
+
+Supabase needs an email address to create a user. X's OAuth 2.0 flow does
+**not** include email by default — if you see
+`Error getting user email from external provider` in the callback URL, the
+X app needs to be set up to expose email:
+
+- Use the **Twitter (OAuth 1.0a)** provider in Supabase if you want email
+  by default, or
+- Configure the X (OAuth 2.0) app with the `users.email` scope (requires
+  Elevated access in the X developer portal) and add `users.email` to the
+  scopes the frontend requests.
+
+The app shows a tailored message and recommends Google sign-in when the X
+flow fails for this reason — see `web/client/src/pages/auth-callback.tsx`.
 
 ### 3. Deploy
 
