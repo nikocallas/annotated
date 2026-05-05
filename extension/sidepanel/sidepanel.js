@@ -478,12 +478,16 @@ function renderRangeClip(kind) {
     </div>
 
     <div class="range-fields">
-      <div>
+      <div class="time-stepper" data-time-stepper="start">
+        <button type="button" class="step-btn" data-step="start" data-dir="-1" aria-label="Decrease start by 1 second">−</button>
         <input class="time-input" type="text" inputmode="numeric" data-clip-start-mmss aria-label="Start (mm:ss)" />
+        <button type="button" class="step-btn" data-step="start" data-dir="1" aria-label="Increase start by 1 second">+</button>
       </div>
       <div class="dash">–</div>
-      <div>
+      <div class="time-stepper" data-time-stepper="end">
+        <button type="button" class="step-btn" data-step="end" data-dir="-1" aria-label="Decrease end by 1 second">−</button>
         <input class="time-input" type="text" inputmode="numeric" data-clip-end-mmss aria-label="End (mm:ss)" />
+        <button type="button" class="step-btn" data-step="end" data-dir="1" aria-label="Increase end by 1 second">+</button>
       </div>
       <div class="total">
         <span class="total-value mono" data-duration-value>${end - start}s</span>
@@ -570,16 +574,53 @@ function renderRangeClip(kind) {
     patchPreviewCard();
   }
 
-  function commitFromSlider() {
-    let s = Number(rangeStart.value);
-    let e = Number(rangeEnd.value);
-    if (e <= s) e = s + 1;
-    if (e - s > MAX_CLIP_SECONDS) e = s + MAX_CLIP_SECONDS;
-    state.clipRange.start = s;
-    state.clipRange.end = e;
-    state.clipRange.userTouched = true;
-    update();
+  // Throttle seek messages to the page so a fast drag doesn't flood the
+  // content script. The trailing call ensures the final position is honored.
+  let lastSeekAt = 0;
+  let pendingSeekTimer = null;
+  let pendingSeekTime = null;
+  function seekPage(time) {
+    pendingSeekTime = time;
+    const now = Date.now();
+    const elapsed = now - lastSeekAt;
+    const minGap = 90;
+    if (elapsed >= minGap) {
+      lastSeekAt = now;
+      const t = pendingSeekTime;
+      pendingSeekTime = null;
+      sendBg({ type: "SEEK_ACTIVE_TAB", time: t, play: false });
+      return;
+    }
+    if (pendingSeekTimer) return;
+    pendingSeekTimer = setTimeout(() => {
+      pendingSeekTimer = null;
+      if (pendingSeekTime == null) return;
+      lastSeekAt = Date.now();
+      const t = pendingSeekTime;
+      pendingSeekTime = null;
+      sendBg({ type: "SEEK_ACTIVE_TAB", time: t, play: false });
+    }, minGap - elapsed);
   }
+
+  function clampRange() {
+    if (state.clipRange.start < 0) state.clipRange.start = 0;
+    if (duration != null && state.clipRange.start > duration) {
+      state.clipRange.start = duration;
+    }
+    if (state.clipRange.end <= state.clipRange.start) {
+      state.clipRange.end = state.clipRange.start + 1;
+    }
+    if (state.clipRange.end - state.clipRange.start > MAX_CLIP_SECONDS) {
+      state.clipRange.end = state.clipRange.start + MAX_CLIP_SECONDS;
+    }
+    if (duration != null && state.clipRange.end > duration) {
+      state.clipRange.end = duration;
+      if (state.clipRange.start >= state.clipRange.end) {
+        state.clipRange.start = Math.max(0, state.clipRange.end - 1);
+      }
+    }
+  }
+
   rangeStart.addEventListener("input", () => {
     // Seek the page video as the user drags the start handle so they see
     // exactly where they are scrubbing.
@@ -587,19 +628,37 @@ function renderRangeClip(kind) {
     if (state.clipRange.end <= state.clipRange.start) {
       state.clipRange.end = state.clipRange.start + 1;
     }
+    if (state.clipRange.end - state.clipRange.start > MAX_CLIP_SECONDS) {
+      state.clipRange.end = state.clipRange.start + MAX_CLIP_SECONDS;
+    }
     state.clipRange.userTouched = true;
     update();
-    sendBg({ type: "SEEK_ACTIVE_TAB", time: state.clipRange.start, play: false });
+    seekPage(state.clipRange.start);
   });
   rangeEnd.addEventListener("input", () => {
     state.clipRange.end = Number(rangeEnd.value);
     if (state.clipRange.end <= state.clipRange.start) {
       state.clipRange.end = state.clipRange.start + 1;
     }
+    if (state.clipRange.end - state.clipRange.start > MAX_CLIP_SECONDS) {
+      state.clipRange.start = state.clipRange.end - MAX_CLIP_SECONDS;
+      if (state.clipRange.start < 0) state.clipRange.start = 0;
+    }
     state.clipRange.userTouched = true;
     update();
-    sendBg({ type: "SEEK_ACTIVE_TAB", time: state.clipRange.end, play: false });
+    seekPage(state.clipRange.end);
   });
+  // On release, send a final non-throttled seek to guarantee the page lands
+  // on the chosen value even if the trailing throttle is still pending.
+  function finalSeek(which) {
+    if (pendingSeekTimer) { clearTimeout(pendingSeekTimer); pendingSeekTimer = null; }
+    pendingSeekTime = null;
+    lastSeekAt = Date.now();
+    const t = which === "start" ? state.clipRange.start : state.clipRange.end;
+    sendBg({ type: "SEEK_ACTIVE_TAB", time: t, play: false });
+  }
+  rangeStart.addEventListener("change", () => finalSeek("start"));
+  rangeEnd.addEventListener("change", () => finalSeek("end"));
 
   function parseMmss(value) {
     if (!value) return null;
@@ -630,6 +689,25 @@ function renderRangeClip(kind) {
   endInput.addEventListener("change", () => commitMmss(endInput, "end"));
   startInput.addEventListener("blur", () => commitMmss(startInput, "start"));
   endInput.addEventListener("blur", () => commitMmss(endInput, "end"));
+
+  // +/- 1s nudge buttons next to start and end. Each click adjusts the
+  // boundary by exactly one second, clamps to 0/duration and the 90s cap,
+  // then seeks the page so the user previews the new position.
+  $$("[data-step]", wrap).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const which = btn.dataset.step; // "start" | "end"
+      const dir = Number(btn.dataset.dir); // 1 | -1
+      if (which === "start") {
+        state.clipRange.start = Math.floor(state.clipRange.start) + dir;
+      } else {
+        state.clipRange.end = Math.floor(state.clipRange.end) + dir;
+      }
+      clampRange();
+      state.clipRange.userTouched = true;
+      update();
+      finalSeek(which);
+    });
+  });
 
   $("[data-mark-in]", wrap).addEventListener("click", async () => {
     const resp = await sendBg({ type: "PAUSE_ACTIVE_TAB" });

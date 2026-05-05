@@ -314,6 +314,26 @@ html.dark .badge.x { background: rgba(255,255,255,0.10); }
 }
 .range-fields .total .total-value { display: block; color: var(--text); font-size: 13px; font-weight: 600; }
 
+.time-stepper {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: stretch; gap: 4px;
+}
+.time-stepper .time-input { border-radius: 7px; }
+.step-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; min-width: 26px; padding: 0;
+  border-radius: 7px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text);
+  font: 700 14px/1 'Inter', sans-serif;
+  cursor: pointer; user-select: none;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.step-btn:hover:not(:disabled) {
+  background: var(--surface-hover); border-color: var(--primary-ring); color: var(--primary);
+}
+.step-btn:active:not(:disabled) { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
+.step-btn:focus-visible { outline: 2px solid var(--primary-ring); outline-offset: 1px; }
+.step-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .time-input {
   width: 100%; padding: 7px 8px; border-radius: 7px;
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
