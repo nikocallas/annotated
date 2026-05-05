@@ -7,7 +7,10 @@ import {
   insertAnnotationSchema,
   insertCommentSchema,
   insertClaimSchema,
+  CLAIM_REASON_LABELS,
+  type ClaimReasonCategory,
 } from "@shared/schema";
+import { dispatchClaimEmails } from "./claim-email";
 import {
   buildYouTubeClipCommands,
   buildPodcastClipCommands,
@@ -38,11 +41,31 @@ function asyncHandler(fn: (req: Request, res: Response) => Promise<unknown>) {
 }
 
 async function createClaim(annotationId: string, body: Request["body"], res: Response) {
+  const reasonCategory = body?.reasonCategory as string | undefined;
+  const details = typeof body?.details === "string" ? body.details.trim() : "";
+  const explicitReason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  const label =
+    reasonCategory && reasonCategory in CLAIM_REASON_LABELS
+      ? CLAIM_REASON_LABELS[reasonCategory as ClaimReasonCategory]
+      : null;
+  // Compose a human-readable summary for the legacy `reason` column. New
+  // clients always send a category; older clients (e.g. extension < 1.3) sent
+  // a free-text reason — keep accepting it so existing builds keep working.
+  const reasonSummary =
+    label && details
+      ? `${label} — ${details}`
+      : label
+        ? label
+        : explicitReason || "";
+
   const parsed = insertClaimSchema.safeParse({
     annotationId,
+    claimantUserId: body?.claimantUserId ?? null,
     claimantName: body?.claimantName,
     claimantEmail: body?.claimantEmail,
-    reason: body?.reason,
+    reasonCategory: reasonCategory ?? "other",
+    reason: reasonSummary || (label ?? "Other copyright or fair use concern"),
+    details: details || null,
   });
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
@@ -50,7 +73,25 @@ async function createClaim(annotationId: string, body: Request["body"], res: Res
   const ann = await storage.getAnnotation(annotationId);
   if (!ann) return res.status(404).json({ error: "Annotation not found" });
   const claim = await storage.createClaim(parsed.data);
-  return res.status(201).json(claim);
+
+  // Fire-and-forget email dispatch — failures must not roll back the claim.
+  let emailSummary: Awaited<ReturnType<typeof dispatchClaimEmails>> | null = null;
+  try {
+    const poster = await storage.getUser(ann.userId);
+    if (poster) {
+      emailSummary = await dispatchClaimEmails({ claim, annotation: ann, poster });
+    }
+  } catch (err) {
+    console.error("[claims] email dispatch failed", err);
+  }
+
+  return res.status(201).json({
+    claim,
+    received: true,
+    status: claim.status,
+    emails: emailSummary,
+    supportEmail: "support@annotatedextension.com",
+  });
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {

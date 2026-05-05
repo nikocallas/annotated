@@ -4,6 +4,18 @@
 
 const DEFAULT_API_BASE = "https://annotatedextension.com";
 const MAX_CLIP_SECONDS = 90;
+const SUPPORT_EMAIL = "support@annotatedextension.com";
+const PUBLISH_RESET_MS = 5000;
+
+const CLAIM_REASONS = [
+  ["uses_too_much", "Uses too much of my original work"],
+  ["reposts_heart", "Reposts the heart or most valuable part of my work"],
+  ["insufficient_commentary", "Does not add sufficient commentary or transformation"],
+  ["misattribution", "Misattributes or removes credit to the original source"],
+  ["paid_or_subscriber_content", "Uses my paid/subscriber-only content without permission"],
+  ["copyrighted_media", "Contains copyrighted audio/video/image/text I own"],
+  ["other", "Other copyright or fair use concern"],
+];
 
 // -------------------- Theme (light/dark) ------------------------------------
 const THEME_KEY = "annotated-theme";
@@ -40,6 +52,17 @@ const state = {
   audio: null, // { dataUrl, mime, durationMs }
   recording: { active: false, startedAt: 0, error: null, timer: null },
   manualSource: { url: "", title: "" },
+  // Clip range (seconds). null until user/source provides them.
+  clipRange: { start: 0, end: 30, userTouched: false, lastSourceUrl: "" },
+  // Form state — preserved across re-renders so the preview can stay live.
+  form: { commentary: "", clipText: "" },
+  // Publish lifecycle
+  publish: {
+    status: "idle", // idle | publishing | published
+    annotationId: null,
+    pageUrlAtPublish: null,
+    resetTimer: null,
+  },
 };
 
 // -------------------- Utilities ---------------------------------------------
@@ -139,34 +162,117 @@ async function clearUser() {
 async function refreshActiveTab() {
   if (!isExtension()) return;
   const resp = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
+  const prevUrl = state.pageMeta?.url || "";
   if (resp?.pageMeta) state.pageMeta = resp.pageMeta;
   if (resp?.selection) state.selection = resp.selection;
+  // If the source URL changed and we just published, reset back to clipping.
+  if (state.publish.status === "published" && state.publish.pageUrlAtPublish && state.pageMeta?.url && state.pageMeta.url !== state.publish.pageUrlAtPublish) {
+    resetPublishState();
+  }
+  // Reset user-touched range when source changes
+  const newUrl = state.pageMeta?.url || "";
+  if (newUrl && newUrl !== state.clipRange.lastSourceUrl) {
+    state.clipRange.lastSourceUrl = newUrl;
+    state.clipRange.userTouched = false;
+    seedClipRangeFromMeta();
+  }
   render();
+  return prevUrl !== newUrl;
+}
+
+function seedClipRangeFromMeta() {
+  const meta = state.pageMeta || {};
+  if (meta.sourceType !== "youtube" && meta.sourceType !== "podcast") return;
+  const cur = Math.max(0, Math.floor(meta.currentTime || 0));
+  const dur = Number.isFinite(meta.duration) ? Math.floor(meta.duration) : null;
+  state.clipRange.start = cur;
+  state.clipRange.end = Math.min(cur + 30, dur != null ? dur : cur + 30);
+  if (state.clipRange.end <= state.clipRange.start) state.clipRange.end = state.clipRange.start + 1;
 }
 
 if (isExtension()) {
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "PAGE_META_UPDATE") {
+      const prev = state.pageMeta?.url || "";
       state.pageMeta = msg.data;
-      // Don't full-render mid-typing; just patch source-detection bits.
+      if (msg.data?.url && msg.data.url !== state.clipRange.lastSourceUrl) {
+        state.clipRange.lastSourceUrl = msg.data.url;
+        state.clipRange.userTouched = false;
+        seedClipRangeFromMeta();
+        // If we're showing a "Published!" confirmation and the source changed,
+        // reset back to clipping.
+        if (state.publish.status === "published" && state.publish.pageUrlAtPublish && msg.data.url !== state.publish.pageUrlAtPublish) {
+          resetPublishState();
+          return;
+        }
+      } else if (state.publish.status !== "published") {
+        // Live updates from same page (currentTime/duration changes) — only
+        // refresh the input fields if the user hasn't started editing the
+        // range manually.
+        if (!state.clipRange.userTouched) {
+          // Keep start at currentTime if available, leave end alone.
+          // (We do NOT reseed end aggressively to avoid clobbering edits.)
+          const cur = Math.max(0, Math.floor(msg.data?.currentTime || 0));
+          if (cur && Math.abs(cur - state.clipRange.start) > 1) {
+            state.clipRange.start = cur;
+            const dur = Number.isFinite(msg.data?.duration) ? Math.floor(msg.data.duration) : null;
+            const desiredEnd = Math.min(cur + 30, dur != null ? dur : cur + 30);
+            if (desiredEnd > state.clipRange.end || state.clipRange.end <= state.clipRange.start) {
+              state.clipRange.end = desiredEnd;
+            }
+          }
+        }
+      }
       patchPageCard();
+      patchPreviewCard();
+      patchRangeInputs();
+    }
+    if (msg?.type === "MEDIA_TIME_UPDATE") {
+      const data = msg.data || {};
+      // Only auto-import the user's page-side scrub when the side panel range
+      // hasn't been actively edited; otherwise we'd clobber their work.
+      if (data.reason === "seek" && !state.clipRange.userTouched && state.publish.status !== "published") {
+        const cur = Math.max(0, Math.floor(data.currentTime || 0));
+        if (cur >= 0) {
+          state.clipRange.start = cur;
+          const dur = Number.isFinite(data.duration) ? Math.floor(data.duration) : null;
+          const desiredEnd = Math.min(cur + 30, dur != null ? dur : cur + 30);
+          state.clipRange.end = Math.max(desiredEnd, cur + 1);
+          patchRangeInputs();
+        }
+      }
+      // Keep meta currentTime fresh for preview/UI without re-rendering.
+      if (state.pageMeta) {
+        state.pageMeta = {
+          ...state.pageMeta,
+          currentTime: data.currentTime ?? state.pageMeta.currentTime,
+          duration: data.duration ?? state.pageMeta.duration,
+        };
+      }
+    }
+    if (msg?.type === "ACTIVE_TAB_CHANGED") {
+      // Tab switched/navigated. Refresh meta and reset publish UI if shown.
+      if (state.publish.status === "published") {
+        resetPublishState();
+      }
+      refreshActiveTab();
     }
     if (msg?.type === "TEXT_SELECTION_UPDATE") {
       state.selection = msg.data;
       const ta = document.querySelector("[data-clip-text]");
-      if (ta && !ta.value.trim() && msg.data?.text) ta.value = msg.data.text;
+      if (ta && !ta.value.trim() && msg.data?.text) {
+        ta.value = msg.data.text;
+        state.form.clipText = msg.data.text;
+        patchPreviewCard();
+      }
     }
     if (msg?.type === "RECORDER_AUTO_STOPPED") {
-      // Auto-stop after 90s — pull the blob via stop too is unnecessary; the
-      // offscreen sends the payload directly. But our flow always asks the SW
-      // to STOP before reading the blob; auto-stop is informational only.
       toast("Recording reached 90s limit");
     }
     if (msg?.type === "RECORDER_ERROR") {
       setRecordingError(msg.data?.message || "Recorder error");
     }
   });
-  // Re-pull active tab whenever the side panel regains focus.
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) refreshActiveTab();
   });
@@ -220,15 +326,12 @@ function renderLogin() {
   return node;
 }
 
-// Update only the page-card region (so live updates from the SW don't trash
-// what the user has typed into the textareas/inputs).
 function patchPageCard() {
   const meta = state.pageMeta;
   const card = document.querySelector("[data-page-card]");
   if (!card) return;
   applyMetaTo(card, meta);
 
-  // Re-render the clip section if the source type changed.
   const desired = meta?.sourceType || "unknown";
   const sec = document.querySelector("[data-clip-section]");
   if (!sec) return;
@@ -279,32 +382,51 @@ function buildClipSection(sourceType) {
 }
 
 function renderClip() {
+  // While the publish flow is in success state, show only the success card.
+  if (state.publish.status === "published") {
+    return renderPublishSuccess();
+  }
+
   const node = tpl("#clip-view");
   applyMetaTo(node, state.pageMeta);
 
-  // Manual URL fallback (always available, expanded-on-demand).
   const manualBlock = $("[data-manual-source]", node);
   const sourceUrlInput = $("[data-source-url]", manualBlock);
   const manualTitleInput = $("[data-manual-title]", manualBlock);
   sourceUrlInput.value = state.manualSource.url || "";
   manualTitleInput.value = state.manualSource.title || "";
-  sourceUrlInput.addEventListener("input", () => { state.manualSource.url = sourceUrlInput.value; });
-  manualTitleInput.addEventListener("input", () => { state.manualSource.title = manualTitleInput.value; });
+  sourceUrlInput.addEventListener("input", () => {
+    state.manualSource.url = sourceUrlInput.value;
+    patchPreviewCard();
+  });
+  manualTitleInput.addEventListener("input", () => {
+    state.manualSource.title = manualTitleInput.value;
+    patchPreviewCard();
+  });
 
   $("[data-refresh-tab]", node).addEventListener("click", () => {
     refreshActiveTab();
   });
 
-  // Clip-type-specific UI
   const sourceType = state.pageMeta?.sourceType || "unknown";
   const clipSection = $("[data-clip-section]", node);
   clipSection.dataset.kind = sourceType;
   clipSection.appendChild(buildClipSection(sourceType));
 
-  // Audio recorder
+  // Commentary
+  const commentaryEl = $("[data-commentary]", node);
+  commentaryEl.value = state.form.commentary || "";
+  commentaryEl.addEventListener("input", () => {
+    state.form.commentary = commentaryEl.value;
+    patchPreviewCard();
+  });
+
   bindRecorder(node);
 
-  // Publish
+  // Build feed-style preview between commentary and the publish button.
+  const previewMount = $("[data-preview-mount]", node);
+  if (previewMount) previewMount.appendChild(renderPreviewCard());
+
   const publishBtn = $("[data-publish]", node);
   const errorEl = $("[data-error]", node);
   publishBtn.addEventListener("click", async () => {
@@ -318,53 +440,255 @@ function renderClip() {
 function renderArticleClip() {
   const wrap = document.createElement("div");
   wrap.className = "clip-flex";
-  const initial = state.selection?.text || "";
+  const initial = state.form.clipText || state.selection?.text || "";
   wrap.innerHTML = `
     <label class="label">Highlighted passage</label>
     <textarea data-clip-text rows="5" placeholder="Highlight text on the page, or paste it here…"></textarea>
     <p class="muted small">Tip: select text on the page — it appears here automatically.</p>
   `;
   const ta = $("[data-clip-text]", wrap);
-  if (initial) ta.value = initial;
+  if (initial) {
+    ta.value = initial;
+    state.form.clipText = initial;
+  }
+  ta.addEventListener("input", () => {
+    state.form.clipText = ta.value;
+    patchPreviewCard();
+  });
   return wrap;
 }
 
+// Build the dual-handle range slider for video/podcast clips.
 function renderRangeClip(kind) {
-  const meta = state.pageMeta || {};
   const wrap = document.createElement("div");
   wrap.className = "clip-flex";
-  const startDefault = Math.floor(meta.currentTime || 0);
-  const endDefault = startDefault + 30;
-  wrap.innerHTML = `
-    <label class="label">${kind === "youtube" ? "Video clip range" : "Audio clip range"}</label>
-    <div class="range-row">
-      <div>
-        <div class="muted small">Start (seconds)</div>
-        <input type="number" min="0" data-clip-start value="${startDefault}" />
-      </div>
-      <div>
-        <div class="muted small">End (seconds)</div>
-        <input type="number" min="0" data-clip-end value="${endDefault}" />
-      </div>
-    </div>
-    <div class="duration-display" data-duration-display>
-      <span>Duration: <span class="mono" data-duration-value>${endDefault - startDefault}s</span></span>
-      <span class="mono">≤ 90s · ${kind === "youtube" ? "240p downscale" : "AAC 128kbps"}</span>
-    </div>
-    ${meta.currentTime != null ? `<div class="muted small mono">Now playing at ${fmt(meta.currentTime)}${meta.duration ? ` / ${fmt(meta.duration)}` : ""}</div>` : ""}
-  `;
-  const startInput = $("[data-clip-start]", wrap);
-  const endInput = $("[data-clip-end]", wrap);
-  const durRow = $("[data-duration-display]", wrap);
-  const durVal = $("[data-duration-value]", wrap);
-  function updateDuration() {
-    const dur = Number(endInput.value) - Number(startInput.value);
-    durVal.textContent = `${dur}s`;
-    durRow.classList.toggle("over", dur > MAX_CLIP_SECONDS || dur <= 0);
+  const meta = state.pageMeta || {};
+  const duration = Number.isFinite(meta.duration) && meta.duration > 0 ? Math.floor(meta.duration) : null;
+
+  if (state.clipRange.start == null || state.clipRange.end == null) {
+    seedClipRangeFromMeta();
   }
-  startInput.addEventListener("input", updateDuration);
-  endInput.addEventListener("input", updateDuration);
+  const start = Math.max(0, state.clipRange.start);
+  const end = Math.max(start + 1, state.clipRange.end);
+
+  wrap.innerHTML = `
+    <div class="clip-range-meta">
+      <span>Clip range</span>
+      <span class="max-tag">Max ${MAX_CLIP_SECONDS} seconds</span>
+    </div>
+
+    <div class="range-fields">
+      <div>
+        <input class="time-input" type="text" inputmode="numeric" data-clip-start-mmss aria-label="Start (mm:ss)" />
+      </div>
+      <div class="dash">–</div>
+      <div>
+        <input class="time-input" type="text" inputmode="numeric" data-clip-end-mmss aria-label="End (mm:ss)" />
+      </div>
+      <div class="total">
+        <span class="total-value mono" data-duration-value>${end - start}s</span>
+        <span data-duration-of-max>${MAX_CLIP_SECONDS}s max</span>
+      </div>
+    </div>
+
+    <div class="dual-range" data-dual-range>
+      <div class="rail"></div>
+      <div class="selected-range" data-selected-range></div>
+      <input type="range" min="0" step="1" data-range-start aria-label="Start" />
+      <input type="range" min="0" step="1" data-range-end aria-label="End" />
+    </div>
+
+    <div class="range-tick-row">
+      <span class="mono" data-tick-zero>0:00</span>
+      <span class="mono" data-tick-end>${duration != null ? fmt(duration) : "—"}</span>
+    </div>
+
+    <div class="mark-row">
+      <button type="button" class="mark-btn" data-mark-in title="Set start to current playback time">
+        <span class="mark-dot"></span> Mark in
+      </button>
+      <button type="button" class="mark-btn" data-mark-out title="Set end to current playback time">
+        <span class="mark-dot"></span> Mark out
+      </button>
+      <button type="button" class="mark-btn preview" data-preview-clip title="Seek the page video to start and play">
+        ▶ Preview
+      </button>
+    </div>
+
+    <div class="muted small mono" data-now-playing></div>
+    <div class="duration-display" data-duration-display></div>
+  `;
+
+  const startInput = $("[data-clip-start-mmss]", wrap);
+  const endInput = $("[data-clip-end-mmss]", wrap);
+  const rangeStart = $("[data-range-start]", wrap);
+  const rangeEnd = $("[data-range-end]", wrap);
+  const selectedRange = $("[data-selected-range]", wrap);
+  const durValue = $("[data-duration-value]", wrap);
+  const durDisplay = $("[data-duration-display]", wrap);
+  const nowPlaying = $("[data-now-playing]", wrap);
+  const tickEnd = $("[data-tick-end]", wrap);
+
+  // The slider's max is the video duration when known, otherwise generous
+  // upper bound that covers most podcast episodes (3 hours).
+  const sliderMax = duration != null ? Math.max(duration, end + 1) : 10800;
+  rangeStart.max = String(sliderMax);
+  rangeEnd.max = String(sliderMax);
+
+  function fmtNow() {
+    if (!meta.currentTime && meta.currentTime !== 0) {
+      nowPlaying.textContent = "";
+      return;
+    }
+    const dur = Number.isFinite(meta.duration) ? ` / ${fmt(meta.duration)}` : "";
+    nowPlaying.textContent = `Now playing at ${fmt(meta.currentTime)}${dur}`;
+  }
+
+  function update() {
+    const s = Math.max(0, Math.floor(state.clipRange.start));
+    const e = Math.max(s + 1, Math.floor(state.clipRange.end));
+    const dur = e - s;
+    rangeStart.value = String(s);
+    rangeEnd.value = String(e);
+    startInput.value = fmt(s);
+    endInput.value = fmt(e);
+    durValue.textContent = `${dur}s`;
+    if (dur > MAX_CLIP_SECONDS) {
+      durDisplay.classList.add("over");
+      durDisplay.textContent = `${dur - MAX_CLIP_SECONDS}s over the ${MAX_CLIP_SECONDS}s limit`;
+    } else {
+      durDisplay.classList.remove("over");
+      durDisplay.textContent = "";
+    }
+    const max = Number(rangeStart.max);
+    const startPct = (s / max) * 100;
+    const endPct = (e / max) * 100;
+    selectedRange.style.left = `${startPct}%`;
+    selectedRange.style.right = `${100 - endPct}%`;
+    if (duration != null) tickEnd.textContent = fmt(duration);
+    fmtNow();
+    patchPreviewCard();
+  }
+
+  function commitFromSlider() {
+    let s = Number(rangeStart.value);
+    let e = Number(rangeEnd.value);
+    if (e <= s) e = s + 1;
+    if (e - s > MAX_CLIP_SECONDS) e = s + MAX_CLIP_SECONDS;
+    state.clipRange.start = s;
+    state.clipRange.end = e;
+    state.clipRange.userTouched = true;
+    update();
+  }
+  rangeStart.addEventListener("input", () => {
+    // Seek the page video as the user drags the start handle so they see
+    // exactly where they are scrubbing.
+    state.clipRange.start = Number(rangeStart.value);
+    if (state.clipRange.end <= state.clipRange.start) {
+      state.clipRange.end = state.clipRange.start + 1;
+    }
+    state.clipRange.userTouched = true;
+    update();
+    sendBg({ type: "SEEK_ACTIVE_TAB", time: state.clipRange.start, play: false });
+  });
+  rangeEnd.addEventListener("input", () => {
+    state.clipRange.end = Number(rangeEnd.value);
+    if (state.clipRange.end <= state.clipRange.start) {
+      state.clipRange.end = state.clipRange.start + 1;
+    }
+    state.clipRange.userTouched = true;
+    update();
+    sendBg({ type: "SEEK_ACTIVE_TAB", time: state.clipRange.end, play: false });
+  });
+
+  function parseMmss(value) {
+    if (!value) return null;
+    const trimmed = String(value).trim();
+    if (/^\d+$/.test(trimmed)) return Number(trimmed);
+    const m = trimmed.match(/^(\d+):(\d{1,2})(?:\.(\d+))?$/);
+    if (!m) return null;
+    return Number(m[1]) * 60 + Number(m[2]) + (m[3] ? Number(`0.${m[3]}`) : 0);
+  }
+  function commitMmss(input, key) {
+    const parsed = parseMmss(input.value);
+    if (parsed == null) return update();
+    if (key === "start") {
+      state.clipRange.start = Math.max(0, Math.floor(parsed));
+      if (state.clipRange.end <= state.clipRange.start) {
+        state.clipRange.end = state.clipRange.start + 1;
+      }
+    } else {
+      state.clipRange.end = Math.max(state.clipRange.start + 1, Math.floor(parsed));
+      if (state.clipRange.end - state.clipRange.start > MAX_CLIP_SECONDS) {
+        state.clipRange.end = state.clipRange.start + MAX_CLIP_SECONDS;
+      }
+    }
+    state.clipRange.userTouched = true;
+    update();
+  }
+  startInput.addEventListener("change", () => commitMmss(startInput, "start"));
+  endInput.addEventListener("change", () => commitMmss(endInput, "end"));
+  startInput.addEventListener("blur", () => commitMmss(startInput, "start"));
+  endInput.addEventListener("blur", () => commitMmss(endInput, "end"));
+
+  $("[data-mark-in]", wrap).addEventListener("click", async () => {
+    const resp = await sendBg({ type: "PAUSE_ACTIVE_TAB" });
+    const time = await sendBg({
+      type: "SEEK_ACTIVE_TAB",
+      time: 0,
+      play: false,
+    });
+    // Get current time via the cache-update path: ask the BG for fresh state.
+    const refresh = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
+    const cur = refresh?.pageMeta?.currentTime ?? state.pageMeta?.currentTime ?? 0;
+    state.clipRange.start = Math.max(0, Math.floor(cur));
+    if (state.clipRange.end <= state.clipRange.start) {
+      state.clipRange.end = state.clipRange.start + 1;
+    }
+    state.clipRange.userTouched = true;
+    update();
+  });
+
+  $("[data-mark-out]", wrap).addEventListener("click", async () => {
+    const refresh = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
+    const cur = refresh?.pageMeta?.currentTime ?? state.pageMeta?.currentTime ?? 0;
+    let next = Math.max(state.clipRange.start + 1, Math.floor(cur));
+    if (next - state.clipRange.start > MAX_CLIP_SECONDS) {
+      next = state.clipRange.start + MAX_CLIP_SECONDS;
+    }
+    state.clipRange.end = next;
+    state.clipRange.userTouched = true;
+    update();
+  });
+
+  $("[data-preview-clip]", wrap).addEventListener("click", () => {
+    sendBg({ type: "SEEK_ACTIVE_TAB", time: state.clipRange.start, play: true });
+  });
+
+  update();
   return wrap;
+}
+
+function patchRangeInputs() {
+  const startMmss = document.querySelector("[data-clip-start-mmss]");
+  const endMmss = document.querySelector("[data-clip-end-mmss]");
+  const rangeStart = document.querySelector("[data-range-start]");
+  const rangeEnd = document.querySelector("[data-range-end]");
+  if (!startMmss || !endMmss || !rangeStart || !rangeEnd) return;
+  const s = Math.max(0, Math.floor(state.clipRange.start));
+  const e = Math.max(s + 1, Math.floor(state.clipRange.end));
+  startMmss.value = fmt(s);
+  endMmss.value = fmt(e);
+  rangeStart.value = String(s);
+  rangeEnd.value = String(e);
+  const selectedRange = document.querySelector("[data-selected-range]");
+  const durValue = document.querySelector("[data-duration-value]");
+  if (durValue) durValue.textContent = `${e - s}s`;
+  if (selectedRange) {
+    const max = Number(rangeStart.max) || 10800;
+    selectedRange.style.left = `${(s / max) * 100}%`;
+    selectedRange.style.right = `${100 - (e / max) * 100}%`;
+  }
 }
 
 function renderUnknownClip() {
@@ -379,6 +703,12 @@ function renderUnknownClip() {
     </p>
     <textarea data-clip-text rows="3" placeholder="Or paste an article passage to clip"></textarea>
   `;
+  const ta = $("[data-clip-text]", wrap);
+  ta.value = state.form.clipText || "";
+  ta.addEventListener("input", () => {
+    state.form.clipText = ta.value;
+    patchPreviewCard();
+  });
   return wrap;
 }
 
@@ -426,6 +756,7 @@ function bindRecorder(scope) {
     } else {
       errBox.hidden = true;
     }
+    patchPreviewCard();
   }
 
   function startTimer() {
@@ -499,7 +830,6 @@ function bindRecorder(scope) {
     stopTimer();
     updateUi();
   }
-  // Expose to module-level setRecordingError used by SW listeners.
   setRecordingError = setRecordingErrorLocal;
 
   updateUi();
@@ -518,13 +848,175 @@ function friendlyMicError(resp) {
   return msg;
 }
 
+// -------------------- Feed-style preview ------------------------------------
+
+function buildPreviewModel() {
+  const meta = state.pageMeta || {};
+  const manualUrl = state.manualSource.url?.trim() || "";
+  const manualTitle = state.manualSource.title?.trim() || "";
+  const sourceUrl = manualUrl || meta.url || "";
+  const sourceTypeRaw = manualUrl ? sourceTypeForUrl(manualUrl) : meta.sourceType || "unknown";
+  const sourceType = sourceTypeRaw === "x" ? "article" : sourceTypeRaw;
+  const sourceTitle = manualTitle || meta.title || "Untitled clip";
+  const publication = meta.publication || (sourceUrl ? hostname(sourceUrl) : "");
+  return {
+    sourceUrl,
+    sourceType,
+    sourceTitle,
+    sourceAuthor: meta.author || "",
+    sourcePublication: publication,
+    sourceImage: meta.ogImage || "",
+    clipStart: state.clipRange.start,
+    clipEnd: state.clipRange.end,
+    clipText: state.form.clipText || "",
+    commentary: state.form.commentary || "",
+    hasAudio: !!state.audio?.dataUrl,
+  };
+}
+
+function sourceTypeBadgeLabel(type) {
+  return ({
+    youtube: "Video",
+    podcast: "Podcast",
+    article: "Article",
+    x: "Post",
+    unknown: "Tab",
+  })[type] || "Tab";
+}
+
+function renderPreviewCard() {
+  const card = document.createElement("article");
+  card.className = "preview-card";
+  card.dataset.previewCard = "1";
+  card.innerHTML = `
+    <div class="preview-label">
+      <span>Preview</span>
+      <span class="muted small">How this will appear in the feed</span>
+    </div>
+    <div class="preview-card-head">
+      <div class="avatar" data-preview-avatar></div>
+      <div class="who">
+        <span class="name" data-preview-name></span>
+        <span class="handle" data-preview-handle></span>
+      </div>
+      <span class="badge" data-preview-badge></span>
+    </div>
+    <div class="preview-source">
+      <div class="preview-thumb" data-preview-thumb>
+        <span class="play" data-preview-play>▶</span>
+        <span class="duration-tag" data-preview-duration hidden></span>
+      </div>
+      <div class="preview-source-meta">
+        <span class="preview-publication" data-preview-publication></span>
+        <span class="preview-title" data-preview-title></span>
+        <a class="preview-source-link" data-preview-source-link target="_blank" rel="noopener noreferrer"></a>
+      </div>
+    </div>
+    <div class="preview-quote" data-preview-quote hidden></div>
+    <div class="preview-commentary muted" data-preview-commentary></div>
+    <div class="preview-foot">
+      <span class="clip-tag" data-preview-clip-tag></span>
+      <span class="audio-tag" data-preview-audio hidden>♪ Audio commentary</span>
+      <span class="muted small" style="margin-left:auto;" data-preview-source-host></span>
+    </div>
+  `;
+  fillPreviewCard(card);
+  return card;
+}
+
+function fillPreviewCard(card) {
+  if (!card) return;
+  const m = buildPreviewModel();
+  const user = state.user || {};
+  const avatarEl = $("[data-preview-avatar]", card);
+  if (user.avatarUrl) {
+    avatarEl.innerHTML = `<img src="${escapeAttr(user.avatarUrl)}" alt="" />`;
+  } else {
+    avatarEl.textContent = avatarFallback(user.displayName);
+  }
+  $("[data-preview-name]", card).textContent = user.displayName || "Your name";
+  $("[data-preview-handle]", card).textContent = user.username ? `@${user.username}` : "";
+  const badgeEl = $("[data-preview-badge]", card);
+  badgeEl.textContent = sourceTypeBadgeLabel(m.sourceType);
+  badgeEl.className = `badge ${m.sourceType}`;
+
+  $("[data-preview-publication]", card).textContent = m.sourcePublication || "";
+  $("[data-preview-title]", card).textContent = m.sourceTitle;
+
+  const linkEl = $("[data-preview-source-link]", card);
+  if (m.sourceUrl) {
+    linkEl.href = m.sourceUrl;
+    linkEl.textContent = `↗ ${hostname(m.sourceUrl)}`;
+    linkEl.style.display = "";
+  } else {
+    linkEl.style.display = "none";
+  }
+
+  const thumb = $("[data-preview-thumb]", card);
+  thumb.querySelectorAll("img").forEach((n) => n.remove());
+  const playEl = $("[data-preview-play]", card);
+  if (m.sourceImage) {
+    const img = document.createElement("img");
+    img.src = m.sourceImage;
+    img.alt = "";
+    thumb.insertBefore(img, playEl);
+    playEl.style.display = m.sourceType === "youtube" || m.sourceType === "podcast" ? "" : "none";
+  } else if (m.sourceType === "article" || m.sourceType === "unknown") {
+    playEl.style.display = "none";
+  } else {
+    playEl.style.display = "";
+  }
+  const durationTag = $("[data-preview-duration]", card);
+  if (m.sourceType === "youtube" || m.sourceType === "podcast") {
+    const len = Math.max(0, m.clipEnd - m.clipStart);
+    durationTag.textContent = fmt(len);
+    durationTag.hidden = false;
+  } else {
+    durationTag.hidden = true;
+  }
+
+  const quoteEl = $("[data-preview-quote]", card);
+  if ((m.sourceType === "article" || m.sourceType === "unknown") && m.clipText) {
+    quoteEl.hidden = false;
+    const trimmed = m.clipText.length > 200 ? `${m.clipText.slice(0, 200)}…` : m.clipText;
+    quoteEl.textContent = `"${trimmed}"`;
+  } else {
+    quoteEl.hidden = true;
+  }
+
+  const commentaryEl = $("[data-preview-commentary]", card);
+  if (m.commentary) {
+    commentaryEl.classList.remove("muted");
+    commentaryEl.textContent = m.commentary.length > 200 ? `${m.commentary.slice(0, 200)}…` : m.commentary;
+  } else {
+    commentaryEl.classList.add("muted");
+    commentaryEl.textContent = "Add commentary above and it'll show up here.";
+  }
+
+  const clipTag = $("[data-preview-clip-tag]", card);
+  if (m.sourceType === "youtube" || m.sourceType === "podcast") {
+    const len = Math.max(0, m.clipEnd - m.clipStart);
+    clipTag.textContent = `Clip ${fmt(m.clipStart)} – ${fmt(m.clipEnd)} · ${len}s`;
+  } else if (m.clipText) {
+    clipTag.textContent = `Quote · ${m.clipText.length} chars`;
+  } else {
+    clipTag.textContent = "";
+  }
+
+  const audioEl = $("[data-preview-audio]", card);
+  audioEl.hidden = !m.hasAudio;
+  $("[data-preview-source-host]", card).textContent = m.sourceUrl ? hostname(m.sourceUrl) : "";
+}
+
+function patchPreviewCard() {
+  const card = document.querySelector("[data-preview-card]");
+  if (card) fillPreviewCard(card);
+}
+
 // -------------------- Publish flow ------------------------------------------
 
 async function uploadAudioIfPresent() {
   if (!state.audio?.dataUrl) return null;
-  // Try the server upload route first; on failure, fall back to inlining the
-  // data URL (works for short clips). The data URL roundtrip guarantees the
-  // recording survives even when the upload endpoint isn't deployed yet.
   try {
     const result = await api("/api/upload/audio", {
       method: "POST",
@@ -543,9 +1035,12 @@ async function uploadAudioIfPresent() {
 }
 
 async function onPublish(node, publishBtn, errorEl) {
+  if (!state.user) {
+    return showError(errorEl, "Sign in first to publish.");
+  }
   const meta = state.pageMeta || {};
   const sourceType = meta.sourceType || "unknown";
-  const commentary = $("[data-commentary]", node).value.trim();
+  const commentary = ($("[data-commentary]", node)?.value || state.form.commentary || "").trim();
 
   const manualUrl = state.manualSource.url?.trim() || "";
   const manualTitle = state.manualSource.title?.trim() || "";
@@ -567,13 +1062,13 @@ async function onPublish(node, publishBtn, errorEl) {
   };
 
   if (payload.sourceType === "article") {
-    payload.clipText = $("[data-clip-text]", node)?.value?.trim() || "";
+    payload.clipText = ($("[data-clip-text]", node)?.value?.trim() || state.form.clipText?.trim() || "");
     if (!payload.clipText) {
       return showError(errorEl, "Highlight or paste a passage to clip.");
     }
   } else {
-    payload.clipStartSec = Number($("[data-clip-start]", node)?.value || 0);
-    payload.clipEndSec = Number($("[data-clip-end]", node)?.value || 0);
+    payload.clipStartSec = Math.max(0, Math.floor(state.clipRange.start));
+    payload.clipEndSec = Math.max(payload.clipStartSec + 1, Math.floor(state.clipRange.end));
     const dur = payload.clipEndSec - payload.clipStartSec;
     if (dur <= 0) return showError(errorEl, "Clip end must be greater than start.");
     if (dur > MAX_CLIP_SECONDS) return showError(errorEl, `Clip is ${dur}s. Max allowed is ${MAX_CLIP_SECONDS}s.`);
@@ -583,21 +1078,75 @@ async function onPublish(node, publishBtn, errorEl) {
     return showError(errorEl, "Source URL is required (every clip links back to its source).");
   }
 
+  state.publish.status = "publishing";
   publishBtn.disabled = true;
   publishBtn.textContent = "Publishing…";
 
   try {
     payload.commentaryAudioUrl = await uploadAudioIfPresent();
     const result = await api("/api/clips", { method: "POST", body: JSON.stringify(payload) });
-    toast("Annotation published");
-    state.audio = null;
-    showDetail(result.annotation.id);
+    state.publish.status = "published";
+    state.publish.annotationId = result.annotation.id;
+    state.publish.pageUrlAtPublish = state.pageMeta?.url || sourceUrl;
+    // Auto-reset after PUBLISH_RESET_MS
+    if (state.publish.resetTimer) clearTimeout(state.publish.resetTimer);
+    state.publish.resetTimer = setTimeout(() => resetPublishState(), PUBLISH_RESET_MS);
+    render();
   } catch (err) {
+    state.publish.status = "idle";
     showError(errorEl, err.message);
-  } finally {
     publishBtn.disabled = false;
     publishBtn.textContent = "Publish annotation";
   }
+}
+
+function resetPublishState() {
+  if (state.publish.resetTimer) {
+    clearTimeout(state.publish.resetTimer);
+    state.publish.resetTimer = null;
+  }
+  state.publish.status = "idle";
+  state.publish.annotationId = null;
+  state.publish.pageUrlAtPublish = null;
+  state.audio = null;
+  state.form.commentary = "";
+  state.form.clipText = "";
+  state.clipRange.userTouched = false;
+  seedClipRangeFromMeta();
+  if (state.tab === "clip" && !state.detailId) {
+    render();
+  }
+}
+
+function renderPublishSuccess() {
+  const node = document.createElement("section");
+  node.className = "view";
+  node.innerHTML = `
+    <div class="publish-success">
+      <div class="checkmark">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <div class="label">Published!</div>
+      <div class="sub">Your annotation is live on the feed. The side panel will reset shortly, or open the post to share it.</div>
+      <div class="actions">
+        <button class="btn btn-outline btn-sm" data-view-post>View post</button>
+        <button class="btn btn-ghost btn-sm" data-publish-reset>Clip another →</button>
+      </div>
+    </div>
+  `;
+  $("[data-view-post]", node).addEventListener("click", () => {
+    if (state.publish.annotationId) {
+      const url = `${state.apiBase.replace(/\/api$/, "")}/#/a/${state.publish.annotationId}`;
+      if (isExtension() && chrome.tabs?.create) chrome.tabs.create({ url });
+      else window.open(url, "_blank", "noopener,noreferrer");
+    }
+  });
+  $("[data-publish-reset]", node).addEventListener("click", () => {
+    resetPublishState();
+  });
+  return node;
 }
 
 function sourceTypeForUrl(url) {
@@ -617,11 +1166,15 @@ function sourceTypeForUrl(url) {
 }
 
 function showError(el, msg) {
+  if (!el) {
+    toast(msg, "error");
+    return;
+  }
   el.hidden = false;
   el.textContent = msg;
 }
 
-// -------------------- Feed / profile / detail (unchanged) -------------------
+// -------------------- Feed / profile / detail ------------------------------
 
 async function renderFeed() {
   const node = tpl("#feed-view");
@@ -732,25 +1285,58 @@ async function renderDetail(id) {
         <button class="btn btn-danger btn-sm" data-claim>⚠ File a claim</button>
       </div>
     `;
-    $("[data-claim]", card).addEventListener("click", () => openClaimModal(a.id));
+    $("[data-claim]", card).addEventListener("click", () =>
+      openClaimModal(a.id, { title: a.sourceTitle, sourceUrl: a.sourceUrl })
+    );
   } catch (err) {
     card.innerHTML = `<div class="muted small">Couldn't load annotation: ${escapeHtml(err.message)}</div>`;
   }
   return node;
 }
 
-function openClaimModal(annotationId) {
+function openClaimModal(annotationId, ctx = {}) {
   const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;";
+  overlay.className = "claim-overlay";
+
   const dialog = document.createElement("div");
-  dialog.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px;max-width:380px;width:100%;display:flex;flex-direction:column;gap:10px;";
+  dialog.className = "claim-dialog";
+  const reasonOptions = CLAIM_REASONS.map(
+    ([id, label]) => `<option value="${escapeAttr(id)}">${escapeHtml(label)}</option>`,
+  ).join("");
+  const isSignedIn = !!state.user;
+  const prefilledName = state.user?.displayName || "";
   dialog.innerHTML = `
-    <div style="font-size:18px; font-weight:600; letter-spacing:-0.015em;">Dispute this content</div>
-    <div class="muted small">If this clip infringes your copyright or exceeds fair use, file a claim and our team will review within 72 hours.</div>
-    <input type="text" data-cn placeholder="Your full name" required />
-    <input type="email" data-ce placeholder="Contact email" required />
-    <textarea data-cr rows="3" placeholder="Reason for claim" required></textarea>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
+    <h3>Dispute this content</h3>
+    <p class="muted small" style="margin: 0;">
+      If this clip infringes your copyright or exceeds fair use, file a claim and our
+      team will review.
+    </p>
+    ${
+      ctx.title
+        ? `<div class="muted small" style="background:var(--surface-2); padding:8px 10px; border-radius:8px;">
+            <div style="font-weight:600; color:var(--text);">${escapeHtml(ctx.title)}</div>
+            <div style="margin-top:2px; word-break:break-all;">${escapeHtml(ctx.sourceUrl || "")}</div>
+          </div>`
+        : ""
+    }
+    <div class="field-label">Your name</div>
+    <input type="text" data-cn placeholder="Full name" value="${escapeAttr(prefilledName)}" required />
+    <div class="field-label">Contact email</div>
+    <input type="email" data-ce placeholder="you@example.com" required />
+    <div class="field-label">Reason</div>
+    <select data-rc required>
+      <option value="" disabled selected>Pick the closest match…</option>
+      ${reasonOptions}
+    </select>
+    <div class="field-label">Anything else? (optional)</div>
+    <textarea data-cd rows="3" placeholder="Add context — links to your original work, what was copied, etc."></textarea>
+    <p class="muted small" style="margin: 0;">
+      Filing a claim emails you a confirmation and notifies the post's author so
+      they can review. Questions? Email
+      <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.
+      ${isSignedIn ? "" : `<br><strong>Heads up:</strong> you're not signed in.`}
+    </p>
+    <div class="actions">
       <button class="btn btn-ghost btn-sm" data-cancel>Cancel</button>
       <button class="btn btn-danger btn-sm" data-submit>Submit claim</button>
     </div>
@@ -758,20 +1344,54 @@ function openClaimModal(annotationId) {
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
   $("[data-cancel]", dialog).onclick = () => overlay.remove();
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
   $("[data-submit]", dialog).onclick = async () => {
+    const submitBtn = $("[data-submit]", dialog);
+    const name = $("[data-cn]", dialog).value.trim();
+    const email = $("[data-ce]", dialog).value.trim();
+    const category = $("[data-rc]", dialog).value;
+    const details = $("[data-cd]", dialog).value.trim();
+    if (!name || !email || !category) {
+      toast("Please fill in your name, email, and a reason.", "error");
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting…";
     try {
       await api(`/api/annotations/${annotationId}/claims`, {
         method: "POST",
         body: JSON.stringify({
-          claimantName: $("[data-cn]", dialog).value,
-          claimantEmail: $("[data-ce]", dialog).value,
-          reason: $("[data-cr]", dialog).value,
+          claimantUserId: state.user?.id ?? null,
+          claimantName: name,
+          claimantEmail: email,
+          reasonCategory: category,
+          details: details || null,
         }),
       });
-      toast("Claim submitted");
-      overlay.remove();
+      dialog.innerHTML = `
+        <h3 style="display:flex; gap:8px; align-items:center;">
+          <span style="display:inline-flex; width:20px; height:20px; border-radius:50%; background:var(--gradient-primary); color:var(--primary-foreground); align-items:center; justify-content:center;">✓</span>
+          Claim received
+        </h3>
+        <p class="muted small">
+          Thanks. We sent a confirmation to ${escapeHtml(email)} and notified the user who
+          posted this content.
+        </p>
+        <p class="muted small">
+          Any questions or concerns? Email <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.
+        </p>
+        <div class="actions">
+          <button class="btn btn-primary btn-sm" data-close>Done</button>
+        </div>
+      `;
+      $("[data-close]", dialog).onclick = () => overlay.remove();
     } catch (err) {
       toast(err.message, "error");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit claim";
     }
   };
 }

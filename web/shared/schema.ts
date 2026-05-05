@@ -119,19 +119,46 @@ export type Comment = typeof comments.$inferSelect;
 export const claims = sqliteTable("claims", {
   id: text("id").primaryKey(),
   annotationId: text("annotation_id").notNull(),
+  claimantUserId: text("claimant_user_id"),
   claimantName: text("claimant_name").notNull(),
   claimantEmail: text("claimant_email").notNull(),
+  reasonCategory: text("reason_category"),
   reason: text("reason").notNull(),
-  status: text("status").notNull().default("pending"), // pending | reviewing | resolved | rejected
+  details: text("details"),
+  status: text("status").notNull().default("received"), // received | reviewing | resolved | rejected
   createdAt: integer("created_at").notNull(),
 });
+
+export const CLAIM_REASON_CATEGORIES = [
+  "uses_too_much",
+  "reposts_heart",
+  "insufficient_commentary",
+  "misattribution",
+  "paid_or_subscriber_content",
+  "copyrighted_media",
+  "other",
+] as const;
+export type ClaimReasonCategory = (typeof CLAIM_REASON_CATEGORIES)[number];
+
+export const CLAIM_REASON_LABELS: Record<ClaimReasonCategory, string> = {
+  uses_too_much: "Uses too much of my original work",
+  reposts_heart: "Reposts the heart or most valuable part of my work",
+  insufficient_commentary: "Does not add sufficient commentary or transformation",
+  misattribution: "Misattributes or removes credit to the original source",
+  paid_or_subscriber_content: "Uses my paid/subscriber-only content without permission",
+  copyrighted_media: "Contains copyrighted audio/video/image/text I own",
+  other: "Other copyright or fair use concern",
+};
 
 export const insertClaimSchema = createInsertSchema(claims)
   .omit({ id: true, createdAt: true, status: true })
   .extend({
+    claimantUserId: z.string().optional().nullable(),
     claimantName: z.string().min(1).max(200),
     claimantEmail: z.string().email(),
-    reason: z.string().min(10).max(4000),
+    reasonCategory: z.enum(CLAIM_REASON_CATEGORIES),
+    reason: z.string().min(1).max(4000),
+    details: z.string().max(4000).optional().nullable(),
   });
 export type InsertClaim = z.infer<typeof insertClaimSchema>;
 export type Claim = typeof claims.$inferSelect;

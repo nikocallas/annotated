@@ -341,7 +341,11 @@ export default function AnnotationDetailPage() {
                   </a>
                 </p>
               </div>
-              <FileClaimButton annotationId={a.id} />
+              <FileClaimButton
+                annotationId={a.id}
+                postTitle={a.sourceTitle}
+                postSourceUrl={a.sourceUrl}
+              />
             </Card>
           </article>
 

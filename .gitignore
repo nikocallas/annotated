@@ -1,3 +1,4 @@
 # Chrome Web Store upload artifact (generated via `npm run build:extension:cws`).
 # Built locally and uploaded to the Web Store dashboard; not tracked in git.
 annotated-chrome-web-store.zip
+annotated-extension-local-test.zip

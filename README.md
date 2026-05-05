@@ -97,6 +97,7 @@ Set the following **environment variables** in Vercel (production + preview):
 | `RESEND_API_KEY`                   | server   | Required for `/support` to send email via Resend's REST API. When unset, `POST /api/support` returns 503 and the form shows a friendly error. **Must be set in Vercel for live emails.** |
 | `SUPPORT_TO_EMAIL`                  | server   | Destination address for the `/support` contact form. Defaults to `support@annotatedextensions.com`. Server-side only — never exposed to the browser. |
 | `SUPPORT_FROM_EMAIL`                | server   | Optional sender. Defaults to `Annotated Support <onboarding@resend.dev>` (Resend's shared sandbox sender, fine for testing). For production, set up a verified sending domain in Resend and use it here, e.g. `Annotated Support <support@annotatedextensions.com>`. |
+| `SUPABASE_SERVICE_ROLE_KEY`         | server   | Optional. Used by the File-a-claim flow to look up the post owner's email via Supabase Auth admin so the poster can be notified when a claim is filed. Without it, the filer + support emails still go out; the poster simply isn't emailed. Must be the **service role** key, server-side only. |
 
 When both server vars are set the API talks to Supabase. When either is
 missing the API silently falls back to an in-memory `MemoryStorage` backend so

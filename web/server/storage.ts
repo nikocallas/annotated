@@ -206,9 +206,12 @@ function commentFromRow(r: CommentRow): Comment {
 type ClaimRow = {
   id: string;
   annotation_id: string;
+  claimant_user_id?: string | null;
   claimant_name: string;
   claimant_email: string;
+  reason_category?: string | null;
   reason: string;
+  details?: string | null;
   status: string;
   created_at: number;
 };
@@ -217,9 +220,12 @@ function claimFromRow(r: ClaimRow): Claim {
   return {
     id: r.id,
     annotationId: r.annotation_id,
+    claimantUserId: r.claimant_user_id ?? null,
     claimantName: r.claimant_name,
     claimantEmail: r.claimant_email,
+    reasonCategory: r.reason_category ?? null,
     reason: r.reason,
+    details: r.details ?? null,
     status: r.status,
     createdAt: Number(r.created_at),
   };
@@ -489,18 +495,24 @@ export class SupabaseStorage implements IStorage {
     const row: Claim = {
       id: randomUUID(),
       createdAt: now(),
-      status: "pending",
+      status: "received",
       annotationId: input.annotationId,
+      claimantUserId: input.claimantUserId ?? null,
       claimantName: input.claimantName,
       claimantEmail: input.claimantEmail,
+      reasonCategory: input.reasonCategory,
       reason: input.reason,
+      details: input.details ?? null,
     };
     const { error } = await this.client.from("claims").insert({
       id: row.id,
       annotation_id: row.annotationId,
+      claimant_user_id: row.claimantUserId,
       claimant_name: row.claimantName,
       claimant_email: row.claimantEmail,
+      reason_category: row.reasonCategory,
       reason: row.reason,
+      details: row.details,
       status: row.status,
       created_at: row.createdAt,
     });
@@ -790,11 +802,14 @@ export class MemoryStorage implements IStorage {
     const row: Claim = {
       id: randomUUID(),
       createdAt: now(),
-      status: "pending",
+      status: "received",
       annotationId: input.annotationId,
+      claimantUserId: input.claimantUserId ?? null,
       claimantName: input.claimantName,
       claimantEmail: input.claimantEmail,
+      reasonCategory: input.reasonCategory,
       reason: input.reason,
+      details: input.details ?? null,
     };
     this.claims.set(row.id, row);
     return row;

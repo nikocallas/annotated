@@ -162,6 +162,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  // Live media time updates from the page (user scrubbed / playback ticked).
+  if (message?.type === "MEDIA_TIME" && tabId != null) {
+    const cur = tabState.get(tabId) ?? {};
+    cur.mediaTime = message.data;
+    if (cur.pageMeta) {
+      cur.pageMeta = {
+        ...cur.pageMeta,
+        currentTime: message.data?.currentTime ?? cur.pageMeta.currentTime,
+        duration: message.data?.duration ?? cur.pageMeta.duration,
+      };
+    }
+    tabState.set(tabId, cur);
+    chrome.runtime.sendMessage({ type: "MEDIA_TIME_UPDATE", data: message.data }).catch(() => {});
+    return false;
+  }
+
+  // Forward seek/play/pause commands from the side panel down to the active
+  // tab's content script.
+  if (
+    message?.type === "SEEK_ACTIVE_TAB" ||
+    message?.type === "PAUSE_ACTIVE_TAB" ||
+    message?.type === "PLAY_ACTIVE_TAB"
+  ) {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const active = tabs[0];
+        if (!active?.id) return sendResponse({ ok: false, error: "no_active_tab" });
+        await ensureContentScript(active.id);
+        const inner =
+          message.type === "SEEK_ACTIVE_TAB"
+            ? { type: "SET_MEDIA_TIME", time: message.time, play: !!message.play }
+            : message.type === "PAUSE_ACTIVE_TAB"
+              ? { type: "PAUSE_MEDIA" }
+              : { type: "PLAY_MEDIA" };
+        const resp = await chrome.tabs
+          .sendMessage(active.id, inner)
+          .catch((err) => ({ ok: false, error: err?.message || "send_failed" }));
+        sendResponse(resp ?? { ok: true });
+      } catch (err) {
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      }
+    })();
+    return true;
+  }
+
+  // Notify side panel that the current tab changed (URL/host) so it can
+  // reset the publish UI back to the clipping screen.
+  if (message?.type === "ACTIVE_TAB_CHANGED") {
+    chrome.runtime.sendMessage(message).catch(() => {});
+    return false;
+  }
+
   // Side panel asking for current active-tab state.
   if (message?.type === "GET_ACTIVE_TAB_STATE") {
     (async () => {
@@ -252,13 +305,18 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab?.id != null) ensureContentScript(tab.id);
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === "loading") {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "loading" || changeInfo.url) {
     injectedTabs.delete(tabId);
     tabState.delete(tabId);
+    // Tell the side panel the source changed so it can reset publish UI.
+    chrome.runtime
+      .sendMessage({
+        type: "ACTIVE_TAB_CHANGED",
+        data: { tabId, url: tab?.url || changeInfo.url || null, reason: "navigated" },
+      })
+      .catch(() => {});
   }
-  // Re-inject lazily on completion if the side panel is open and asks; we
-  // don't auto-inject on every navigation to keep activeTab semantics intact.
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -267,6 +325,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  // Tell the side panel the active tab changed so it can reset publish UI.
+  chrome.runtime
+    .sendMessage({ type: "ACTIVE_TAB_CHANGED", data: { tabId, reason: "tab_switch" } })
+    .catch(() => {});
+
   // Push whatever we have for the newly-active tab to any open side panel.
   const cached = tabState.get(tabId);
   if (cached?.pageMeta) {
