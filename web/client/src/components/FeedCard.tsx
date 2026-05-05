@@ -5,7 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
 import { SourceBadge, timeAgo, hostname } from "./SourceBadge";
-import { MessageCircle, Mic, Bookmark, Share2 } from "lucide-react";
+import { MessageCircle, Mic, Bookmark, Share2, Eye } from "lucide-react";
 import { SiX } from "react-icons/si";
 import { ClipPreview } from "./ClipPreview";
 import { useAuth } from "@/lib/auth-context";
@@ -148,6 +148,15 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
             <span className="inline-flex items-center gap-1 px-2">
               <MessageCircle className="w-3.5 h-3.5" />
               {a.commentCount} {a.commentCount === 1 ? "note" : "notes"}
+            </span>
+            <span
+              className="inline-flex items-center gap-1 px-2"
+              data-testid={`text-views-${a.id}`}
+              aria-label={`${a.viewCount ?? 0} views`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              {(a.viewCount ?? 0).toLocaleString()}
+              <span className="hidden sm:inline ml-0.5">views</span>
             </span>
             {a.commentaryAudioUrl && (
               <span className="inline-flex items-center gap-1 px-2">

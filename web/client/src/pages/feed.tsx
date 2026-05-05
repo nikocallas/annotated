@@ -9,6 +9,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Sparkles,
   Users,
   Clock,
@@ -18,6 +25,7 @@ import {
   Mic,
   LayoutGrid,
   Eye,
+  ArrowUpDown,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
@@ -197,19 +205,28 @@ function TopFilters({
       })}
 
       <div className="ml-auto">
-        <select
-          value={sort}
-          onChange={(e) => onSortChange(e.target.value as SortKey)}
-          className="rounded-full border border-card-border bg-card px-3 py-1.5 text-sm font-medium hover-elevate"
-          aria-label="Sort feed"
-          data-testid="select-feed-sort"
-        >
-          {SORT_OPTIONS.map((opt) => (
-            <option key={opt.key} value={opt.key}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        <Select value={sort} onValueChange={(v) => onSortChange(v as SortKey)}>
+          <SelectTrigger
+            aria-label="Sort feed"
+            data-testid="select-feed-sort"
+            className="rounded-full border border-card-border bg-card px-3 py-1.5 h-auto text-sm font-medium hover-elevate w-[140px]"
+          >
+            <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 opacity-70" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent align="end" className="rounded-xl">
+            {SORT_OPTIONS.map((opt) => (
+              <SelectItem
+                key={opt.key}
+                value={opt.key}
+                className="rounded-md text-sm"
+                data-testid={`select-feed-sort-option-${opt.key}`}
+              >
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );
@@ -226,9 +243,17 @@ function FeedList({ sort, filter }: { sort: SortKey; filter: FilterKey }) {
   const { user } = useAuth();
 
   // Always-on "all" feed query — used by Latest, For You (personalized fallback),
-  // and to derive Bookmark/Following empty-state hints.
+  // and to derive Bookmark/Following empty-state hints. We pass shuffle=1 so
+  // the server reorders the feed on each load (still filtered by sort/filter
+  // on the client below).
   const { data: all = [], isLoading: loadingAll } = useQuery<AnnotationWithRelations[]>({
-    queryKey: ["/api/feed"],
+    queryKey: ["/api/feed", { shuffle: 1 }],
+    queryFn: async () => {
+      const res = await fetch("/api/feed?shuffle=1");
+      return res.json();
+    },
+    // Fresh shuffle on every load
+    staleTime: 0,
   });
 
   // Following query (only if signed in)
@@ -273,18 +298,23 @@ function FeedList({ sort, filter }: { sort: SortKey; filter: FilterKey }) {
     if (sort === "following") return following;
     if (sort === "bookmarks") return bookmarks;
     if (sort === "for-you") {
-      // Heuristic For You: prefer the user's followed creators, then top-viewed
-      // publics that aren't already in the followed slice. Falls back to the
-      // public feed for signed-out users.
-      if (!user) return all;
+      // For You: requires sign-in (signed-out state is handled separately).
+      // Mix followed creators with top-viewed public clips not already in the
+      // followed slice. Re-shuffles each render via the server's randomized
+      // base so each visit feels fresh.
       const followingIds = new Set(following.map((a) => a.id));
       const tail = [...all]
         .filter((a) => !followingIds.has(a.id))
         .sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0));
       return [...following, ...tail];
     }
-    return all; // latest
-  }, [sort, following, bookmarks, all, user]);
+    if (sort === "latest") {
+      // Server returns shuffled rows; for Latest we explicitly sort by
+      // creation time so the tab name actually means something.
+      return [...all].sort((a, b) => b.createdAt - a.createdAt);
+    }
+    return all;
+  }, [sort, following, bookmarks, all]);
 
   const isLoading =
     sort === "following" ? loadingFollowing :
@@ -299,6 +329,9 @@ function FeedList({ sort, filter }: { sort: SortKey; filter: FilterKey }) {
   }
   if (sort === "bookmarks" && !user) {
     return <SignInCallout title="Sign in to see your Bookmarks" />;
+  }
+  if (sort === "for-you" && !user) {
+    return <SignInCallout title="Sign in to see your For You feed" />;
   }
 
   if (isLoading) {
@@ -378,9 +411,14 @@ function PeopleWorthFollowing() {
   const { data, isLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
   });
+  // Hard-coded suggested set per spec — these four usernames in this order.
+  const SUGGESTED = ["nikocallas", "fmaks", "volodyaa", "nazar"];
   const candidates = useMemo(() => {
     const list = data ?? [];
-    return list.filter((u) => u.id !== user?.id).slice(0, 4);
+    const byUsername = new Map(list.map((u) => [u.username, u] as const));
+    return SUGGESTED
+      .map((u) => byUsername.get(u))
+      .filter((u): u is User => !!u && u.id !== user?.id);
   }, [data, user]);
 
   return (

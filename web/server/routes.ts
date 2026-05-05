@@ -74,8 +74,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (provider !== "x" && provider !== "google") {
         return res.status(400).json({ error: "Provider must be 'x' or 'google'" });
       }
-      // Return the seeded jcal user as the "logged in" demo identity.
-      const user = await storage.getUserByUsername("jcal");
+      // Return the seeded Niko Callas user as the "logged in" demo identity.
+      const user = await storage.getUserByUsername("nikocallas");
       if (!user) return res.status(500).json({ error: "Demo user missing" });
       return res.json({ user, provider });
     })
@@ -154,11 +154,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   );
 
   // ---- USERS -------------------------------------------------------------
+  // Suggested users — order matters for "People worth following" rail.
+  // Niko is the demo-author, so he isn't suggested back to himself; the
+  // rail filters out the current user client-side as well.
+  const SUGGESTED_ORDER = ["nikocallas", "fmaks", "volodyaa", "nazar"];
   app.get(
     "/api/users",
     asyncHandler(async (_req, res) => {
       const users = await storage.listUsers();
-      return res.json(users);
+      const ranked = [...users].sort((a, b) => {
+        const ai = SUGGESTED_ORDER.indexOf(a.username);
+        const bi = SUGGESTED_ORDER.indexOf(b.username);
+        const av = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
+        const bv = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
+        if (av !== bv) return av - bv;
+        return b.createdAt - a.createdAt;
+      });
+      return res.json(ranked);
     })
   );
 
@@ -211,8 +223,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/api/feed",
     asyncHandler(async (req, res) => {
       const followerOf = (req.query.followerOf as string) || undefined;
-      const limit = Math.min(100, Number(req.query.limit ?? 50));
+      const limit = Math.min(100, Number(req.query.limit ?? 60));
+      const shuffle = req.query.shuffle === "1" || req.query.shuffle === "true";
       const annotations = await storage.listAnnotations({ followerOf, limit });
+      if (shuffle) {
+        // Fisher–Yates with a per-request seed so each feed load reorders.
+        for (let i = annotations.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [annotations[i], annotations[j]] = [annotations[j], annotations[i]];
+        }
+      }
       return res.json(annotations);
     })
   );

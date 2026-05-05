@@ -77,6 +77,12 @@ export default function LandingPage() {
             <a href="/tos" className="hover:text-foreground">Terms</a>
           </div>
         </div>
+        <div
+          className="mx-auto max-w-6xl px-6 pb-6 text-xs text-muted-foreground"
+          data-testid="text-footer-copyright"
+        >
+          Copyright 2026 Laymen, Inc.
+        </div>
       </footer>
     </div>
   );

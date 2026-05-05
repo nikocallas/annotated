@@ -99,6 +99,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <a href="/tos" className="hover:text-foreground" data-testid="link-footer-tos">Terms</a>
           </div>
         </div>
+        <div
+          className="mx-auto max-w-6xl px-6 pb-6 text-xs text-muted-foreground"
+          data-testid="text-footer-copyright"
+        >
+          Copyright 2026 Laymen, Inc.
+        </div>
       </footer>
     </div>
   );
