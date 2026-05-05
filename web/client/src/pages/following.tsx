@@ -21,7 +21,7 @@ export default function FollowingPage() {
     <AppLayout>
       <div className="mx-auto max-w-3xl px-6 py-10">
         <header className="mb-8">
-          <h1 className="text-3xl md:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
+          <h1 className="text-3xl md:text-4xl" style={{ fontFamily: "var(--font-sans)" }}>
             Following
           </h1>
           <p className="text-muted-foreground mt-2">

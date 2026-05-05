@@ -36,7 +36,7 @@ export default function LoginPage() {
         <div className="rounded-lg border border-card-border bg-card p-8">
           <h1
             className="text-3xl mb-1"
-            style={{ fontFamily: "var(--font-serif)" }}
+            style={{ fontFamily: "var(--font-sans)" }}
             data-testid="text-login-title"
           >
             Sign in

@@ -30,7 +30,7 @@ export function ClipPreview({
     return (
       <blockquote
         className="border-l-2 border-primary pl-4 py-1 italic text-foreground/90 leading-relaxed"
-        style={{ fontFamily: "var(--font-serif)", fontSize: compact ? "1.05rem" : "1.18rem" }}
+        style={{ fontFamily: "var(--font-sans)", fontSize: compact ? "1.05rem" : "1.18rem" }}
         data-testid={`clip-text-${a.id}`}
       >
         "{a.clipText}"

@@ -55,7 +55,7 @@ export default function AuthCallbackPage() {
             <>
               <h1
                 className="text-2xl mb-2"
-                style={{ fontFamily: "var(--font-serif)" }}
+                style={{ fontFamily: "var(--font-sans)" }}
               >
                 Signing you in
               </h1>
@@ -65,7 +65,7 @@ export default function AuthCallbackPage() {
             <>
               <h1
                 className="text-2xl mb-2"
-                style={{ fontFamily: "var(--font-serif)" }}
+                style={{ fontFamily: "var(--font-sans)" }}
               >
                 Sign-in didn't complete
               </h1>

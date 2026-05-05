@@ -32,7 +32,7 @@ export default function InstallPage() {
           </div>
           <h1
             className="text-4xl md:text-5xl mb-3 leading-[1.05]"
-            style={{ fontFamily: "var(--font-serif)" }}
+            style={{ fontFamily: "var(--font-sans)" }}
             data-testid="text-install-title"
           >
             Install the extension

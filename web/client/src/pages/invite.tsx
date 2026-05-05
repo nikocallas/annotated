@@ -3,7 +3,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { MessageSquare, Mail, Twitter, Link as LinkIcon, Share2, Copy } from "lucide-react";
+import { MessageSquare, Mail, Link as LinkIcon, Share2, Copy } from "lucide-react";
 
 const LANDING_URL = "https://www.annotatedextension.com";
 const INVITE_SUBJECT = "You should try Annotated";
@@ -22,6 +22,19 @@ function buildSmsHref() {
 
 function buildMailtoHref() {
   return `mailto:?subject=${encodeURIComponent(INVITE_SUBJECT)}&body=${encodeURIComponent(INVITE_BODY)}`;
+}
+
+function XMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
 }
 
 function buildTweetHref() {
@@ -76,7 +89,7 @@ export default function InvitePage() {
           </div>
           <h1
             className="text-4xl md:text-5xl mb-3 leading-[1.05]"
-            style={{ fontFamily: "var(--font-serif)" }}
+            style={{ fontFamily: "var(--font-sans)" }}
             data-testid="text-invite-title"
           >
             Love Annotated? Spread the word.
@@ -143,7 +156,7 @@ export default function InvitePage() {
             data-testid="button-invite-twitter"
           >
             <a href={buildTweetHref()} target="_blank" rel="noopener noreferrer">
-              <Twitter className="w-5 h-5 text-primary" />
+              <XMark className="w-5 h-5 text-primary" />
               <span className="font-semibold">Share on X</span>
               <span className="text-xs text-muted-foreground">Post to your followers</span>
             </a>
@@ -160,9 +173,6 @@ export default function InvitePage() {
             <Share2 className="w-4 h-4" />
             Share Annotated
           </Button>
-          <p className="text-xs text-muted-foreground mt-3">
-            Uses your device's share sheet when available, falls back to copying the link.
-          </p>
         </div>
       </div>
     </AppLayout>

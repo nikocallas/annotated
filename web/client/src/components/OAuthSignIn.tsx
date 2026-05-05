@@ -37,7 +37,7 @@ export function OAuthSignIn({
     >
       <h2
         className={compact ? "text-lg font-semibold mb-1" : "text-2xl mb-1"}
-        style={compact ? undefined : { fontFamily: "var(--font-serif)" }}
+        style={compact ? undefined : { fontFamily: "var(--font-sans)" }}
         data-testid="text-oauth-title"
       >
         {title}

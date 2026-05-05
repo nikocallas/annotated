@@ -170,7 +170,7 @@ export default function AnnotationDetailPage() {
             {/* Title */}
             <h1
               className="text-3xl md:text-4xl leading-[1.15] font-semibold"
-              style={{ fontFamily: "var(--font-serif, var(--font-sans))" }}
+              style={{ fontFamily: "var(--font-sans)" }}
               data-testid="text-annotation-title"
             >
               {a.sourceTitle ?? "Untitled clip"}
@@ -311,7 +311,7 @@ export default function AnnotationDetailPage() {
             <section className="space-y-4">
               <h2
                 className="text-xl font-semibold"
-                style={{ fontFamily: "var(--font-serif, var(--font-sans))" }}
+                style={{ fontFamily: "var(--font-sans)" }}
               >
                 Discussion ({a.commentCount})
               </h2>

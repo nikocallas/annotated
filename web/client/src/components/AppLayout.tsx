@@ -83,9 +83,9 @@ export function AppLayout({
                 </Button>
               </>
             ) : (
-              <Button asChild size="sm" data-testid="button-signin-header">
+              <Button asChild size="sm" className="gap-1.5" data-testid="button-signin-header">
                 <Link href="/login">
-                  <UserIcon className="w-4 h-4 mr-1.5" />
+                  <UserIcon className="w-4 h-4" />
                   Sign in
                 </Link>
               </Button>

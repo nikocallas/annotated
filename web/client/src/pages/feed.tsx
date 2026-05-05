@@ -245,7 +245,7 @@ function TopFilters({
           <SelectTrigger
             aria-label="Sort feed"
             data-testid="select-feed-sort"
-            className="rounded-full border border-card-border bg-card px-4 py-1.5 h-auto text-sm font-medium hover-elevate min-w-[200px] gap-2 whitespace-nowrap [&>span]:line-clamp-none [&>span]:whitespace-nowrap"
+            className="rounded-full border border-card-border bg-card px-4 py-1.5 h-auto text-sm font-medium hover-elevate w-auto gap-2 whitespace-nowrap [&>span]:line-clamp-none [&>span]:whitespace-nowrap"
           >
             <ArrowUpDown className="w-3.5 h-3.5 opacity-70 shrink-0" />
             <SelectValue />
