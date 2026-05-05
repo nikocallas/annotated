@@ -1,6 +1,9 @@
 import type { Annotation } from "@shared/schema";
 import { formatRange } from "./SourceBadge";
 import { Play, Mic } from "lucide-react";
+import { BoundedYouTubePlayer } from "./BoundedClipPlayer";
+
+const MAX_CLIP_SECONDS = 90;
 
 function youtubeId(url: string): string | null {
   try {
@@ -13,6 +16,13 @@ function youtubeId(url: string): string | null {
     }
   } catch {}
   return null;
+}
+
+function clampClipRange(startSec: number, endSec: number): { start: number; end: number } {
+  const start = Math.max(0, Math.floor(startSec));
+  let end = Math.max(start + 1, Math.floor(endSec));
+  if (end - start > MAX_CLIP_SECONDS) end = start + MAX_CLIP_SECONDS;
+  return { start, end };
 }
 
 export function ClipPreview({
@@ -40,29 +50,35 @@ export function ClipPreview({
 
   if (a.sourceType === "youtube") {
     const vid = youtubeId(a.sourceUrl);
-    const range = a.clipStartSec != null && a.clipEndSec != null ? formatRange(a.clipStartSec, a.clipEndSec) : null;
+    const clipped =
+      a.clipStartSec != null && a.clipEndSec != null
+        ? clampClipRange(a.clipStartSec, a.clipEndSec)
+        : null;
+    const range = clipped ? formatRange(clipped.start, clipped.end) : null;
 
-    if (fullPlayer && vid && a.clipStartSec != null && a.clipEndSec != null) {
-      const params = new URLSearchParams({
-        start: String(a.clipStartSec),
-        end: String(a.clipEndSec),
-        rel: "0",
-        modestbranding: "1",
-      });
+    if (fullPlayer && vid && clipped) {
+      const { start, end } = clipped;
       return (
         <div className="rounded-md overflow-hidden border border-card-border bg-black" data-testid={`clip-video-${a.id}`}>
-          <div className="aspect-video">
-            <iframe
-              className="w-full h-full"
-              src={`https://www.youtube.com/embed/${vid}?${params.toString()}`}
-              title={a.sourceTitle ?? "Video clip"}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
-          </div>
+          <BoundedYouTubePlayer
+            videoId={vid}
+            startSec={start}
+            endSec={end}
+            title={a.sourceTitle ?? undefined}
+          />
           <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between">
-            <span>Clipped {range} • 240p preview</span>
-            <span className="font-mono">≤ 90s</span>
+            <span data-testid={`clip-range-${a.id}`}>
+              Clip {formatRange(start, end)} • {end - start}s • 240p
+            </span>
+            <a
+              href={`${a.sourceUrl}${a.sourceUrl.includes("?") ? "&" : "?"}t=${start}s`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-mono"
+              data-testid={`clip-source-link-${a.id}`}
+            >
+              View source ↗
+            </a>
           </div>
         </div>
       );
@@ -96,9 +112,13 @@ export function ClipPreview({
     );
   }
 
-  // Podcast
-  const range = a.clipStartSec != null && a.clipEndSec != null ? formatRange(a.clipStartSec, a.clipEndSec) : null;
-  const dur = a.clipStartSec != null && a.clipEndSec != null ? a.clipEndSec - a.clipStartSec : 0;
+  // Podcast — clipped audio shell only, never embed full source
+  const podClipped =
+    a.clipStartSec != null && a.clipEndSec != null
+      ? clampClipRange(a.clipStartSec, a.clipEndSec)
+      : null;
+  const range = podClipped ? formatRange(podClipped.start, podClipped.end) : null;
+  const dur = podClipped ? podClipped.end - podClipped.start : 0;
   return (
     <div
       className="rounded-md border border-card-border bg-card-foreground/5 px-4 py-3 flex items-center gap-3"
