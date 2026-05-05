@@ -4,6 +4,7 @@ import LandingPage from "./pages/landing";
 import PrivacyPage from "./pages/privacy";
 import TermsPage from "./pages/tos";
 import SupportPage from "./pages/support";
+import ClaimsPage from "./pages/claims";
 import AuthCallbackPage from "./pages/auth-callback";
 import { initThemeEarly } from "./lib/theme";
 import "./index.css";
@@ -36,6 +37,14 @@ if (path === "/privacy" || path === "/privacy/") {
 } else if (path === "/support" || path === "/support/") {
   document.title = "Support — Annotated";
   root.render(<SupportPage />);
+} else if (
+  path === "/claims" ||
+  path === "/claims/" ||
+  path === "/claims/how-it-works" ||
+  path === "/claims/how-it-works/"
+) {
+  document.title = "How claims work — Annotated";
+  root.render(<ClaimsPage />);
 } else if (path === "/auth/callback" || path === "/auth/callback/") {
   document.title = "Signing in — Annotated";
   root.render(<AuthCallbackPage />);

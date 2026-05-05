@@ -358,7 +358,7 @@ export default function AnnotationDetailPage() {
                   believe this clip exceeds fair use or infringes your rights,
                   file a claim and our team will review.{" "}
                   <a
-                    href="/support?reason=claim"
+                    href="/claims"
                     className="text-primary hover:underline"
                     data-testid="link-claim-learn"
                   >
