@@ -4,34 +4,31 @@ import { DownloadExtensionButton } from "./DownloadExtensionButton";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Compass, Users, Home, User as UserIcon, LogOut } from "lucide-react";
+import { Compass, Home, User as UserIcon, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import type { ReactNode } from "react";
 
 type NavItem = { href: string; label: string; icon: typeof Compass; external?: boolean };
 
-const DEFAULT_NAV: NavItem[] = [
-  { href: "/", label: "Feed", icon: Compass },
-  { href: "/following", label: "Following", icon: Users },
-];
-
-// On the feed page we show only Home (landing) and Feed — no Following or
-// other tabs, so the page header stays focused on the feed itself.
-const FEED_NAV: NavItem[] = [
+// Sitewide header nav: Home (landing, path-based) + Feed (in-app, hash-based).
+// Used on every app-routed page so the header stays consistent across the
+// site, including the landing and legal pages (via SiteNav).
+const SITE_NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home, external: true },
   { href: "/", label: "Feed", icon: Compass },
 ];
 
 export function AppLayout({
   children,
-  feedHeader = false,
 }: {
   children: ReactNode;
+  // Accepted but ignored — kept so existing callers keep type-checking. Nav
+  // is now identical (Home + Feed) on every app page.
   feedHeader?: boolean;
 }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const NAV = feedHeader ? FEED_NAV : DEFAULT_NAV;
+  const NAV = SITE_NAV;
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">

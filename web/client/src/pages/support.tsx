@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Logo } from "@/components/Logo";
 import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { SiteNav } from "@/components/SiteNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -80,16 +81,12 @@ export default function SupportPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6 h-14 flex items-center gap-4">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6 h-14 flex items-center gap-4 sm:gap-6">
           <Logo />
+          <SiteNav />
           <div className="ml-auto flex items-center gap-3">
-            <a
-              href="/feed"
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              The Feed
-            </a>
             <ThemeToggle />
+            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" />
           </div>
         </div>
       </header>

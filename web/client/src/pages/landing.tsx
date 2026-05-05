@@ -1,21 +1,16 @@
 import { Logo, QuoteMark } from "@/components/Logo";
 import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { SiteNav } from "@/components/SiteNav";
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
       <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 h-14 flex items-center gap-4">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 h-14 flex items-center gap-4 sm:gap-6">
           <Logo />
+          <SiteNav current="home" />
           <div className="ml-auto flex items-center gap-3">
-            <a
-              href="/feed"
-              className="hidden sm:inline text-sm text-muted-foreground hover:text-foreground"
-              data-testid="link-feed"
-            >
-              The Feed
-            </a>
             <ThemeToggle />
             <DownloadExtensionButton size="sm" />
           </div>

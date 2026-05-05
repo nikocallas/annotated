@@ -61,6 +61,8 @@ export function FollowButton({
   if (isMe) return null;
 
   if (!me) {
+    // Signed-out visitors see a plain "Follow" button. Clicking it routes to
+    // sign-in (the actual follow happens after auth completes).
     return (
       <Button
         type="button"
@@ -73,9 +75,9 @@ export function FollowButton({
           setLocation("/login");
         }}
         data-testid={`button-follow-signin-${targetUserId}`}
-        aria-label={`Sign in to follow ${targetUsername ?? "user"}`}
+        aria-label={`Follow ${targetUsername ?? "user"}`}
       >
-        Sign in to follow
+        Follow
       </Button>
     );
   }

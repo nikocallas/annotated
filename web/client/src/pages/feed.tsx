@@ -93,7 +93,10 @@ export default function FeedPage() {
 
   return (
     <AppLayout feedHeader>
-      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-6 lg:gap-8">
+      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_300px] gap-6 lg:gap-8">
+        {/* Left sidebar */}
+        <LeftSidebar sort={sort} onSortChange={setSort} />
+
         {/* Center feed */}
         <div className="min-w-0">
           <TopFilters
@@ -121,6 +124,57 @@ export default function FeedPage() {
         </aside>
       </div>
     </AppLayout>
+  );
+}
+
+// ---------- Left sidebar -----------------------------------------------------
+
+function LeftSidebar({
+  sort,
+  onSortChange,
+}: {
+  sort: SortKey;
+  onSortChange: (s: SortKey) => void;
+}) {
+  return (
+    <aside className="hidden lg:block">
+      <nav className="sticky top-20 space-y-1" aria-label="Feed navigation">
+        {SORT_OPTIONS.map((opt) => {
+          const Icon = opt.icon;
+          const active = sort === opt.key;
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => onSortChange(opt.key)}
+              className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium hover-elevate ${
+                active
+                  ? "bg-sidebar-accent text-foreground"
+                  : "text-muted-foreground"
+              }`}
+              aria-current={active ? "page" : undefined}
+              data-testid={`sidebar-sort-${opt.key}`}
+            >
+              <Icon className="w-4 h-4" />
+              {opt.label}
+            </button>
+          );
+        })}
+        <div className="pt-4 mt-4 border-t border-card-border">
+          <div className="rounded-lg border border-card-border bg-card p-4">
+            <div className="text-sm font-semibold mb-1">Invite your friends</div>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
+              Great conversations start with great company.
+            </p>
+            <Link href="/install">
+              <Button size="sm" className="w-full" data-testid="button-invite-annotated">
+                Invite to Annotated
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </nav>
+    </aside>
   );
 }
 
@@ -297,7 +351,7 @@ function FeedSkeleton() {
   );
 }
 
-// ---------- Right rail: People worth following -----------------------------
+// ---------- Right rail: Suggested follows ----------------------------------
 
 function PeopleWorthFollowing() {
   const { user } = useAuth();
@@ -325,7 +379,7 @@ function PeopleWorthFollowing() {
           id="rail-people-heading"
           className="text-[11px] font-semibold tracking-wider uppercase text-muted-foreground"
         >
-          People worth following
+          Suggested follows
         </h3>
         <Link
           href="/"
