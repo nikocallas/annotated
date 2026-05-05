@@ -2,6 +2,17 @@ import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Hard cap on the number of source words a Reading/article clip may contain.
+// Enforced in the extension UI, the web client preview, and on the API.
+export const MAX_CLIP_TEXT_WORDS = 100;
+
+export function countClipTextWords(text: string | null | undefined): number {
+  if (!text) return 0;
+  const trimmed = String(text).trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).filter(Boolean).length;
+}
+
 // USERS — auth provider is x or google only (no email/password)
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
@@ -95,6 +106,17 @@ export const insertAnnotationSchema = createInsertSchema(annotations)
       return data.clipStartSec != null && data.clipEndSec != null;
     },
     { message: "Article needs text; video/audio need a start and end second" }
+  )
+  .refine(
+    (data) => {
+      // Hard 100-word cap on Reading/article source text.
+      if (data.sourceType !== "article") return true;
+      return countClipTextWords(data.clipText) <= MAX_CLIP_TEXT_WORDS;
+    },
+    {
+      message: `Source text exceeds the ${MAX_CLIP_TEXT_WORDS}-word fair-use cap. Trim the passage and try again.`,
+      path: ["clipText"],
+    },
   );
 
 export type InsertAnnotation = z.infer<typeof insertAnnotationSchema>;

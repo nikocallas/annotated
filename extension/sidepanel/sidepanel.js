@@ -4,8 +4,17 @@
 
 const DEFAULT_API_BASE = "https://annotatedextension.com";
 const MAX_CLIP_SECONDS = 90;
+const MAX_CLIP_TEXT_WORDS = 100;
 const SUPPORT_EMAIL = "support@annotatedextension.com";
 const PUBLISH_RESET_MS = 10000;
+const FAIR_USE_COPY = "I confirm this annotation uses only the selected clip/text for commentary, criticism, research, or another fair-use purpose.";
+
+function countWords(text) {
+  if (!text) return 0;
+  const trimmed = String(text).trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).filter(Boolean).length;
+}
 
 const CLAIM_REASONS = [
   ["uses_too_much", "Uses too much of my original work"],
@@ -60,7 +69,7 @@ const state = {
   // or pastes after that import; until then, fresh selections may overwrite
   // the field. After an edit we leave their text alone unless they hit the
   // "Import selection" button.
-  form: { commentary: "", clipText: "", clipTextFromSelection: "", clipTextEdited: false },
+  form: { commentary: "", clipText: "", clipTextFromSelection: "", clipTextEdited: false, fairUseAcked: false },
   // Publish lifecycle
   publish: {
     status: "idle", // idle | publishing | published
@@ -408,6 +417,16 @@ function renderClip() {
 
   const publishBtn = $("[data-publish]", node);
   const errorEl = $("[data-error]", node);
+  const fairUseCheck = $("[data-fair-use-check]", node);
+  if (fairUseCheck) {
+    fairUseCheck.checked = !!state.form.fairUseAcked;
+    fairUseCheck.addEventListener("change", () => {
+      state.form.fairUseAcked = !!fairUseCheck.checked;
+      if (fairUseCheck.checked && errorEl && /fair[- ]?use/i.test(errorEl.textContent || "")) {
+        errorEl.hidden = true;
+      }
+    });
+  }
   publishBtn.addEventListener("click", async () => {
     errorEl.hidden = true;
     await onPublish(node, publishBtn, errorEl);
@@ -436,8 +455,16 @@ function applySelectionToClipText(text, { force = false } = {}) {
     // Scroll to top so the start of the passage is visible after import.
     ta.scrollTop = 0;
   }
+  const words = countWords(next);
   const status = document.querySelector("[data-clip-text-status]");
-  if (status) status.textContent = "Imported from page selection";
+  if (status) {
+    if (words > MAX_CLIP_TEXT_WORDS) {
+      status.textContent = `Imported ${words} words — over the ${MAX_CLIP_TEXT_WORDS}-word limit. Trim before publishing.`;
+    } else {
+      status.textContent = "Imported from page selection";
+    }
+  }
+  updateClipWordCounter();
   patchPreviewCard();
 }
 
@@ -476,7 +503,10 @@ function buildClipTextField({ rows = 6, placeholder = "highlight text on page an
         ↧ Import selection
       </button>
     </div>
-    <textarea id="clip-text-area" data-clip-text rows="${rows}" placeholder="${placeholder}"></textarea>
+    <div class="clip-text-wrap">
+      <textarea id="clip-text-area" data-clip-text rows="${rows}" placeholder="${placeholder}"></textarea>
+      <span class="clip-word-counter" data-clip-word-counter aria-live="polite">0 / ${MAX_CLIP_TEXT_WORDS} words</span>
+    </div>
     <p class="muted small clip-text-status" data-clip-text-status>
       highlight text on page and import selection, or paste it here...
     </p>
@@ -489,6 +519,7 @@ function buildClipTextField({ rows = 6, placeholder = "highlight text on page an
       state.form.clipTextFromSelection = initial;
     }
   }
+  updateClipWordCounter(wrap);
   ta.addEventListener("input", () => {
     state.form.clipText = ta.value;
     // Any input that diverges from the last imported selection counts as a
@@ -498,6 +529,7 @@ function buildClipTextField({ rows = 6, placeholder = "highlight text on page an
     if (status && state.form.clipTextEdited) {
       status.textContent = "Edited — auto-import paused. Click ↧ Import selection to overwrite with the page highlight.";
     }
+    updateClipWordCounter(wrap);
     patchPreviewCard();
   });
   ta.addEventListener("paste", () => {
@@ -505,6 +537,7 @@ function buildClipTextField({ rows = 6, placeholder = "highlight text on page an
     setTimeout(() => {
       state.form.clipText = ta.value;
       state.form.clipTextEdited = ta.value !== state.form.clipTextFromSelection;
+      updateClipWordCounter(wrap);
       patchPreviewCard();
     }, 0);
   });
@@ -513,6 +546,22 @@ function buildClipTextField({ rows = 6, placeholder = "highlight text on page an
     importSelectionFromActiveTab();
   });
   return wrap;
+}
+
+function updateClipWordCounter(scope) {
+  const root = scope || document;
+  const counter = root.querySelector
+    ? root.querySelector("[data-clip-word-counter]")
+    : document.querySelector("[data-clip-word-counter]");
+  if (!counter) return;
+  const ta = root.querySelector
+    ? root.querySelector("[data-clip-text]")
+    : document.querySelector("[data-clip-text]");
+  const value = ta ? ta.value : state.form.clipText || "";
+  const words = countWords(value);
+  counter.textContent = `${words} / ${MAX_CLIP_TEXT_WORDS} words`;
+  counter.classList.toggle("over", words > MAX_CLIP_TEXT_WORDS);
+  counter.classList.toggle("near", words > MAX_CLIP_TEXT_WORDS * 0.8 && words <= MAX_CLIP_TEXT_WORDS);
 }
 
 function renderArticleClip() {
@@ -1061,6 +1110,15 @@ async function onPublish(node, publishBtn, errorEl) {
   if (!state.user) {
     return showError(errorEl, "Sign in first to publish.");
   }
+  const fairUseCheck = $("[data-fair-use-check]", node);
+  const acked = fairUseCheck ? !!fairUseCheck.checked : !!state.form.fairUseAcked;
+  state.form.fairUseAcked = acked;
+  if (!acked) {
+    return showError(
+      errorEl,
+      "Please confirm fair use before publishing — all content on Annotated must be fair use.",
+    );
+  }
   const meta = state.pageMeta || {};
   const sourceType = meta.sourceType || "unknown";
   const commentary = ($("[data-commentary]", node)?.value || state.form.commentary || "").trim();
@@ -1088,6 +1146,13 @@ async function onPublish(node, publishBtn, errorEl) {
     payload.clipText = ($("[data-clip-text]", node)?.value?.trim() || state.form.clipText?.trim() || "");
     if (!payload.clipText) {
       return showError(errorEl, "Highlight or paste a passage to clip.");
+    }
+    const words = countWords(payload.clipText);
+    if (words > MAX_CLIP_TEXT_WORDS) {
+      return showError(
+        errorEl,
+        `Source text is ${words} words. Max allowed is ${MAX_CLIP_TEXT_WORDS} words — trim the passage before publishing.`,
+      );
     }
   } else {
     payload.clipStartSec = Math.max(0, Math.floor(state.clipRange.start));
@@ -1136,6 +1201,7 @@ function resetPublishState() {
   state.form.clipText = "";
   state.form.clipTextFromSelection = "";
   state.form.clipTextEdited = false;
+  state.form.fairUseAcked = false;
   state.selection = null;
   state.clipRange.userTouched = false;
   seedClipRangeFromMeta();

@@ -8,6 +8,8 @@ import {
   insertCommentSchema,
   insertClaimSchema,
   CLAIM_REASON_LABELS,
+  MAX_CLIP_TEXT_WORDS,
+  countClipTextWords,
   type ClaimReasonCategory,
   type VoteValue,
 } from "@shared/schema";
@@ -451,6 +453,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         validateSourceUrl(data.sourceUrl);
         if (data.sourceType !== "article" && data.clipStartSec != null && data.clipEndSec != null) {
           validateClipDuration(data.clipStartSec, data.clipEndSec);
+        }
+        if (data.sourceType === "article") {
+          const words = countClipTextWords(data.clipText);
+          if (words > MAX_CLIP_TEXT_WORDS) {
+            return res.status(400).json({
+              error: `Source text is ${words} words. Max allowed is ${MAX_CLIP_TEXT_WORDS} words.`,
+              field: "clipText",
+            });
+          }
         }
       } catch (err) {
         if (err instanceof ClipValidationError) {
