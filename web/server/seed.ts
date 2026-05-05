@@ -93,17 +93,13 @@ async function doSeed() {
 
   // Insert with a deterministic, descending createdAt offset so newest items
   // are first by default; randomization happens server-side at request time.
+  // View counts start at 0 — they only ever increase when a user actually
+  // opens an annotation detail page (see /api/annotations/:id/view).
   const baseTime = Math.floor(Date.now() / 1000);
   let createdAnnIds: string[] = [];
   for (let i = 0; i < annotations.length; i++) {
     const data = annotations[i];
     const ann = await storage.createAnnotation({ ...data, userId: niko.id });
-    // Backdate so timestamps look like a real feed (1h apart up to ~2 days)
-    await storage.updateAnnotation(ann.id, {
-      // No createdAt setter on storage; we just leave the natural now() value.
-      // Vary view counts deterministically so right-rail picks a clear winner.
-      viewCount: 4823 - i * 17 - (i % 7) * 13,
-    } as Partial<typeof ann>);
     createdAnnIds.push(ann.id);
   }
 

@@ -16,29 +16,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sparkles,
-  Users,
   Clock,
-  Bookmark,
   Video,
   FileText,
   Mic,
   LayoutGrid,
   Eye,
+  Flame,
+  MessageCircle,
   ArrowUpDown,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 
-type SortKey = "latest" | "for-you" | "following" | "bookmarks";
+type SortKey = "latest" | "most-viewed" | "most-popular" | "most-commented";
 type FilterKey = "all" | "youtube" | "article" | "podcast";
 
 const SORT_OPTIONS: { key: SortKey; label: string; icon: typeof Clock }[] = [
-  { key: "for-you", label: "For You", icon: Sparkles },
-  { key: "following", label: "Following", icon: Users },
   { key: "latest", label: "Latest", icon: Clock },
-  { key: "bookmarks", label: "Bookmarks", icon: Bookmark },
+  { key: "most-viewed", label: "Most Viewed", icon: Eye },
+  { key: "most-popular", label: "Most Popular", icon: Flame },
+  { key: "most-commented", label: "Most Commented", icon: MessageCircle },
 ];
+
+const SORT_KEYS = SORT_OPTIONS.map((o) => o.key);
+const isSortKey = (v: string | null | undefined): v is SortKey =>
+  !!v && (SORT_KEYS as string[]).includes(v);
 
 const FILTER_OPTIONS: { key: FilterKey; label: string; icon: typeof LayoutGrid }[] = [
   { key: "all", label: "All", icon: LayoutGrid },
@@ -51,12 +54,25 @@ function readInitialSort(): SortKey {
   if (typeof window === "undefined") return "latest";
   const search = window.location.search;
   const hash = window.location.hash;
-  const fromSearch = new URLSearchParams(search).get("tab") || new URLSearchParams(search).get("sort");
-  const fromHash = new URLSearchParams(hash.split("?")[1] ?? "").get("tab") ||
+  const fromSearch =
+    new URLSearchParams(search).get("tab") || new URLSearchParams(search).get("sort");
+  const fromHash =
+    new URLSearchParams(hash.split("?")[1] ?? "").get("tab") ||
     new URLSearchParams(hash.split("?")[1] ?? "").get("sort");
   const v = fromSearch || fromHash;
-  if (v === "for-you" || v === "following" || v === "latest" || v === "bookmarks") return v;
-  return "latest";
+  return isSortKey(v) ? v : "latest";
+}
+
+// Deterministic popularity score: comments are the strongest engagement
+// signal we collect server-side. Bookmarks and shares aren't surfaced on the
+// feed payload yet, so we fold views in as a tiebreaker (a clip with twice
+// the views of another and the same comment count is meaningfully more
+// popular). Formula: comments * 100 + log2(views + 1). Pure function of the
+// existing AnnotationWithRelations fields; no extra fetch required.
+function popularityScore(a: AnnotationWithRelations): number {
+  const comments = a.commentCount ?? 0;
+  const views = a.viewCount ?? 0;
+  return comments * 100 + Math.log2(views + 1);
 }
 
 export default function FeedPage() {
@@ -76,11 +92,8 @@ export default function FeedPage() {
   }, [sort]);
 
   return (
-    <AppLayout>
-      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_300px] gap-6 lg:gap-8">
-        {/* Left sidebar */}
-        <LeftSidebar sort={sort} onSortChange={setSort} />
-
+    <AppLayout feedHeader>
+      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-6 lg:gap-8">
         {/* Center feed */}
         <div className="min-w-0">
           <TopFilters
@@ -108,57 +121,6 @@ export default function FeedPage() {
         </aside>
       </div>
     </AppLayout>
-  );
-}
-
-// ---------- Left sidebar -----------------------------------------------------
-
-function LeftSidebar({
-  sort,
-  onSortChange,
-}: {
-  sort: SortKey;
-  onSortChange: (s: SortKey) => void;
-}) {
-  return (
-    <aside className="hidden lg:block">
-      <nav className="sticky top-20 space-y-1" aria-label="Feed navigation">
-        {SORT_OPTIONS.map((opt) => {
-          const Icon = opt.icon;
-          const active = sort === opt.key;
-          return (
-            <button
-              key={opt.key}
-              type="button"
-              onClick={() => onSortChange(opt.key)}
-              className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium hover-elevate ${
-                active
-                  ? "bg-sidebar-accent text-foreground"
-                  : "text-muted-foreground"
-              }`}
-              aria-current={active ? "page" : undefined}
-              data-testid={`sidebar-sort-${opt.key}`}
-            >
-              <Icon className="w-4 h-4" />
-              {opt.label}
-            </button>
-          );
-        })}
-        <div className="pt-4 mt-4 border-t border-card-border">
-          <div className="rounded-lg border border-card-border bg-card p-4">
-            <div className="text-sm font-semibold mb-1">Invite your friends</div>
-            <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-              Great conversations start with great company.
-            </p>
-            <Link href="/install">
-              <Button size="sm" className="w-full" data-testid="button-invite-annotated">
-                Invite to Annotated
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </nav>
-    </aside>
   );
 }
 
@@ -209,7 +171,7 @@ function TopFilters({
           <SelectTrigger
             aria-label="Sort feed"
             data-testid="select-feed-sort"
-            className="rounded-full border border-card-border bg-card px-3 py-1.5 h-auto text-sm font-medium hover-elevate w-[140px]"
+            className="rounded-full border border-card-border bg-card px-3 py-1.5 h-auto text-sm font-medium hover-elevate w-[170px]"
           >
             <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 opacity-70" />
             <SelectValue />
@@ -242,43 +204,20 @@ function applyTypeFilter(rows: AnnotationWithRelations[], filter: FilterKey) {
 function FeedList({ sort, filter }: { sort: SortKey; filter: FilterKey }) {
   const { user } = useAuth();
 
-  // Always-on "all" feed query — used by Latest, For You (personalized fallback),
-  // and to derive Bookmark/Following empty-state hints. We pass shuffle=1 so
-  // the server reorders the feed on each load (still filtered by sort/filter
-  // on the client below).
-  const { data: all = [], isLoading: loadingAll } = useQuery<AnnotationWithRelations[]>({
+  // Single feed source — sorting happens client-side so the dropdown can
+  // resort instantly without a refetch.
+  const { data: all = [], isLoading } = useQuery<AnnotationWithRelations[]>({
     queryKey: ["/api/feed", { shuffle: 1 }],
     queryFn: async () => {
       const res = await fetch("/api/feed?shuffle=1");
       return res.json();
     },
-    // Fresh shuffle on every load
     staleTime: 0,
   });
 
-  // Following query (only if signed in)
-  const { data: following = [], isLoading: loadingFollowing } = useQuery<AnnotationWithRelations[]>({
-    queryKey: ["/api/feed", { followerOf: user?.id ?? "" }],
-    queryFn: async () => {
-      if (!user) return [];
-      const res = await fetch(`/api/feed?followerOf=${user.id}`);
-      return res.json();
-    },
-    enabled: !!user,
-  });
-
-  // Bookmarks query (only if signed in)
-  const { data: bookmarks = [], isLoading: loadingBookmarks } = useQuery<AnnotationWithRelations[]>({
-    queryKey: ["/api/bookmarks", { userId: user?.id ?? "" }],
-    queryFn: async () => {
-      if (!user) return [];
-      const res = await fetch(`/api/bookmarks?userId=${user.id}`);
-      return res.json();
-    },
-    enabled: !!user,
-  });
-
-  // Bookmark id set used to render bookmark state on every card.
+  // Bookmark id set used to render bookmark state on every card. Bookmark
+  // functionality on individual posts must keep working even though the
+  // sidebar Bookmarks tab is gone.
   const { data: bookmarkIdsRes } = useQuery<{ ids: string[] }>({
     queryKey: ["/api/bookmarks/ids", { userId: user?.id ?? "" }],
     queryFn: async () => {
@@ -293,46 +232,23 @@ function FeedList({ sort, filter }: { sort: SortKey; filter: FilterKey }) {
     [bookmarkIdsRes]
   );
 
-  // Sort-specific source list + loading state.
   const sourceRows = useMemo<AnnotationWithRelations[]>(() => {
-    if (sort === "following") return following;
-    if (sort === "bookmarks") return bookmarks;
-    if (sort === "for-you") {
-      // For You: requires sign-in (signed-out state is handled separately).
-      // Mix followed creators with top-viewed public clips not already in the
-      // followed slice. Re-shuffles each render via the server's randomized
-      // base so each visit feels fresh.
-      const followingIds = new Set(following.map((a) => a.id));
-      const tail = [...all]
-        .filter((a) => !followingIds.has(a.id))
-        .sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0));
-      return [...following, ...tail];
+    const rows = [...all];
+    switch (sort) {
+      case "latest":
+        return rows.sort((a, b) => b.createdAt - a.createdAt);
+      case "most-viewed":
+        return rows.sort((a, b) => (b.viewCount ?? 0) - (a.viewCount ?? 0));
+      case "most-commented":
+        return rows.sort((a, b) => (b.commentCount ?? 0) - (a.commentCount ?? 0));
+      case "most-popular":
+        return rows.sort((a, b) => popularityScore(b) - popularityScore(a));
+      default:
+        return rows;
     }
-    if (sort === "latest") {
-      // Server returns shuffled rows; for Latest we explicitly sort by
-      // creation time so the tab name actually means something.
-      return [...all].sort((a, b) => b.createdAt - a.createdAt);
-    }
-    return all;
-  }, [sort, following, bookmarks, all]);
-
-  const isLoading =
-    sort === "following" ? loadingFollowing :
-    sort === "bookmarks" ? loadingBookmarks :
-    loadingAll;
+  }, [sort, all]);
 
   const filtered = applyTypeFilter(sourceRows, filter);
-
-  // Empty / signed-out states
-  if (sort === "following" && !user) {
-    return <SignInCallout title="Sign in to see your Following feed" />;
-  }
-  if (sort === "bookmarks" && !user) {
-    return <SignInCallout title="Sign in to see your Bookmarks" />;
-  }
-  if (sort === "for-you" && !user) {
-    return <SignInCallout title="Sign in to see your For You feed" />;
-  }
 
   if (isLoading) {
     return (
@@ -345,18 +261,12 @@ function FeedList({ sort, filter }: { sort: SortKey; filter: FilterKey }) {
   }
 
   if (filtered.length === 0) {
-    const empty =
-      sort === "following"
-        ? "No clips from people you follow yet. Tap Follow on creators you want to track."
-        : sort === "bookmarks"
-        ? "No bookmarks yet. Tap Mark on a clip to save it for later."
-        : "Nothing here yet — try a different filter.";
     return (
       <div
         className="rounded-lg border border-card-border bg-card p-6 text-sm text-muted-foreground"
         data-testid={`feed-empty-${sort}`}
       >
-        {empty}
+        Nothing here yet — try a different filter.
       </div>
     );
   }
@@ -366,23 +276,6 @@ function FeedList({ sort, filter }: { sort: SortKey; filter: FilterKey }) {
       {filtered.map((a) => (
         <FeedCard key={a.id} annotation={a} bookmarked={bookmarkIds.has(a.id)} />
       ))}
-    </div>
-  );
-}
-
-function SignInCallout({ title }: { title: string }) {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-card-border bg-card p-6">
-        <h3 className="text-lg font-semibold mb-1">{title}</h3>
-        <p className="text-sm text-muted-foreground">
-          Annotated uses X or Google to sign you in. No email, no password.
-        </p>
-      </div>
-      <OAuthSignIn
-        title="Sign in to Annotated"
-        description="Pick a provider — we'll bring you right back here."
-      />
     </div>
   );
 }

@@ -4,18 +4,34 @@ import { DownloadExtensionButton } from "./DownloadExtensionButton";
 import { ThemeToggle } from "./ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Compass, Users, User as UserIcon, LogOut } from "lucide-react";
+import { Compass, Users, Home, User as UserIcon, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import type { ReactNode } from "react";
 
-const NAV = [
+type NavItem = { href: string; label: string; icon: typeof Compass; external?: boolean };
+
+const DEFAULT_NAV: NavItem[] = [
   { href: "/", label: "Feed", icon: Compass },
   { href: "/following", label: "Following", icon: Users },
 ];
 
-export function AppLayout({ children }: { children: ReactNode }) {
+// On the feed page we show only Home (landing) and Feed — no Following or
+// other tabs, so the page header stays focused on the feed itself.
+const FEED_NAV: NavItem[] = [
+  { href: "/", label: "Home", icon: Home, external: true },
+  { href: "/", label: "Feed", icon: Compass },
+];
+
+export function AppLayout({
+  children,
+  feedHeader = false,
+}: {
+  children: ReactNode;
+  feedHeader?: boolean;
+}) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  const NAV = feedHeader ? FEED_NAV : DEFAULT_NAV;
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -24,16 +40,28 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <Logo />
           <nav className="hidden md:flex items-center gap-1">
             {NAV.map((item) => {
-              const active = location === item.href;
+              // External links (Home → /) bypass the SPA hash router so the
+              // user lands on the path-based landing page.
+              const active = !item.external && location === item.href;
               const Icon = item.icon;
+              const className = `px-3 py-1.5 rounded-md text-sm font-medium hover-elevate flex items-center gap-2 ${
+                active ? "text-foreground" : "text-muted-foreground"
+              }`;
+              const testId = `link-nav-${item.label.toLowerCase()}`;
+              if (item.external) {
+                return (
+                  <a key={`${item.label}-${item.href}`} href={item.href} className={className} data-testid={testId}>
+                    <Icon className="w-4 h-4" />
+                    {item.label}
+                  </a>
+                );
+              }
               return (
                 <Link
-                  key={item.href}
+                  key={`${item.label}-${item.href}`}
                   href={item.href}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium hover-elevate flex items-center gap-2 ${
-                    active ? "text-foreground" : "text-muted-foreground"
-                  }`}
-                  data-testid={`link-nav-${item.label.toLowerCase()}`}
+                  className={className}
+                  data-testid={testId}
                 >
                   <Icon className="w-4 h-4" />
                   {item.label}
@@ -70,16 +98,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
         {/* Mobile nav */}
         <nav className="md:hidden border-t border-border flex">
           {NAV.map((item) => {
-            const active = location === item.href;
+            const active = !item.external && location === item.href;
             const Icon = item.icon;
+            const className = `flex-1 px-3 py-2 text-xs font-medium hover-elevate flex items-center justify-center gap-1.5 ${
+              active ? "text-foreground" : "text-muted-foreground"
+            }`;
+            if (item.external) {
+              return (
+                <a key={`${item.label}-${item.href}-m`} href={item.href} className={className}>
+                  <Icon className="w-3.5 h-3.5" />
+                  {item.label}
+                </a>
+              );
+            }
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex-1 px-3 py-2 text-xs font-medium hover-elevate flex items-center justify-center gap-1.5 ${
-                  active ? "text-foreground" : "text-muted-foreground"
-                }`}
-              >
+              <Link key={`${item.label}-${item.href}-m`} href={item.href} className={className}>
                 <Icon className="w-3.5 h-3.5" />
                 {item.label}
               </Link>
@@ -103,7 +136,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           className="mx-auto max-w-6xl px-6 pb-6 text-xs text-muted-foreground"
           data-testid="text-footer-copyright"
         >
-          Copyright 2026 Laymen, Inc.
+          © 2026 Laymen, Inc.
         </div>
       </footer>
     </div>

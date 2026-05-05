@@ -38,7 +38,7 @@ export function LegalLayout({ title, children }: { title: string; children: Reac
           className="mx-auto max-w-3xl px-6 pb-6 text-xs text-muted-foreground"
           data-testid="text-footer-copyright"
         >
-          Copyright 2026 Laymen, Inc.
+          © 2026 Laymen, Inc.
         </div>
       </footer>
     </div>
