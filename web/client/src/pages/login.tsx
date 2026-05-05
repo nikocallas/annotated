@@ -2,13 +2,87 @@ import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { supabaseConfigured } from "@/lib/supabase";
-import { useState } from "react";
+import { apiRequest } from "@/lib/queryClient";
+import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import type { User } from "@shared/schema";
+
+const EXT_FLOW_KEY = "annotated_extension_auth";
+
+// When the Chrome extension's sidepanel opens this page in a new tab, it
+// passes ?extension=1&extensionId=<id>. The auth-callback page consumes
+// these from sessionStorage after the OAuth round-trip and posts the
+// resulting user record back to the extension via runtime.sendMessage.
+function captureExtensionFlowFromQuery(): { extensionId: string } | null {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("extension") !== "1") return null;
+    const extensionId = params.get("extensionId") || "";
+    if (!extensionId) return null;
+    sessionStorage.setItem(
+      EXT_FLOW_KEY,
+      JSON.stringify({ extensionId, ts: Date.now() }),
+    );
+    return { extensionId };
+  } catch {
+    return null;
+  }
+}
+
+function readExtensionFlow(): { extensionId: string } | null {
+  try {
+    const raw = sessionStorage.getItem(EXT_FLOW_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { extensionId?: string };
+    return parsed.extensionId ? { extensionId: parsed.extensionId } : null;
+  } catch {
+    return null;
+  }
+}
+
+interface ChromeRuntimeBridge {
+  runtime?: {
+    sendMessage?: (
+      extensionId: string,
+      message: unknown,
+      callback?: (resp: unknown) => void,
+    ) => void;
+    lastError?: { message: string };
+  };
+}
+
+function sendUserToExtension(extensionId: string, user: User): Promise<boolean> {
+  return new Promise((resolve) => {
+    const c = (window as unknown as { chrome?: ChromeRuntimeBridge }).chrome;
+    if (!c?.runtime?.sendMessage) {
+      resolve(false);
+      return;
+    }
+    try {
+      c.runtime.sendMessage(extensionId, { type: "ANNOTATED_AUTH_SUCCESS", user }, (resp) => {
+        if (c.runtime?.lastError) return resolve(false);
+        resolve(!!(resp as { ok?: boolean } | undefined)?.ok);
+      });
+    } catch {
+      resolve(false);
+    }
+  });
+}
 
 export default function LoginPage() {
   const { loginWithProvider } = useAuth();
   const [busy, setBusy] = useState<"x" | "google" | null>(null);
+  const [extensionMode, setExtensionMode] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const captured = captureExtensionFlowFromQuery();
+    if (captured) {
+      setExtensionMode(true);
+      return;
+    }
+    if (readExtensionFlow()) setExtensionMode(true);
+  }, []);
 
   async function handleLogin(provider: "x" | "google") {
     setBusy(provider);
@@ -16,8 +90,31 @@ export default function LoginPage() {
       await loginWithProvider(provider);
       // When Supabase is configured, the browser is redirected to the OAuth
       // provider here and never reaches the next line. The fallback demo path
-      // resolves immediately and we route to the feed.
+      // resolves immediately — when the user came from the extension, route
+      // to /auth/callback (which performs the runtime.sendMessage handoff)
+      // so the extension picks up the session without an extra tab.
       if (!supabaseConfigured) {
+        const ext = readExtensionFlow();
+        if (ext) {
+          // Demo path: the auth-context has already minted a user via
+          // /api/auth/demo. Re-fetch a clean copy and hand it to the
+          // extension directly, then close this tab.
+          try {
+            const res = await apiRequest("POST", "/api/auth/demo", { provider });
+            const data = (await res.json()) as { user: User };
+            const sent = await sendUserToExtension(ext.extensionId, data.user);
+            try { sessionStorage.removeItem(EXT_FLOW_KEY); } catch {}
+            if (sent) {
+              toast({ title: "Signed in", description: "Sent to the extension." });
+              setTimeout(() => {
+                try { window.close(); } catch {}
+              }, 600);
+              return;
+            }
+          } catch {
+            // fall through to feed
+          }
+        }
         toast({ title: "Signed in", description: "Demo session active." });
         window.location.assign("/feed");
       }
@@ -37,10 +134,17 @@ export default function LoginPage() {
             style={{ fontFamily: "var(--font-sans)" }}
             data-testid="text-login-title"
           >
-            Sign in
+            {extensionMode ? "Sign in to the extension" : "Sign in"}
           </h1>
           <p className="text-sm text-muted-foreground mb-6">
-            Annotated uses X or Google to sign you in. No email, no password.
+            {extensionMode ? (
+              <>
+                Pick a provider below — once you're done, this tab will close
+                automatically and the Annotated extension will be signed in.
+              </>
+            ) : (
+              <>Annotated uses X or Google to sign you in. No email, no password.</>
+            )}
           </p>
 
           <div className="space-y-3">

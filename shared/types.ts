@@ -28,6 +28,7 @@ export interface Annotation {
   clipEndSec: number | null;
   clipText: string | null;
   clipMediaUrl: string | null;
+  clipThumbnailUrl: string | null;
   clipStatus: "processing" | "ready" | "failed";
   commentaryText: string | null;
   commentaryAudioUrl: string | null;

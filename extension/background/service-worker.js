@@ -14,6 +14,51 @@ chrome.runtime.onInstalled.addListener(() => {
     .catch((err) => console.warn("[Annotated] sidePanel error", err));
 });
 
+// ---------- External sign-in handoff ---------------------------------------
+// The Annotated website's /auth/callback page posts a message to the
+// extension once OAuth completes. We persist the user record to
+// chrome.storage.local and notify any open side panel so it can render the
+// signed-in UI without a manual refresh. externally_connectable in the
+// manifest restricts senders to annotatedextension.com.
+function isAllowedAuthOrigin(url) {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return u.hostname === "annotatedextension.com" || u.hostname === "www.annotatedextension.com";
+  } catch { return false; }
+}
+
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  if (!isAllowedAuthOrigin(sender?.url)) {
+    sendResponse({ ok: false, error: "origin_not_allowed" });
+    return false;
+  }
+  if (message?.type === "ANNOTATED_AUTH_SUCCESS" && message.user && typeof message.user === "object") {
+    (async () => {
+      try {
+        await chrome.storage.local.set({ annotatedUser: message.user });
+        // Notify any open side panel — onMessage listeners ignore unknown types.
+        chrome.runtime
+          .sendMessage({ type: "ANNOTATED_USER_UPDATED", user: message.user })
+          .catch(() => {});
+        sendResponse({ ok: true });
+      } catch (err) {
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      }
+    })();
+    return true;
+  }
+  if (message?.type === "ANNOTATED_AUTH_PING") {
+    // Site-side handshake to detect that the extension is installed and the
+    // expected ID. Returning ok lets the callback page know it can hand off
+    // the user record.
+    sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
+    return false;
+  }
+  sendResponse({ ok: false, error: "unknown_message" });
+  return false;
+});
+
 // Cache of pageMeta and text selection per tab so the side panel can ask for
 // state on open even if events fired before it was ready.
 const tabState = new Map();

@@ -1,10 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Annotated",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Clip 90-second highlights from any video, podcast, or article. Annotate. Share. Always linked back to the source.",
   "permissions": ["sidePanel", "activeTab", "storage", "scripting", "tabs", "offscreen"],
-  "host_permissions": ["https://annotatedextension.com/*"],
+  "host_permissions": ["https://annotatedextension.com/*", "https://www.annotatedextension.com/*"],
+  "externally_connectable": {
+    "matches": [
+      "https://annotatedextension.com/*",
+      "https://www.annotatedextension.com/*"
+    ]
+  },
   "side_panel": {
     "default_path": "sidepanel/index.html"
   },

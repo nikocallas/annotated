@@ -146,6 +146,7 @@ type AnnotationRow = {
   clip_end_sec: number | null;
   clip_text: string | null;
   clip_media_url: string | null;
+  clip_thumbnail_url: string | null;
   clip_status: string;
   commentary_text: string | null;
   commentary_audio_url: string | null;
@@ -168,6 +169,7 @@ function annotationFromRow(r: AnnotationRow): Annotation {
     clipEndSec: r.clip_end_sec,
     clipText: r.clip_text,
     clipMediaUrl: r.clip_media_url,
+    clipThumbnailUrl: r.clip_thumbnail_url ?? null,
     clipStatus: r.clip_status,
     commentaryText: r.commentary_text,
     commentaryAudioUrl: r.commentary_audio_url,
@@ -191,6 +193,7 @@ function annotationToRow(a: Annotation): AnnotationRow {
     clip_end_sec: a.clipEndSec ?? null,
     clip_text: a.clipText ?? null,
     clip_media_url: a.clipMediaUrl ?? null,
+    clip_thumbnail_url: a.clipThumbnailUrl ?? null,
     clip_status: a.clipStatus,
     commentary_text: a.commentaryText ?? null,
     commentary_audio_url: a.commentaryAudioUrl ?? null,
@@ -478,8 +481,12 @@ export class SupabaseStorage implements IStorage {
     const row: Annotation = {
       id: randomUUID(),
       createdAt: now(),
-      clipStatus: "ready",
+      // Video/audio annotations enter the clip-processing queue and render as
+      // a clip facade (no full-source embed) until clipMediaUrl is populated.
+      // Article clips don't need processing — clipText is the asset itself.
+      clipStatus: input.sourceType === "article" ? "ready" : "processing",
       clipMediaUrl: null,
+      clipThumbnailUrl: null,
       sourceTitle: input.sourceTitle ?? null,
       sourceAuthor: input.sourceAuthor ?? null,
       sourceImage: input.sourceImage ?? null,
@@ -994,8 +1001,11 @@ export class MemoryStorage implements IStorage {
     const row: Annotation = {
       id: randomUUID(),
       createdAt: now(),
-      clipStatus: "ready",
+      // Video/audio annotations enter the clip-processing queue and render as
+      // a clip facade (no full-source embed) until clipMediaUrl is populated.
+      clipStatus: input.sourceType === "article" ? "ready" : "processing",
       clipMediaUrl: null,
+      clipThumbnailUrl: null,
       sourceTitle: input.sourceTitle ?? null,
       sourceAuthor: input.sourceAuthor ?? null,
       sourceImage: input.sourceImage ?? null,

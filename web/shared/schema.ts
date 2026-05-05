@@ -57,6 +57,7 @@ export const annotations = sqliteTable("annotations", {
   clipEndSec: integer("clip_end_sec"),
   clipText: text("clip_text"),
   clipMediaUrl: text("clip_media_url"),
+  clipThumbnailUrl: text("clip_thumbnail_url"),
   clipStatus: text("clip_status").notNull().default("ready"), // processing | ready | failed
   // Commentary
   commentaryText: text("commentary_text"),
@@ -78,7 +79,7 @@ export const bookmarks = sqliteTable("bookmarks", {
 export type Bookmark = typeof bookmarks.$inferSelect;
 
 export const insertAnnotationSchema = createInsertSchema(annotations)
-  .omit({ id: true, createdAt: true, clipStatus: true, clipMediaUrl: true })
+  .omit({ id: true, createdAt: true, clipStatus: true, clipMediaUrl: true, clipThumbnailUrl: true })
   .extend({
     sourceUrl: z.string().url("A valid source URL is required"),
     sourceType: z.enum(["youtube", "article", "podcast"]),

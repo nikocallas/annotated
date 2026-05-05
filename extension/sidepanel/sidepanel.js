@@ -260,11 +260,42 @@ if (isExtension()) {
     if (msg?.type === "RECORDER_ERROR") {
       setRecordingError(msg.data?.message || "Recorder error");
     }
+    // Background SW broadcasts this after the website-tab sign-in flow hands
+    // off the user record. Refresh the panel so the signed-in UI shows up
+    // without a manual reload.
+    if (msg?.type === "ANNOTATED_USER_UPDATED" && msg.user) {
+      state.user = msg.user;
+      toast(`Signed in as @${msg.user.username || "user"}`);
+      render();
+    }
   });
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) refreshActiveTab();
+    if (!document.hidden) {
+      // Re-read the persisted user — the website-tab sign-in flow may have
+      // written it while the panel was hidden.
+      loadUser().then(() => {
+        render();
+        refreshActiveTab();
+      });
+    }
   });
-  window.addEventListener("focus", () => refreshActiveTab());
+  window.addEventListener("focus", () => {
+    loadUser().then(() => {
+      render();
+      refreshActiveTab();
+    });
+  });
+  // Storage changes from the background SW (e.g. external sign-in handoff
+  // landed) — pick the new user up immediately.
+  if (chrome.storage?.onChanged?.addListener) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+      if ("annotatedUser" in changes) {
+        state.user = changes.annotatedUser.newValue || null;
+        render();
+      }
+    });
+  }
 }
 
 // -------------------- Renderers ---------------------------------------------
@@ -281,34 +312,42 @@ async function render() {
   if (state.tab === "profile") return root.appendChild(await renderProfile());
 }
 
+function buildExtensionAuthUrl(provider) {
+  const extensionId = isExtension() && chrome.runtime?.id ? chrome.runtime.id : "";
+  const params = new URLSearchParams({ extension: "1" });
+  if (extensionId) params.set("extensionId", extensionId);
+  if (provider) params.set("provider", provider);
+  return `${state.apiBase}/login?${params.toString()}`;
+}
+
+function openWebsiteSignIn(provider) {
+  const url = buildExtensionAuthUrl(provider);
+  // chrome.tabs.create returns a Promise (or accepts a callback). We don't
+  // need to track the tab — the website-tab callback page closes itself
+  // after the auth handoff completes, and the SW receives the user record
+  // via chrome.runtime.onMessageExternal regardless of whether this panel is
+  // still open.
+  if (isExtension() && chrome.tabs?.create) {
+    try { chrome.tabs.create({ url }); } catch {}
+  } else {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
 function renderLogin() {
   const node = tpl("#login-view");
   $$("[data-provider]", node).forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       const provider = btn.dataset.provider;
-      try {
-        btn.disabled = true;
-        const data = await api("/api/auth/demo", {
-          method: "POST",
-          body: JSON.stringify({ provider }),
-        });
-        await saveUser(data.user);
-        toast(`Signed in as @${data.user.username}`);
-        render();
-      } catch (err) {
-        toast(err.message, "error");
-      } finally {
-        btn.disabled = false;
-      }
+      openWebsiteSignIn(provider);
+      toast("Finishing sign-in in a new tab…");
     });
   });
   const openWebBtn = $("[data-open-web-signin]", node);
   if (openWebBtn) {
     openWebBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      const url = `${state.apiBase}/login`;
-      if (isExtension() && chrome.tabs?.create) chrome.tabs.create({ url });
-      else window.open(url, "_blank", "noopener,noreferrer");
+      openWebsiteSignIn(null);
     });
   }
   return node;
