@@ -43,11 +43,6 @@ export default function LandingPage() {
             </span>
           </h1>
 
-          <p className="mt-8 max-w-xl text-base sm:text-lg text-muted-foreground">
-            Clip 90-second highlights from any video, podcast, or article. Annotate. Share.
-            Always linked back to the source.
-          </p>
-
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <DownloadExtensionButton size="lg" />
             <a
