@@ -2,3 +2,4 @@
 # Built locally and uploaded to the Web Store dashboard; not tracked in git.
 annotated-chrome-web-store.zip
 annotated-extension-local-test.zip
+.vercel

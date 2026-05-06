@@ -83,6 +83,10 @@ export function ClippedYouTubeEmbed({
           playerVars: {
             start,
             end,
+            // Paused on load; user must click play. Muted on first load — the
+            // user can unmute via the YouTube control after starting playback.
+            autoplay: 0,
+            mute: 1,
             rel: 0,
             modestbranding: 1,
             playsinline: 1,
