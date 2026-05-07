@@ -3,3 +3,24 @@
 annotated-chrome-web-store.zip
 annotated-extension-local-test.zip
 .vercel
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# Marketing pipeline scratch / outputs (canonical sources committed under
+# marketing/scenes, marketing/captures, marketing/assets, and the two
+# render scripts). Intermediate outputs and debugging scripts excluded.
+marketing/node_modules/
+marketing/recordings/
+marketing/annotated-demo*.mp4
+marketing/og-image.png
+marketing/music*.mp3
+marketing/debug*.js
+marketing/check-demo.js
+marketing/verify-mobile.js
+marketing/capture-real.js
+marketing/capture-retry.js
+marketing/capture-wsj2.js
+marketing/render.js
+marketing/templates/

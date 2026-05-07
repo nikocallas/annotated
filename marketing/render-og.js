@@ -1,0 +1,11 @@
+import { chromium } from "playwright";
+import { resolve } from "node:path";
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1 });
+const page = await ctx.newPage();
+await page.goto("file://" + resolve("scenes/og-image.html"));
+await page.waitForLoadState("networkidle");
+await page.waitForTimeout(500);
+await page.screenshot({ path: "og-image.png", type: "png", omitBackground: false });
+await browser.close();
+console.log("✓ og-image.png");

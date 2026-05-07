@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="_demo.css" />
+<style>
+  .sp-source-title { font-family: 'Source Serif 4', Georgia, serif; }
+  .sp-quote { font-family: 'Source Serif 4', Georgia, serif; opacity: 0; transform: translateY(6px); animation: fadeUp 0.5s ease 2.4s forwards; }
+  /* Highlight box positioned approximately over the lead headline area of the NYT capture */
+  .hl-overlay { left: 27%; top: 56%; width: 39%; height: 5.5%; }
+</style>
+</head>
+<body>
+<div class="scene">
+  <img class="bg" src="../captures/nyt.png" alt="" />
+  <div class="hl-overlay"></div>
+  <aside class="panel">
+    <div class="sp-top">
+      <span class="sp-mark"><svg viewBox="0 0 32 32"><path d="M9 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8H7.6c0-2.4 1.1-4.1 3.1-5.2L9 8.5zM21 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8h-4c0-2.4 1.1-4.1 3.1-5.2L21 8.5z"/></svg></span>
+      <span class="sp-name">Annotated</span>
+    </div>
+    <div class="sp-tabs">
+      <div class="sp-tab active">Clip</div><div class="sp-tab">Feed</div><div class="sp-tab">Profile</div>
+    </div>
+    <div class="sp-body">
+      <div class="sp-card">
+        <div class="sp-source-from">From The New York Times</div>
+        <div class="sp-source-title">White House Insists Iran War Is Over, Even While Missiles Fly</div>
+        <div class="sp-source-host">nytimes.com · The Daily Briefing</div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-label">Highlighted passage</div>
+        <div class="sp-quote">"The order of the briefing is doing as much editorial work as the words. Watch how the Iran story sequences ahead of the storm warning."</div>
+        <div class="sp-words">25 words · 75 of 100 fair-use cap remaining</div>
+      </div>
+      <div class="sp-section">
+        <div class="sp-section-label">Your annotation</div>
+        <div class="sp-textarea" id="commentary"></div>
+      </div>
+      <div class="sp-publish">
+        <div class="sp-cap">Always linked back to the source.</div>
+        <button class="sp-btn pulse">Publish</button>
+      </div>
+    </div>
+  </aside>
+</div>
+<script>
+  const text = "The first 90 seconds of any morning briefing is editorial in disguise — the order is the take.";
+  const commentary = document.getElementById('commentary');
+  function typeCommentary() {
+    let i = 0;
+    const id = setInterval(() => {
+      i += 1;
+      commentary.textContent = text.slice(0, i);
+      if (i >= text.length) clearInterval(id);
+    }, 24);
+  }
+  setTimeout(typeCommentary, 3300);
+</script>
+</body>
+</html>
