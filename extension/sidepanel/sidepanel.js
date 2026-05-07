@@ -746,16 +746,38 @@ function renderRangeClip(kind) {
 
   // "Use current time" buttons — snap start or end to the page player's
   // currentTime. The user has scrubbed the page video; this captures it.
+  // We do a fresh GET_ACTIVE_MEDIA_TIME query through to the content script
+  // so we read the live <video>.currentTime at click-time rather than the
+  // last cached PAGE_META broadcast (which can lag, or refer to the wrong
+  // <video> element if YouTube has rendered hover-preview videos).
   $$("[data-set-current]", wrap).forEach((btn) => {
     btn.addEventListener("click", async () => {
       btn.disabled = true;
       try {
         const which = btn.dataset.setCurrent;
-        const refresh = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
-        const cur = Math.max(
-          0,
-          Math.floor(refresh?.pageMeta?.currentTime ?? state.pageMeta?.currentTime ?? 0),
-        );
+        let cur = null;
+        try {
+          const fresh = await sendBg({ type: "GET_ACTIVE_MEDIA_TIME" });
+          if (fresh && Number.isFinite(fresh.currentTime)) {
+            cur = Math.floor(fresh.currentTime);
+            // Best-effort: also refresh state.pageMeta so the "Page playhead"
+            // indicator and other UI bits stay in sync.
+            if (state.pageMeta) {
+              state.pageMeta = {
+                ...state.pageMeta,
+                currentTime: fresh.currentTime,
+                duration: Number.isFinite(fresh.duration) ? fresh.duration : state.pageMeta.duration,
+              };
+            }
+          }
+        } catch {}
+        if (cur == null) {
+          // Fallback: the cached pageMeta path (was the only path before).
+          const refresh = await sendBg({ type: "GET_ACTIVE_TAB_STATE" });
+          const fallback = refresh?.pageMeta?.currentTime ?? state.pageMeta?.currentTime;
+          cur = Number.isFinite(fallback) ? Math.floor(fallback) : 0;
+        }
+        cur = Math.max(0, cur);
         if (which === "start") {
           state.clipRange.start = cur;
           if (state.clipRange.end <= state.clipRange.start) {
@@ -1216,47 +1238,9 @@ async function onPublish(node, publishBtn, errorEl) {
     state.publish.annotationId = result.annotation.id;
     state.publish.pageUrlAtPublish = state.pageMeta?.url || sourceUrl;
 
-    // For podcast clips on a real page (i.e. not a manual-URL fallback),
-    // capture the active tab's audio stream for the selected range and upload
-    // it as the clip's media asset. YouTube clips no longer use this path —
-    // the feed renders a YouTube iframe constrained to the timestamps and
-    // does not consume clip_media_url. Failures here are surfaced via toast
-    // but never undo the publish.
-    const canCapture =
-      !manualUrl &&
-      payload.sourceType === "podcast" &&
-      isExtension() &&
-      typeof chrome.tabCapture !== "undefined";
-    if (canCapture) {
-      publishBtn.textContent = "Capturing clip…";
-      try {
-        const dur = (payload.clipEndSec - payload.clipStartSec);
-        const cap = await sendBg({
-          type: "CAPTURE_TAB_CLIP",
-          startSec: payload.clipStartSec,
-          durationMs: Math.min(95_000, Math.max(1000, dur * 1000)),
-        });
-        if (cap?.error) {
-          toast(`Clip capture failed: ${cap.error}`, "error");
-        } else if (cap?.base64) {
-          publishBtn.textContent = "Uploading clip…";
-          await api(`/api/annotations/${result.annotation.id}/clip-video`, {
-            method: "POST",
-            body: JSON.stringify({
-              userId: state.user.id,
-              base64: cap.base64,
-              mime: cap.mime,
-              durationMs: dur * 1000,
-              thumbnailBase64: cap.thumbnailBase64 || null,
-              thumbnailMime: cap.thumbnailMime || null,
-            }),
-          });
-        }
-      } catch (capErr) {
-        console.warn("[Annotated] clip capture/upload failed", capErr);
-        toast(`Clip capture failed: ${capErr.message || capErr}`, "error");
-      }
-    }
+    // YouTube clips render via a constrained YouTube iframe; podcast clips
+    // render via a constrained Spotify iframe. Neither consumes clip_media_url,
+    // so we no longer capture the active tab's stream after publish.
 
     // Auto-reset after PUBLISH_RESET_MS
     if (state.publish.resetTimer) clearTimeout(state.publish.resetTimer);

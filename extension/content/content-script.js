@@ -34,12 +34,29 @@
   }
 
   function getActiveMedia() {
+    // YouTube-specific: prefer the main player's <video> element directly.
+    // YouTube watch pages frequently have additional <video> elements in
+    // hover previews / inline ads / suggestion rails — these come earlier
+    // in DOM order and confuse `document.querySelector("video")`.
+    const yt =
+      document.querySelector("video.html5-main-video") ||
+      document.querySelector("#movie_player video") ||
+      document.querySelector(".html5-video-player video");
+    if (yt) return yt;
+
     const videos = Array.from(document.querySelectorAll("video"));
     if (videos.length) {
+      // Sort by visible area, but prefer videos whose currentTime > 0 or
+      // that aren't paused — those are almost certainly the one the user
+      // is watching, not a stalled preview.
       videos.sort((a, b) => {
         const ar = a.getBoundingClientRect();
         const br = b.getBoundingClientRect();
-        return br.width * br.height - ar.width * ar.height;
+        const aArea = Math.max(0, ar.width) * Math.max(0, ar.height);
+        const bArea = Math.max(0, br.width) * Math.max(0, br.height);
+        const aScore = aArea + ((a.currentTime || 0) > 0 ? 1e6 : 0) + (!a.paused ? 1e6 : 0);
+        const bScore = bArea + ((b.currentTime || 0) > 0 ? 1e6 : 0) + (!b.paused ? 1e6 : 0);
+        return bScore - aScore;
       });
       return videos[0];
     }
@@ -53,8 +70,22 @@
     let videoId = null;
     try {
       const u = new URL(url);
+      // Standard watch URL: youtube.com/watch?v=ID
       videoId = u.searchParams.get("v");
-      if (!videoId && /youtu\.be\//.test(url)) videoId = u.pathname.replace(/^\//, "");
+      // Short URL: youtu.be/ID
+      if (!videoId && /youtu\.be\//.test(url)) {
+        videoId = u.pathname.replace(/^\//, "").split("/")[0] || null;
+      }
+      // Shorts: youtube.com/shorts/ID
+      if (!videoId) {
+        const shortsMatch = u.pathname.match(/^\/shorts\/([^/?#]+)/);
+        if (shortsMatch) videoId = shortsMatch[1];
+      }
+      // Embed URL: youtube.com/embed/ID
+      if (!videoId) {
+        const embedMatch = u.pathname.match(/^\/embed\/([^/?#]+)/);
+        if (embedMatch) videoId = embedMatch[1];
+      }
     } catch {}
     const titleEl =
       document.querySelector("h1.ytd-watch-metadata") ||
@@ -62,7 +93,9 @@
     const channelEl =
       document.querySelector("ytd-channel-name a") ||
       document.querySelector("#channel-name a");
-    const video = document.querySelector("video");
+    // Use getActiveMedia() so we read from the actual main player, not a
+    // hover-preview <video> that happens to come first in DOM order.
+    const video = getActiveMedia();
     return {
       url,
       sourceType: "youtube",
