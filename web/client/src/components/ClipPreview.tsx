@@ -2,8 +2,27 @@ import type { Annotation } from "@shared/schema";
 import { formatRange } from "./SourceBadge";
 import { Play, Mic, Loader2 } from "lucide-react";
 import { ClippedYouTubeEmbed } from "./ClippedYouTubeEmbed";
+import { ClippedSpotifyEmbed } from "./ClippedSpotifyEmbed";
 
 const MAX_CLIP_SECONDS = 90;
+
+function spotifyEpisodeId(url: string): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("spotify.com")) {
+      const m =
+        u.pathname.match(/\/episode\/([a-zA-Z0-9]+)/) ||
+        u.pathname.match(/\/embed\/episode\/([a-zA-Z0-9]+)/);
+      if (m) return m[1];
+    }
+  } catch {
+    /* fall through */
+  }
+  const uriM = url.match(/spotify:episode:([a-zA-Z0-9]+)/);
+  if (uriM) return uriM[1];
+  return null;
+}
 
 function youtubeId(url: string): string | null {
   try {
@@ -152,15 +171,45 @@ export function ClipPreview({
     );
   }
 
-  // Podcast — clipped audio shell. If a clipped audio asset exists, expose it
-  // as an <audio> element. Otherwise show a non-playable shell with a link to
-  // the original episode.
+  // Podcast — preferred path is a Spotify iframe embed constrained to the
+  // selected timestamps (paused on load by Spotify's default behavior).
+  // Falls back to the existing clipped-audio / waveform shell for non-Spotify
+  // sources or when no episode id can be parsed.
   const podClipped =
     a.clipStartSec != null && a.clipEndSec != null
       ? clampClipRange(a.clipStartSec, a.clipEndSec)
       : null;
   const range = podClipped ? formatRange(podClipped.start, podClipped.end) : null;
   const dur = podClipped ? podClipped.end - podClipped.start : 0;
+
+  const spotifyId = spotifyEpisodeId(a.sourceUrl);
+  if (spotifyId && podClipped && range) {
+    return (
+      <div
+        className="rounded-md overflow-hidden border border-card-border bg-card"
+        data-testid={`clip-spotify-${a.id}`}
+        onClick={(e) => {
+          // The embed is interactive — don't navigate to the detail page when
+          // the listener clicks play/pause/scrub.
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+      >
+        <ClippedSpotifyEmbed
+          episodeId={spotifyId}
+          start={podClipped.start}
+          end={podClipped.end}
+          testId={`clip-spotify-embed-${a.id}`}
+        />
+        <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between">
+          <span data-testid={`clip-range-${a.id}`}>
+            Clip {range} • {dur}s
+          </span>
+          <span className="font-mono">Spotify clip</span>
+        </div>
+      </div>
+    );
+  }
 
   if (a.clipMediaUrl && podClipped) {
     return (
