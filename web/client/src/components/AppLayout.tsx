@@ -129,7 +129,6 @@ export function AppLayout({
       <footer className="border-t border-border mt-12">
         <div className="mx-auto max-w-6xl px-6 py-8 text-sm text-muted-foreground flex flex-col md:flex-row gap-6 md:gap-4 md:items-center md:justify-between">
           <Logo />
-          <DownloadExtensionButton size="sm" />
           <div className="flex gap-4 flex-wrap">
             <a href="/" className="hover:text-foreground">Home</a>
             <a href="/demo" className="hover:text-foreground" data-testid="link-footer-demo">Demo Video</a>

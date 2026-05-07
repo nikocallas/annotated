@@ -26,7 +26,6 @@ export function LegalLayout({ title, children }: { title: string; children: Reac
       <footer className="border-t border-border mt-12">
         <div className="mx-auto max-w-3xl px-6 py-8 text-sm text-muted-foreground flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           <Logo />
-          <DownloadExtensionButton size="sm" />
           <div className="flex gap-4 flex-wrap">
             <a href="/demo" className="hover:text-foreground">Demo Video</a>
             <a href="/support" className="hover:text-foreground">Support</a>

@@ -59,7 +59,6 @@ export default function LandingPage() {
       <footer className="border-t border-border mt-12">
         <div className="mx-auto max-w-6xl px-6 py-10 flex flex-col sm:flex-row gap-6 sm:items-center sm:justify-between text-sm text-muted-foreground">
           <Logo />
-          <DownloadExtensionButton size="sm" />
           <div className="flex gap-5 flex-wrap">
             <a href="/feed" className="hover:text-foreground">Feed</a>
             <a href="/demo" className="hover:text-foreground">Demo Video</a>
