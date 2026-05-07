@@ -2,6 +2,7 @@ import { Logo } from "@/components/Logo";
 import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SiteNav } from "@/components/SiteNav";
+import { User as UserIcon } from "lucide-react";
 
 export default function DemoVideoPage() {
   return (
@@ -12,7 +13,15 @@ export default function DemoVideoPage() {
           <SiteNav />
           <div className="ml-auto flex items-center gap-3">
             <ThemeToggle />
-            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" />
+            <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
+            <a
+              href="/login"
+              className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
+              data-testid="link-signin-header-mobile"
+            >
+              <UserIcon className="w-4 h-4" />
+              Sign in
+            </a>
           </div>
         </div>
       </header>
@@ -29,7 +38,7 @@ export default function DemoVideoPage() {
             </h1>
             <p className="text-muted-foreground max-w-2xl">
               A short walkthrough of Annotated &mdash; clip a moment from a video, article, or
-              podcast, attach your commentary, and share it. Under 90 seconds.
+              podcast, attach your commentary, and share it.
             </p>
           </header>
 

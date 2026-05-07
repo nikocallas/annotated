@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, AlertCircle, LifeBuoy } from "lucide-react";
+import { CheckCircle2, AlertCircle, LifeBuoy, User as UserIcon } from "lucide-react";
 
 const MAX_NAME = 120;
 const MAX_EMAIL = 200;
@@ -86,7 +86,15 @@ export default function SupportPage() {
           <SiteNav />
           <div className="ml-auto flex items-center gap-3">
             <ThemeToggle />
-            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" />
+            <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
+            <a
+              href="/login"
+              className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
+              data-testid="link-signin-header-mobile"
+            >
+              <UserIcon className="w-4 h-4" />
+              Sign in
+            </a>
           </div>
         </div>
       </header>

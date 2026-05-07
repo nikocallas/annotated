@@ -68,7 +68,7 @@ export function AppLayout({
           </nav>
           <div className="ml-auto flex items-center gap-2 min-w-0">
             <ThemeToggle />
-            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" />
+            <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
 
             {user ? (
               <>

@@ -2,6 +2,7 @@ import { Logo, QuoteMark } from "@/components/Logo";
 import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SiteNav } from "@/components/SiteNav";
+import { User as UserIcon } from "lucide-react";
 
 export default function LandingPage() {
   return (
@@ -12,7 +13,15 @@ export default function LandingPage() {
           <SiteNav current="home" />
           <div className="ml-auto flex items-center gap-3">
             <ThemeToggle />
-            <DownloadExtensionButton size="sm" />
+            <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
+            <a
+              href="/login"
+              className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
+              data-testid="link-signin-header-mobile"
+            >
+              <UserIcon className="w-4 h-4" />
+              Sign in
+            </a>
           </div>
         </div>
       </header>
