@@ -1216,14 +1216,15 @@ async function onPublish(node, publishBtn, errorEl) {
     state.publish.annotationId = result.annotation.id;
     state.publish.pageUrlAtPublish = state.pageMeta?.url || sourceUrl;
 
-    // For video/podcast clips on a real page (i.e. not a manual-URL fallback),
-    // capture the active tab's stream for the selected range and upload it as
-    // the clip's media asset. Failures are logged and surfaced to the user but
-    // never undo the publish — the annotation simply stays in
-    // clip_status='processing'/'failed' and renders the existing facade.
+    // For podcast clips on a real page (i.e. not a manual-URL fallback),
+    // capture the active tab's audio stream for the selected range and upload
+    // it as the clip's media asset. YouTube clips no longer use this path —
+    // the feed renders a YouTube iframe constrained to the timestamps and
+    // does not consume clip_media_url. Failures here are surfaced via toast
+    // but never undo the publish.
     const canCapture =
       !manualUrl &&
-      (payload.sourceType === "youtube" || payload.sourceType === "podcast") &&
+      payload.sourceType === "podcast" &&
       isExtension() &&
       typeof chrome.tabCapture !== "undefined";
     if (canCapture) {

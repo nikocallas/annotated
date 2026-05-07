@@ -1,6 +1,7 @@
 import type { Annotation } from "@shared/schema";
 import { formatRange } from "./SourceBadge";
 import { Play, Mic, Loader2 } from "lucide-react";
+import { ClippedYouTubeEmbed } from "./ClippedYouTubeEmbed";
 
 const MAX_CLIP_SECONDS = 90;
 
@@ -8,12 +9,22 @@ function youtubeId(url: string): string | null {
   try {
     const u = new URL(url);
     if (u.hostname.includes("youtube.com")) {
-      return u.searchParams.get("v");
+      // Standard watch URL: youtube.com/watch?v=ID
+      const v = u.searchParams.get("v");
+      if (v) return v;
+      // Shorts: youtube.com/shorts/ID
+      const shortsMatch = u.pathname.match(/^\/shorts\/([^/]+)/);
+      if (shortsMatch) return shortsMatch[1];
+      // Embed URL: youtube.com/embed/ID
+      const embedMatch = u.pathname.match(/^\/embed\/([^/]+)/);
+      if (embedMatch) return embedMatch[1];
     }
     if (u.hostname.includes("youtu.be")) {
       return u.pathname.slice(1);
     }
-  } catch {}
+  } catch {
+    /* fall through */
+  }
   return null;
 }
 
@@ -22,143 +33,6 @@ function clampClipRange(startSec: number, endSec: number): { start: number; end:
   let end = Math.max(start + 1, Math.floor(endSec));
   if (end - start > MAX_CLIP_SECONDS) end = start + MAX_CLIP_SECONDS;
   return { start, end };
-}
-
-// Native <video> element bound to a clipped MP4 asset. When the
-// clip-processing pipeline delivers a real clip file, we render that and
-// nothing else — never the full source. Constrained to 240p tall per spec.
-function ClippedVideoAsset({
-  annotation,
-  src,
-  poster,
-  start,
-  end,
-  range,
-}: {
-  annotation: Annotation;
-  src: string;
-  poster: string | null;
-  start: number;
-  end: number;
-  range: string;
-}) {
-  const a = annotation;
-  return (
-    <div
-      className="rounded-md overflow-hidden border border-card-border bg-black"
-      data-testid={`clip-video-${a.id}`}
-      onClick={(e) => {
-        e.stopPropagation();
-        e.preventDefault();
-      }}
-    >
-      <video
-        src={src}
-        poster={poster ?? undefined}
-        controls
-        playsInline
-        preload="metadata"
-        className="w-full bg-black"
-        style={{ maxHeight: 360 }}
-        data-testid={`clip-video-asset-${a.id}`}
-      />
-      <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between">
-        <span data-testid={`clip-range-${a.id}`}>
-          Clip {range} • {end - start}s • 240p
-        </span>
-        <span className="font-mono">clipped MP4</span>
-      </div>
-    </div>
-  );
-}
-
-// Clip facade — shown when the source is a video and we DO NOT have a clipped
-// asset yet. This deliberately does not embed the YouTube iframe player or any
-// full-source media. The user sees a thumbnail, the selected range, the clip
-// duration, and a "Clip processing" / "Clip preview unavailable" status.
-function VideoClipFacade({
-  annotation,
-  videoId,
-  start,
-  end,
-  range,
-  thumbnailUrl,
-  status,
-  compact,
-}: {
-  annotation: Annotation;
-  videoId: string | null;
-  start: number;
-  end: number;
-  range: string;
-  thumbnailUrl: string | null;
-  status: "processing" | "ready" | "failed";
-  compact: boolean;
-}) {
-  const a = annotation;
-  const dur = end - start;
-  const poster =
-    thumbnailUrl ||
-    (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null);
-  const statusText =
-    status === "processing"
-      ? "Clip processing"
-      : status === "failed"
-      ? "Clip preview unavailable"
-      : "Clip preview";
-
-  return (
-    <div
-      className="block w-full rounded-md overflow-hidden border border-card-border bg-foreground/5"
-      data-testid={`clip-video-facade-${a.id}`}
-      onClick={(e) => {
-        // The facade is not a player. Don't intercept the surrounding card
-        // <Link> click — let the user navigate to the detail page.
-        e.stopPropagation();
-      }}
-    >
-      <div
-        className="group relative block w-full aspect-video bg-foreground/10"
-        data-testid={`clip-video-thumb-${a.id}`}
-        aria-label={`Video clip preview (${range})`}
-      >
-        {poster ? (
-          <img
-            src={poster}
-            alt={a.sourceTitle ?? "Video clip thumbnail"}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
-            No preview available
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="rounded-full bg-white/95 text-black h-12 w-12 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-            {status === "processing" ? (
-              <Loader2 className={compact ? "w-5 h-5 animate-spin" : "w-6 h-6 animate-spin"} />
-            ) : (
-              <Play
-                className={compact ? "w-5 h-5 ml-0.5" : "w-6 h-6 ml-0.5"}
-                fill="currentColor"
-              />
-            )}
-          </div>
-        </div>
-        <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs font-mono px-2 py-0.5 rounded">
-          {range} • {dur}s
-        </div>
-      </div>
-      <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between gap-3">
-        <span data-testid={`clip-range-${a.id}`}>
-          {statusText} • {range} • {dur}s
-        </span>
-        <span className="shrink-0 font-mono">awaiting MP4</span>
-      </div>
-    </div>
-  );
 }
 
 // Non-embeddable video shell — used when we don't even have start/end times
@@ -236,53 +110,45 @@ export function ClipPreview({
         : null;
     const range = clipped ? formatRange(clipped.start, clipped.end) : null;
 
-    if (!clipped || range == null) {
+    if (!clipped || range == null || !vid) {
       return (
         <NonEmbeddableVideoShell
           annotation={a}
-          range={null}
-          start={null}
-          end={null}
+          range={range}
+          start={clipped?.start ?? null}
+          end={clipped?.end ?? null}
         />
       );
     }
 
-    // Preferred path: a real clipped MP4 asset is available. Render it as a
-    // native <video> bound to that asset only; the full source is never
-    // exposed.
-    if (a.clipMediaUrl) {
-      return (
-        <ClippedVideoAsset
-          annotation={a}
-          src={a.clipMediaUrl}
-          poster={a.clipThumbnailUrl ?? (vid ? `https://i.ytimg.com/vi/${vid}/hqdefault.jpg` : null)}
+    // Render the YouTube iframe player constrained to the clip range. The
+    // start/end URL params handle initial bounds; ClippedYouTubeEmbed polls
+    // currentTime and re-pauses if the user scrubs past the end.
+    const dur = clipped.end - clipped.start;
+    return (
+      <div
+        className="rounded-md overflow-hidden border border-card-border bg-black"
+        data-testid={`clip-video-${a.id}`}
+        onClick={(e) => {
+          // The embed is interactive — don't navigate to the detail page when
+          // the user clicks play/pause/scrub.
+          e.stopPropagation();
+          e.preventDefault();
+        }}
+      >
+        <ClippedYouTubeEmbed
+          videoId={vid}
           start={clipped.start}
           end={clipped.end}
-          range={range}
+          testId={`clip-video-embed-${a.id}`}
         />
-      );
-    }
-
-    // No clipped asset yet — show the facade. We never mount the YouTube
-    // iframe player here, even on the detail page. The facade links out to
-    // the original source for users who want the full video.
-    const status: "processing" | "ready" | "failed" =
-      a.clipStatus === "failed"
-        ? "failed"
-        : a.clipStatus === "processing"
-        ? "processing"
-        : "ready";
-    return (
-      <VideoClipFacade
-        annotation={a}
-        videoId={vid}
-        start={clipped.start}
-        end={clipped.end}
-        range={range}
-        thumbnailUrl={a.clipThumbnailUrl ?? null}
-        status={status}
-        compact={compact}
-      />
+        <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between">
+          <span data-testid={`clip-range-${a.id}`}>
+            Clip {range} • {dur}s
+          </span>
+          <span className="font-mono">YouTube clip</span>
+        </div>
+      </div>
     );
   }
 
