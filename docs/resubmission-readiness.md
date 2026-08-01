@@ -70,8 +70,8 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 4. RLS is enabled and forced on all product tables. Direct table privileges are revoked for `anon` and `authenticated`, preventing clients from bypassing API validation, media inspection, and abuse controls. Claims, media intents, rate buckets, and claim events are server-owned.
 5. Owner checks precede delete/media attachment. Private processing/failed annotations return 404 to non-owners and do not appear in feeds/profiles.
 6. CORS permits only the two production site origins, exact runtime preview origins, and published extension `eaealcbiidjigfndjchchbnjdjicbajb`. The packaged extension pins authenticated API and refresh traffic to `https://annotatedextension.com`; there is no query/runtime endpoint override that could redirect tokens. Security headers apply to API/static responses; API CSP is `default-src 'none'`.
-7. Rate-limit subjects are salted SHA-256 hashes of the client address. Endpoint families have isolated atomic buckets in Supabase and return 429 with standard retry headers. Health/readiness bypass the limiter so monitoring survives limiter/database incidents.
-8. Structured request logs contain request ID, method, path, status, and duration only—no body, query, IP, token, email, or response payload.
+7. Rate-limit subjects are salted SHA-256 hashes of the client address resolved by Express across its configured trusted-proxy boundary; raw leftmost forwarded prefixes are never accepted as client identity. Endpoint families have isolated atomic buckets in Supabase and return 429 with standard retry headers. Health/readiness bypass the limiter so monitoring survives limiter/database incidents.
+8. Structured request logs contain request ID, method, path, status, and duration only—no body, query, IP, token, email, or response payload. Claim-notification failures likewise emit only a structured event name and claim ID, never raw provider errors.
 
 ## Clipping architecture
 
@@ -141,10 +141,11 @@ Current checks implemented:
 - liveness/readiness outage behavior;
 - RLS/grant/storage/rate/claim migration assertions;
 - per-annotation metadata escaping/canonical tests;
-- limiter isolation, 429 headers, expiry, bounded-memory behavior, and stalled-provider fail-closed timing tests;
+- limiter isolation, forwarded-prefix spoof resistance, 429 headers, expiry, bounded-memory behavior, and stalled-provider fail-closed timing tests;
+- finite/bounded feed and moderator query parsing plus claim-notification log-redaction tests;
 - production build, extension syntax/package contents, secret-pattern scan, and npm audit.
 
-Latest local result (2026-08-01): the complete `npm run ci` release command passes on the current release candidate—TypeScript, all 39 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. The latest extension regressions lock the signed-out pre-authentication data-use disclosure and prevent URL parameters from redirecting authenticated API/refresh traffic away from Annotated. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30719010525) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30719011657) pass on the preceding evidence commit `4281e54ddcf0896b9f21f4d35a0e6036d7c68eed`; the final endpoint-lock commit must receive the same exact-commit checks after push.
+Latest local result (2026-08-01): the complete `npm run ci` release command passes on the current release candidate—TypeScript, all 42 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. The latest regressions lock the signed-out pre-authentication data-use disclosure, prevent URL parameters from redirecting authenticated API/refresh traffic away from Annotated, prevent forwarded-prefix rotation of rate-limit buckets, keep malformed query limits finite/bounded, and prevent raw notification-provider errors from entering logs. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30719282840) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30719284915) pass on endpoint-lock commit `e4a84f26f75c333b36405f965ef1fccb0c0e6e04`; the current rate-limit/query/log hardening must receive the same exact-commit checks after push.
 
 Isolated production-mode integration evidence against a clean local Supabase stack:
 
@@ -220,7 +221,7 @@ The Annotated Supabase organization is on the Free plan and exposes only the `ma
 | 14 | Claim submitted, recorded, notified, reviewed | Partial: rendered submission, durable record, notification-attempt audit, scoped moderator listing, and status/event review pass; real Resend delivery pending |
 | 15 | Retained social behavior works | Pass through connected Vercel/Supabase with two verified actors; provider-browser UI remains part of gate 7 |
 | 16 | Per-annotation canonical/OG works in validators | Connected crawler HTML pass; third-party validator pending because the preview is protected |
-| 17 | Typecheck/tests/build/CI/package pass | Pass locally: full CI has 39 tests and download/CWS packages are byte-identical; exact final-commit hosted workflows are required after push |
+| 17 | Typecheck/tests/build/CI/package pass | Pass locally: full CI has 42 tests and download/CWS packages are byte-identical; exact final-commit hosted workflows are required after push |
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
 | 19 | No service-role/secret leakage | Pass: source, built bundle, packages, PR diff, and full repository history scans are clean; CI now fetches full history and repeats the guard |
 | 20 | Vercel smoke test has no new runtime errors | Pass on connected critical API/media/social/outage journey; fixed deployment has no HTTP 500/504 logs |

@@ -46,6 +46,26 @@ test("endpoint rate-limit buckets are isolated and return 429", async () => {
   }
 });
 
+test("a spoofed forwarded prefix cannot rotate the client rate-limit bucket", async () => {
+  const rules: RateLimitRule[] = [
+    { name: "probe", matches: (req) => req.path === "/probe", limit: 1, windowMs: 60_000 },
+  ];
+  const server = await start(rules);
+  try {
+    const first = await fetch(`${server.url}/probe`, {
+      headers: { "X-Forwarded-For": "198.51.100.10, 203.0.113.9" },
+    });
+    assert.equal(first.status, 200);
+
+    const prefixedDifferently = await fetch(`${server.url}/probe`, {
+      headers: { "X-Forwarded-For": "198.51.100.11, 203.0.113.9" },
+    });
+    assert.equal(prefixedDifferently.status, 429);
+  } finally {
+    await server.close();
+  }
+});
+
 test("memory rate-limit storage expires entries and stays bounded", async () => {
   let now = 1_000;
   const store = new MemoryRateLimitStore(() => now, 2);

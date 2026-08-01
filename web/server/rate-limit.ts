@@ -120,8 +120,11 @@ export function defaultRateLimitStore(): RateLimitStore {
 }
 
 function clientAddress(req: Request): string {
-  const forwarded = req.header("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || req.ip || req.socket.remoteAddress || "unknown";
+  // Express resolves req.ip from the configured trusted-proxy boundary. Do
+  // not parse the leftmost X-Forwarded-For value directly: a client-supplied
+  // prefix can survive in a forwarding chain and must not rotate rate-limit
+  // buckets.
+  return req.ip || req.socket.remoteAddress || "unknown";
 }
 
 function subjectKey(req: Request): string {

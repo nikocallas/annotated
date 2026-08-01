@@ -78,6 +78,8 @@ async function harness(
   storage: IStorage,
   auth: AuthService,
   mediaStorage?: MediaStorageService,
+  claimModeration: ClaimModerationService = moderation,
+  emailDispatcher: typeof claimEmailDispatcher = claimEmailDispatcher,
 ): Promise<Harness> {
   const app = express();
   app.use(express.json({ limit: "1mb" }));
@@ -86,8 +88,8 @@ async function harness(
     storage,
     storageBackend: "memory",
     auth,
-    claimModeration: moderation,
-    claimEmailDispatcher,
+    claimModeration,
+    claimEmailDispatcher: emailDispatcher,
     mediaStorage,
   });
   await new Promise<void>((resolve, reject) => {
@@ -500,6 +502,108 @@ test("claims are recorded anonymously, notifications are audited, and moderator 
   });
   assert.equal(moderated.response.status, 200);
   assert.equal(moderated.body.claim.status, "reviewing");
+});
+
+test("query limits stay finite and bounded before reaching storage or moderation", async () => {
+  class RecordingStorage extends MemoryStorage {
+    readonly limits: number[] = [];
+
+    override async listAnnotations(opts: Parameters<MemoryStorage["listAnnotations"]>[0] = {}) {
+      this.limits.push(opts.limit ?? 50);
+      return super.listAnnotations(opts);
+    }
+  }
+
+  const isolatedStorage = new RecordingStorage();
+  const moderator = await isolatedStorage.createUser({
+    username: "limit_moderator",
+    displayName: "Limit Moderator",
+    avatarUrl: null,
+    bio: null,
+    authProvider: "google",
+    authId: "limit-moderator-subject",
+  });
+  const moderationLimits: number[] = [];
+  const isolatedModeration: ClaimModerationService = {
+    ...moderation,
+    isModerator: () => true,
+    async listClaims(limit) {
+      moderationLimits.push(limit);
+      return [];
+    },
+  };
+  const isolated = await harness(
+    isolatedStorage,
+    fakeAuth(new Map([["moderator-token", moderator]])),
+    undefined,
+    isolatedModeration,
+  );
+  try {
+    for (const value of ["NaN", "-3", "9999"]) {
+      assert.equal((await jsonRequest(isolated.baseUrl, `/api/feed?limit=${value}`)).response.status, 200);
+      assert.equal((await jsonRequest(isolated.baseUrl, `/api/admin/claims?limit=${value}`, {
+        headers: { Authorization: "Bearer moderator-token" },
+      })).response.status, 200);
+    }
+    assert.deepEqual(isolatedStorage.limits, [60, 1, 100]);
+    assert.deepEqual(moderationLimits, [100, 1, 200]);
+  } finally {
+    await isolated.close();
+  }
+});
+
+test("claim notification failures do not log raw provider errors", async () => {
+  const isolatedStorage = new MemoryStorage();
+  const poster = await isolatedStorage.createUser({
+    username: "log_safe_poster",
+    displayName: "Log Safe Poster",
+    avatarUrl: null,
+    bio: null,
+    authProvider: "google",
+    authId: "log-safe-subject",
+  });
+  const annotation = await isolatedStorage.createAnnotation({
+    userId: poster.id,
+    sourceUrl: "https://example.com/log-safe-claim",
+    sourceType: "article",
+    clipText: "A passage with a notification failure.",
+    clipStartSec: null,
+    clipEndSec: null,
+    sourceTitle: "Log-safe claim",
+    sourceAuthor: null,
+    sourceImage: null,
+    sourcePublication: "Example",
+    commentaryText: null,
+    commentaryAudioUrl: null,
+    isPublic: 1,
+  });
+  const isolated = await harness(
+    isolatedStorage,
+    fakeAuth(new Map()),
+    undefined,
+    moderation,
+    async () => { throw new Error("provider payload includes rights-holder@example.com"); },
+  );
+  const logged: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  try {
+    const result = await jsonRequest(isolated.baseUrl, `/api/annotations/${annotation.id}/claims`, {
+      method: "POST",
+      body: JSON.stringify({
+        claimantName: "Rights Holder",
+        claimantEmail: "rights-holder@example.com",
+        reasonCategory: "other",
+      }),
+    });
+    assert.equal(result.response.status, 201);
+    const serialized = JSON.stringify(logged);
+    assert.match(serialized, /claim_notification_dispatch_failed/);
+    assert.doesNotMatch(serialized, /rights-holder@example\.com|provider payload/);
+  } finally {
+    console.error = originalError;
+    await isolated.close();
+  }
 });
 
 test("follow, comment, reply, vote, and bookmark mutations use the verified actor", async () => {

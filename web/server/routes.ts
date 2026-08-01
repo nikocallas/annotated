@@ -72,6 +72,13 @@ function safeOptionalHttpsUrl(value: unknown): string | null | undefined {
   }
 }
 
+function boundedIntegerQuery(value: unknown, fallback: number, maximum: number): number {
+  if (typeof value !== "string") return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(1, Math.floor(parsed)));
+}
+
 async function createClaim(
   storage: IStorage,
   annotationId: string,
@@ -127,8 +134,10 @@ async function createClaim(
       emailSummary = await emailDispatcher({ claim, annotation: ann, poster });
       await moderation.recordNotifications(claim.id, emailSummary);
     }
-  } catch (err) {
-    console.error("[claims] email dispatch failed", err);
+  } catch {
+    // Provider and database errors can carry request details. Keep operational
+    // logs useful without copying claimant contact data or provider payloads.
+    console.error(JSON.stringify({ event: "claim_notification_dispatch_failed", claimId: claim.id }));
   }
 
   return res.status(201).json({
@@ -387,7 +396,7 @@ export function registerRoutes(
       }
       const followerOf = followingRequested ? viewer!.id : undefined;
       const viewerUserId = viewer?.id;
-      const limit = Math.min(100, Number(req.query.limit ?? 60));
+      const limit = boundedIntegerQuery(req.query.limit, 60, 100);
       const shuffle = req.query.shuffle === "1" || req.query.shuffle === "true";
       const annotations = await storage.listAnnotations({ followerOf, limit, viewerUserId });
       if (shuffle) {
@@ -773,7 +782,7 @@ export function registerRoutes(
     asyncHandler(async (req, res) => {
       const actor = await auth.requireActor(req);
       if (!moderation.isModerator(actor)) throw new ClaimModerationError(403, "Moderator access required");
-      const claims = await moderation.listClaims(Number(req.query.limit ?? 100));
+      const claims = await moderation.listClaims(boundedIntegerQuery(req.query.limit, 100, 200));
       res.setHeader("Cache-Control", "no-store");
       return res.json({ claims });
     }),
