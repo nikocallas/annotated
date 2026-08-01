@@ -163,11 +163,11 @@ No item in this section is marked proven until a URL/artifact/screenshot is reco
 |---|---|---|
 | Google web OAuth | Pending preview callback test | Not proven |
 | X web OAuth | Pending provider callback/email-scope test | Not proven |
-| Google/X extension handoff + refresh | Pending unpacked 1.8.0 device test | Not proven |
+| Google/X extension handoff + refresh | Exact production-origin ping and isolated valid/invalid bundle handoff pass in Chrome; real provider token/refresh pending | Partial |
 | 61-second YouTube capture | Pending stored-object URL + parsed 240p metadata | Not proven |
 | 61-second podcast capture | Pending stored-object URL + audio-only metadata | Not proven |
 | Article exact passage | Exact-value local Supabase/API evidence; published detail renders correctly in browser | Partial (browser selection action pending) |
-| Text/audio commentary preview, replace, publish | Pending microphone/device test | Not proven |
+| Text/audio commentary preview, replace, publish | Isolated Chrome fake-device recording produces a valid 2.209s Opus WebM and closes offscreen context; physical microphone/publish pending | Partial |
 | Source link + File a claim | Production canonical detail and 390×844 mobile detail each show the claim action and original-source links | Pass for retained production content; preview data pending |
 | Claim recorded/notified/reviewed | Pending Resend inbox + moderator audit event | Not proven |
 | Feed/profile/follow/comment/reply/vote/bookmark | Production feed loads 50+ cards without console errors or horizontal overflow; authenticated mutations pass integration tests | Partial (provider-authenticated browser mutations pending) |
@@ -175,6 +175,8 @@ No item in this section is marked proven until a URL/artifact/screenshot is reco
 | Cold start and simulated provider recovery | Local outage regression passes; isolated preview health repeatedly survives while missing dependencies fail closed | Partial (connected preview recovery pending) |
 
 Latest isolated Vercel preview for hardened code commit `e5b57d7af9d5684e82d5cb4f104d9d2919830e74`: `https://annotated-hyvj019at-laymen.vercel.app` (`dpl_C5kFoQmyuYNHgRJdbg7ar52mH6xH`). The deployment built with zero dependency findings. `/api/health` returns 200 with request ID, HSTS, API CSP, and `Cache-Control: no-store`; `/api/ready` returns a component-by-component 503 because Preview has no Supabase URL/OAuth/moderation/maintenance configuration; `/api/feed` returns a controlled 503 rather than memory/demo data; `/` returns 200. The deployed `/downloads/annotated-extension.zip` exactly matches the validated CWS artifact at SHA-256 `fc2b02760571ac170b91c04acfc519c26099491b574504050e2076ffff726ed4`. Runtime logs contain only expected fail-closed readiness/rate-limit messages and structured request summaries—no crash or secret output.
+
+Isolated Chrome runtime evidence (Chrome for Testing 151.0.7922.71, fresh temporary profiles): unpacked 1.8.0 starts with the exact public Store ID, declared permissions/hosts, empty storage, and no sidebar console errors or horizontal overflow. After the 30-second MV3 idle window removes both sidebar and worker contexts, reopening the sidebar restarts the worker and renders cleanly. The production `www.annotatedextension.com` origin receives the read-only install ping (`ok: true`, version 1.8.0); `example.com` has no external messaging surface. The allowed production origin rejects an invalid bundle, accepts an isolated placeholder bundle, stores only `annotatedAuth` (not legacy `annotatedUser`), and the temporary storage is then cleared. With Chrome's fake media device, real offscreen `MediaRecorder` start/stop produces a 6,397-byte, 2.209s `audio/webm;codecs=opus` artifact and leaves zero offscreen contexts. This proves runtime wiring and lifecycle behavior without treating synthetic media or placeholder auth as provider/device acceptance.
 
 A Supabase preview branch was unavailable on the current plan (HTTP 402), and a disposable third free project in the exact Annotated organization was rejected by Supabase's active-project limit. Nothing was created or changed in either attempt, and no unrelated project was paused or modified.
 
@@ -188,12 +190,12 @@ A Supabase preview branch was unavailable on the current plan (HTTP 402), and a 
 | 4 | Spoofed actor IDs have no authority | Pass in integration suite |
 | 5 | Cross-user mutation/deletion returns 403 | Delete/media ownership implemented; delete test passes |
 | 6 | Direct anonymous Supabase writes denied | Pass against clean migrated local Supabase REST; hosted branch proof pending |
-| 7 | Google and X work on site and extension | Pending provider/device proof |
+| 7 | Google and X work on site and extension | Production-origin extension handshake passes in isolated Chrome; real Google/X provider and refresh proof pending |
 | 8 | Real 61s YouTube → verified 240p | Actual 61.008s/240p signed-upload pipeline passes; real YouTube device capture pending |
 | 9 | >90s rejected before publication | Pass in extension/API tests |
 | 10 | Real podcast → bounded audio artifact | Actual 61.008s audio-only signed-upload pipeline passes; real podcast device capture pending |
 | 11 | Article publishes exact selection + metadata | Pass in production-mode local API; browser selection action pending |
-| 12 | Text and recorded audio commentary work | Text plus actual verified commentary media pass local API; microphone device pending |
+| 12 | Text and recorded audio commentary work | Text and verified commentary media pass local API; isolated Chrome offscreen recording passes; physical microphone publish pending |
 | 13 | Source link and File a claim on every page | Pass on retained production detail in desktop/mobile browser; hardened preview data pending |
 | 14 | Claim submitted, recorded, notified, reviewed | Integration pass; real Resend/moderator pending |
 | 15 | Retained social behavior works | Public browser surfaces and mutation integrations pass; authenticated browser actions pending |
@@ -202,7 +204,7 @@ A Supabase preview branch was unavailable on the current plan (HTTP 402), and a 
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
 | 19 | No service-role/secret leakage | Pass: source, built bundle, packages, PR diff, and full repository history scans are clean; CI now fetches full history and repeats the guard |
 | 20 | Vercel smoke test has no new runtime errors | Isolated preview pass with expected missing-config 503 logs; connected critical journey pending |
-| 21 | Minimal versioned CWS package ready | 1.8.0 validates with exact hosts/public ID/Chrome 116 guard; real-device/privacy listing review pending |
+| 21 | Minimal versioned CWS package ready | 1.8.0 validates and loads with exact public ID/hosts; clean worker suspend/restart and synthetic-mic recording pass; real-device/privacy listing review pending |
 | 22 | Lovable checklist line-by-line | Matrix above; provider/manual rows remain open |
 
 ## Remaining risks and owner/provider actions
