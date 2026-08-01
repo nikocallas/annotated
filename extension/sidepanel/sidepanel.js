@@ -12,7 +12,7 @@ import {
   nextPublishStatus,
 } from "../shared/clip-utils.mjs";
 
-const DEFAULT_API_BASE = "https://annotatedextension.com";
+const API_BASE = "https://annotatedextension.com";
 const SUPPORT_EMAIL = "support@annotatedextension.com";
 const PUBLISH_RESET_MS = 10000;
 const FAIR_USE_COPY = "I confirm this annotation uses only the selected clip/text for commentary, criticism, research, or another fair-use purpose.";
@@ -60,7 +60,6 @@ window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change",
 });
 
 const state = {
-  apiBase: DEFAULT_API_BASE,
   user: null,
   auth: null,
   tab: "clip",
@@ -108,7 +107,7 @@ async function api(path, options = {}) {
   let accessToken = await validAccessToken();
   let res;
   try {
-    res = await fetch(state.apiBase + path, {
+    res = await fetch(API_BASE + path, {
       ...fetchOptions,
       headers: {
         "Content-Type": "application/json",
@@ -118,7 +117,7 @@ async function api(path, options = {}) {
     });
   } catch (err) {
     const detail = err?.message || String(err);
-    throw new Error(`Couldn't reach ${state.apiBase} (${detail}). Check your internet connection or reload the extension.`);
+    throw new Error(`Couldn't reach ${API_BASE} (${detail}). Check your internet connection or reload the extension.`);
   }
   if (res.status === 401 && state.auth?.refreshToken && !__retried) {
     accessToken = await refreshAccessToken();
@@ -145,7 +144,7 @@ async function refreshAccessToken() {
   const refreshToken = state.auth?.refreshToken;
   if (!refreshToken) return null;
   try {
-    const res = await fetch(state.apiBase + "/api/auth/refresh", {
+    const res = await fetch(API_BASE + "/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
@@ -383,7 +382,7 @@ function buildExtensionAuthUrl(provider) {
   const params = new URLSearchParams({ extension: "1" });
   if (extensionId) params.set("extensionId", extensionId);
   if (provider) params.set("provider", provider);
-  return `${state.apiBase}/login?${params.toString()}`;
+  return `${API_BASE}/login?${params.toString()}`;
 }
 
 function openWebsiteSignIn(provider) {
@@ -1461,7 +1460,7 @@ async function renderFeed() {
     }
     items.forEach((a) => list.appendChild(renderFeedCard(a)));
   } catch (err) {
-    list.innerHTML = `<div class="muted small">Couldn't reach API at ${state.apiBase}: ${escapeHtml(err.message)}</div>`;
+    list.innerHTML = `<div class="muted small">Couldn't reach API at ${API_BASE}: ${escapeHtml(err.message)}</div>`;
   }
   return node;
 }
@@ -1740,12 +1739,6 @@ function escapeAttr(s) { return escapeHtml(s); }
       applyTheme(next);
     });
   }
-
-  try {
-    const params = new URLSearchParams(location.search);
-    const override = params.get("api");
-    if (override) state.apiBase = override;
-  } catch {}
 
   await loadUser();
   refreshActiveTab();

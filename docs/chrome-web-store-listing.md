@@ -55,7 +55,7 @@ Claims: https://www.annotatedextension.com/claims/how-it-works
 | `annotatedextension.com`, `www.annotatedextension.com` | Calls the Annotated API and permits the production OAuth callback page to hand the verified session to the published extension. |
 | `cpqmjujhcwpavrsjadjz.supabase.co` | Uploads the encoded WebM Blob directly to the exact Annotated Storage project using a short-lived, owner-scoped signed URL; avoids proxying large media through the API. |
 
-No permission allows unattended background browsing or broad all-sites access. `activeTab` and the toolbar/side-panel user gesture scope page access to the selected tab.
+No permission allows unattended background browsing or broad all-sites access. `activeTab` and the toolbar/side-panel user gesture scope page access to the selected tab. API and refresh requests are fixed to the Annotated production origin; the packaged side panel does not accept a query or runtime endpoint override.
 
 ## Privacy disclosure review
 

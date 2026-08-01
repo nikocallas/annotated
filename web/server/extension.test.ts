@@ -65,3 +65,10 @@ test("side panel discloses data use and policy links before authentication", () 
   assert.match(html, /https:\/\/www\.annotatedextension\.com\/privacy/);
   assert.match(html, /https:\/\/www\.annotatedextension\.com\/tos/);
 });
+
+test("side panel cannot redirect authenticated API traffic with a URL override", () => {
+  const script = readFileSync(resolve(repoRoot, "extension/sidepanel/sidepanel.js"), "utf8");
+  assert.match(script, /const API_BASE = "https:\/\/annotatedextension\.com"/);
+  assert.doesNotMatch(script, /state\.apiBase/);
+  assert.doesNotMatch(script, /params\.get\(["']api["']\)/);
+});
