@@ -4,8 +4,12 @@ import { useAuth } from "@/lib/auth-context";
 import { supabaseConfigured } from "@/lib/supabase";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-
-const EXT_FLOW_KEY = "annotated_extension_auth";
+import {
+  ANNOTATED_EXTENSION_ID,
+  EXTENSION_AUTH_FLOW_KEY,
+  isAnnotatedExtensionId,
+  parseStoredExtensionAuthFlow,
+} from "@/lib/extension-auth";
 
 // When the Chrome extension's sidepanel opens this page in a new tab, it
 // passes ?extension=1&extensionId=<id>. The auth-callback page consumes
@@ -16,12 +20,15 @@ function captureExtensionFlowFromQuery(): { extensionId: string } | null {
     const params = new URLSearchParams(window.location.search);
     if (params.get("extension") !== "1") return null;
     const extensionId = params.get("extensionId") || "";
-    if (!extensionId) return null;
+    if (!isAnnotatedExtensionId(extensionId)) {
+      sessionStorage.removeItem(EXTENSION_AUTH_FLOW_KEY);
+      return null;
+    }
     sessionStorage.setItem(
-      EXT_FLOW_KEY,
-      JSON.stringify({ extensionId, ts: Date.now() }),
+      EXTENSION_AUTH_FLOW_KEY,
+      JSON.stringify({ extensionId: ANNOTATED_EXTENSION_ID, ts: Date.now() }),
     );
-    return { extensionId };
+    return { extensionId: ANNOTATED_EXTENSION_ID };
   } catch {
     return null;
   }
@@ -29,10 +36,11 @@ function captureExtensionFlowFromQuery(): { extensionId: string } | null {
 
 function readExtensionFlow(): { extensionId: string } | null {
   try {
-    const raw = sessionStorage.getItem(EXT_FLOW_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { extensionId?: string };
-    return parsed.extensionId ? { extensionId: parsed.extensionId } : null;
+    const parsed = parseStoredExtensionAuthFlow(
+      sessionStorage.getItem(EXTENSION_AUTH_FLOW_KEY),
+    );
+    if (!parsed) sessionStorage.removeItem(EXTENSION_AUTH_FLOW_KEY);
+    return parsed ? { extensionId: parsed.extensionId } : null;
   } catch {
     return null;
   }
