@@ -28,3 +28,13 @@ test("media, rate-limit, and claim-audit data are server-owned", () => {
   assert.match(audit, /update public\.claims set status = 'received' where status = 'pending'/);
   assert.match(audit, /check \(status in \('received', 'reviewing', 'resolved', 'rejected'\)\)/);
 });
+
+test("media attachment is single-use, serialized, and published atomically", () => {
+  const attachment = readFileSync(resolve(migrationRoot, "0014_atomic_media_attachment.sql"), "utf8").toLowerCase();
+  assert.match(attachment, /unique index[\s\S]*annotation_id\s*,\s*kind[\s\S]*status\s*=\s*'attached'/);
+  assert.match(attachment, /from public\.annotations[\s\S]*for update[\s\S]*from public\.media_uploads[\s\S]*for update/);
+  assert.match(attachment, /already attached to another annotation/);
+  assert.match(attachment, /set clip_media_url = incoming\.public_url[\s\S]*clip_status = 'ready'[\s\S]*is_public = 1/);
+  assert.match(attachment, /revoke all on function public\.attach_media_upload[\s\S]*from public, anon, authenticated/);
+  assert.match(attachment, /grant execute on function public\.attach_media_upload[\s\S]*to service_role/);
+});

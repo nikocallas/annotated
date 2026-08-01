@@ -240,26 +240,47 @@ export async function attachMediaUpload(userId: string, uploadId: string, annota
   if (incomingError || !incoming) throw new MediaStorageError(400, "Verified media upload was not found");
   const record = incoming as MediaUploadRow;
 
-  // A replacement of the same kind removes the prior object immediately.
-  // Commentary and clip media use different kinds and can coexist.
-  const { data: replaced, error: replacedError } = await client
-    .from("media_uploads")
-    .select("*")
-    .eq("annotation_id", annotationId)
-    .eq("kind", record.kind)
-    .neq("id", uploadId);
-  if (replacedError) throw new MediaStorageError(503, "Unable to inspect replaced media");
-  for (const stale of (replaced ?? []) as MediaUploadRow[]) {
-    assertObjectOwnership(userId, stale.kind, stale.object_path);
-    await client.storage.from(stale.bucket).remove([stale.object_path]);
-    await client.from("media_uploads").delete().eq("id", stale.id).eq("user_id", userId);
+  const { error } = await client.rpc("attach_media_upload", {
+    p_user_id: userId,
+    p_upload_id: uploadId,
+    p_annotation_id: annotationId,
+  });
+  if (error) {
+    if (/not found|not owned|already attached|not ready|requires a/i.test(error.message)) {
+      throw new MediaStorageError(400, "Verified media upload could not be attached");
+    }
+    throw new MediaStorageError(503, "Unable to attach verified media");
   }
 
-  const { data, error } = await client.from("media_uploads").update({
-    annotation_id: annotationId,
-    status: "attached",
-  }).eq("id", uploadId).eq("user_id", userId).in("status", ["ready", "attached"]).select("id").maybeSingle();
-  if (error || !data) throw new MediaStorageError(503, "Unable to attach verified media");
+  // Cleanup happens only after the transaction has atomically pointed the
+  // annotation at the winner. Failures are safe to defer to maintenance.
+  const { data: orphaned, error: orphanError } = await client
+    .from("media_uploads")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("kind", record.kind)
+    .eq("status", "orphaned")
+    .is("annotation_id", null);
+  if (orphanError) {
+    console.warn(JSON.stringify({ event: "media_orphan_cleanup_deferred" }));
+    return;
+  }
+  for (const stale of (orphaned ?? []) as MediaUploadRow[]) {
+    try {
+      assertObjectOwnership(userId, stale.kind, stale.object_path);
+      const { error: removeError } = await client.storage.from(stale.bucket).remove([stale.object_path]);
+      if (removeError) throw removeError;
+      const { error: rowError } = await client
+        .from("media_uploads")
+        .delete()
+        .eq("id", stale.id)
+        .eq("user_id", userId)
+        .eq("status", "orphaned");
+      if (rowError) throw rowError;
+    } catch {
+      console.warn(JSON.stringify({ event: "media_orphan_cleanup_deferred", uploadId: stale.id }));
+    }
+  }
 }
 
 export async function deleteAnnotationMedia(userId: string, annotationId: string) {

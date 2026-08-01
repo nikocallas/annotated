@@ -42,7 +42,7 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 - The original code initialized the serverless module through request/startup demo seeding, accepted caller identity fields, used a public-key persistence path, returned clipping command plans, accepted base64/data-URL media, trusted client media claims, and had no CI.
 - Production data assumptions: seeded IDs are referenced by marketing/demo content; user/annotation rows must be preserved; annotation/media URLs may include legacy demo assets; there is no safe authorization to rewrite or delete production content during hardening.
 - The live target's exact policy/bucket export has not been mutated. Before applying the additive migrations, capture a Supabase dashboard/CLI schema-only backup and row counts for all core tables, `storage.buckets`, and `storage.objects` in project `cpqmjujhcwpavrsjadjz`.
-- A hosted read-only inventory confirms migrations `0011`–`0013` are not yet present: `media_uploads`, `rate_limit_buckets`, and `claim_events` are absent. Storage currently has only the public `clip-media` bucket, with zero objects; `commentary-audio` does not exist. This is evidence about current state, not authorization to migrate it.
+- A hosted read-only inventory confirms migrations `0011`–`0014` are not yet present: `media_uploads`, `rate_limit_buckets`, and `claim_events` are absent. Storage currently has only the public `clip-media` bucket, with zero objects; `commentary-audio` does not exist. This is evidence about current state, not authorization to migrate it.
 - Supabase Auth currently enables Google, X OAuth 2.0, and the backend email provider. Google and X authorization endpoints redirect to their real providers, and two historical provider identities exist, but this does not prove a current callback, refresh, logout, or extension journey. Email must be disabled before release to match the Google/X-only contract.
 
 ## Before/after findings
@@ -68,7 +68,7 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 2. Browser and extension send an access token in `Authorization: Bearer`. The API calls Supabase `getUser` and maps the verified `(provider, auth subject)` to the app user. Refresh tokens are accepted only by the refresh endpoint and are never logged. The website accepts extension OAuth mode only for the ID cryptographically derived from the committed manifest key, sends the session only to that pinned recipient, expires the handoff marker after ten minutes, and retains a bounded retry path if the extension is temporarily unreachable.
 3. Product writes use the service role inside Vercel. The service credential never enters a `VITE_*` value, client bundle, extension package, response, or documentation value.
 4. RLS is enabled and forced on all product tables. Direct table privileges are revoked for `anon` and `authenticated`, preventing clients from bypassing API validation, media inspection, and abuse controls. Claims, media intents, rate buckets, and claim events are server-owned.
-5. Owner checks precede delete/media attachment. Private processing/failed annotations return 404 to non-owners and do not appear in feeds/profiles.
+5. Owner checks precede delete/media attachment. A row-locked database function makes verified uploads single-use, serializes same-annotation replacement, and commits the winning URL/publication state atomically; superseded objects become retryable orphans only after the annotation points at the winner. Private processing/failed annotations return 404 to non-owners and do not appear in feeds/profiles.
 6. CORS permits only the two production site origins, exact runtime preview origins, and published extension `eaealcbiidjigfndjchchbnjdjicbajb`. The packaged extension pins authenticated API and refresh traffic to `https://annotatedextension.com`; there is no query/runtime endpoint override that could redirect tokens. Security headers apply to API/static responses; API CSP is `default-src 'none'`.
 7. Rate-limit subjects are salted SHA-256 hashes of the client address resolved by Express across its configured trusted-proxy boundary; raw leftmost forwarded prefixes are never accepted as client identity. Endpoint families have isolated atomic buckets in Supabase and return 429 with standard retry headers. Health/readiness bypass the limiter so monitoring survives limiter/database incidents.
 8. Structured request logs contain request ID, method, path, status, and duration only—no body, query, IP, token, email, or response payload. Claim-notification failures likewise emit only a structured event name and claim ID, never raw provider errors.
@@ -106,6 +106,7 @@ Migrations are not applied by the build and have not been applied to production 
 1. `0011_security_hardening.sql` enables/forces RLS, revokes direct privileges, adds the auth lookup/indexes, and creates the atomic view RPC.
 2. `0012_media_uploads.sql` converges bucket MIME/size limits and adds server-owned media upload intents/audit metadata.
 3. `0013_rate_limits_claim_audit.sql` adds stable-key rate buckets, atomic consume RPC, claim event trigger/table, and moderator RPC.
+4. `0014_atomic_media_attachment.sql` adds the partial uniqueness invariant and row-locked attachment/publication RPC.
 
 Preflight on a branch/test database:
 
@@ -118,6 +119,7 @@ Preflight on a branch/test database:
 Rollback order if preview validation fails:
 
 - stop preview traffic first;
+- `0014`: revoke/drop `attach_media_upload` and its partial unique index only after stopping attachment traffic and confirming no duplicate attached `(annotation_id, kind)` rows;
 - `0013`: revoke/drop `moderate_claim`, trigger/function, `claim_events`, `consume_rate_limit`, and `rate_limit_buckets` after exporting audit rows;
 - `0012`: stop uploads, export `media_uploads`, remove only disposable preview objects, then drop its policies/table; restore prior bucket settings from the captured inventory;
 - `0011`: keep RLS/direct privilege revocation in place if at all possible. Roll back only the new RPC/policies/indexes after restoring an equivalent safe policy set. Never disable RLS on a live project merely to recover availability.
@@ -143,13 +145,14 @@ Current checks implemented:
 - per-annotation metadata escaping/canonical tests;
 - limiter isolation, forwarded-prefix spoof resistance, 429 headers, expiry, bounded-memory behavior, and stalled-provider fail-closed timing tests;
 - finite/bounded feed and moderator query parsing plus claim-notification log-redaction tests;
+- atomic single-use media attachment, lock ordering, publication, and server-only RPC grant assertions;
 - production build, extension syntax/package contents, secret-pattern scan, and npm audit.
 
-Latest local result (2026-08-01): the complete `npm run ci` release command passes on the current release candidate—TypeScript, all 42 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. The latest regressions lock the signed-out pre-authentication data-use disclosure, prevent URL parameters from redirecting authenticated API/refresh traffic away from Annotated, prevent forwarded-prefix rotation of rate-limit buckets, keep malformed query limits finite/bounded, and prevent raw notification-provider errors from entering logs. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30719282840) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30719284915) pass on endpoint-lock commit `e4a84f26f75c333b36405f965ef1fccb0c0e6e04`; the current rate-limit/query/log hardening must receive the same exact-commit checks after push.
+Latest local result (2026-08-01): the complete release command passes on the current working candidate—TypeScript, all 43 tests, production build, extension validation, source/bundle/package secret scan, and zero dependency vulnerabilities. The latest regressions lock the signed-out pre-authentication data-use disclosure, prevent URL parameters from redirecting authenticated API/refresh traffic away from Annotated, prevent forwarded-prefix rotation of rate-limit buckets, keep malformed query limits finite/bounded, prevent raw notification-provider errors from entering logs, and assert atomic single-use media attachment. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30719635588) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30719637070) pass on `8742a0862ebf5188b023d2f7ee5089929b382d24`; the uncommitted media-attachment hardening still requires exact-commit hosted checks.
 
 Isolated production-mode integration evidence against a clean local Supabase stack:
 
-- all 13 migrations apply from zero; ten product tables have forced RLS, 21 policies exist, and direct `anon` product-table writes return 401 with zero direct client mutation grants;
+- all 13 migrations through `0013` apply from zero; ten product tables have forced RLS, 21 policies exist, and direct `anon` product-table writes return 401 with zero direct client mutation grants;
 - the atomic distributed limiter allows requests one and two and rejects request three for a two-request bucket;
 - two provider-shaped GoTrue sessions synchronize through the real API while keeping OAuth subject IDs private; anonymous/spoofed/cross-owner mutations return 401/403;
 - a 61.008s 426×240 video+audio WebM, 61.008s audio-only podcast WebM, and 61.008s commentary-audio WebM complete signed direct upload and trusted finalization; pending objects use unlinked owner/UUID paths, annotations remain non-public until attachment, and invalid objects are deleted;
@@ -158,6 +161,8 @@ Isolated production-mode integration evidence against a clean local Supabase sta
 - confirmed account deletion removes the app user, media row, Storage object, and GoTrue identity; a lowercase confirmation attempt returns 400 first.
 
 No production migration or write was used for this evidence.
+
+Migration `0014` has automated structure/grant/lock-order coverage but not a fresh live-database proof yet. Two separately named Annotated local launches remained in Docker's `created` state before PostgreSQL started (including a clean temporary stack); the temporary stack and empty volume were removed, the preserved Annotated volume was not deleted, and all 12 unrelated Laymen containers remained healthy. Restarting Docker was deliberately avoided because it would interrupt that unrelated project.
 
 ## Manual/real-device QA evidence
 
@@ -221,7 +226,7 @@ The Annotated Supabase organization is on the Free plan and exposes only the `ma
 | 14 | Claim submitted, recorded, notified, reviewed | Partial: rendered submission, durable record, notification-attempt audit, scoped moderator listing, and status/event review pass; real Resend delivery pending |
 | 15 | Retained social behavior works | Pass through connected Vercel/Supabase with two verified actors; provider-browser UI remains part of gate 7 |
 | 16 | Per-annotation canonical/OG works in validators | Connected crawler HTML pass; third-party validator pending because the preview is protected |
-| 17 | Typecheck/tests/build/CI/package pass | Pass locally: full CI has 42 tests and download/CWS packages are byte-identical; exact final-commit hosted workflows are required after push |
+| 17 | Typecheck/tests/build/CI/package pass | Full local release CI passes with 43 tests and byte-identical packages; exact final-commit hosted workflows are required for the media-attachment commit |
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
 | 19 | No service-role/secret leakage | Pass: source, built bundle, packages, PR diff, and full repository history scans are clean; CI now fetches full history and repeats the guard |
 | 20 | Vercel smoke test has no new runtime errors | Pass on connected critical API/media/social/outage journey; fixed deployment has no HTTP 500/504 logs |
@@ -232,7 +237,7 @@ The Annotated Supabase organization is on the Free plan and exposes only the `ma
 
 These are the smallest external actions required; they do not authorize production mutation.
 
-1. Enable a durable Supabase preview branch (Pro plan) or temporarily free one allowed project slot in the exact Annotated organization; then capture the preflight export and apply `0011`–`0013` only there. The short-lived connected-tunnel proof now covers migration, serverless, outage/recovery, RLS, social, media, and crawler behavior, but a durable hosted branch is still required for real provider callbacks and the final release rehearsal.
+1. Enable a durable Supabase preview branch (Pro plan) or temporarily free one allowed project slot in the exact Annotated organization; then capture the preflight export and apply `0011`–`0014` only there. The short-lived connected-tunnel proof covers migrations through `0013`, serverless, outage/recovery, RLS, social, media, and crawler behavior; `0014` and real provider callbacks still require the durable hosted branch/final release rehearsal.
 2. Remove or rotate the existing production-like encrypted secrets in Vercel Preview before connecting a branch. Then configure a complete matched Preview set: server/publishable branch Supabase values, branch-safe Resend credentials, singular support inbox, owner `MODERATOR_AUTH_IDS`, `CRON_SECRET`, `RATE_LIMIT_SALT`, and the exact preview OAuth/CORS origin.
 3. Disable Supabase email sign-in, retain only Google and X OAuth 2.0, and add the exact approved preview callback allowlist. X must return the identity data Supabase requires; if the provider account cannot expose email, document that provider limitation rather than claiming success.
 4. Verify the Resend sender/domain and inbox access, then retain filer/poster/support delivery evidence.
@@ -244,7 +249,7 @@ These are the smallest external actions required; they do not authorize producti
 - [ ] Draft PR reviewed; CI green; no unexpected generated/untracked files.
 - [ ] Preview URL and commit SHA recorded; Vercel logs clean for critical journey.
 - [ ] Database/schema/bucket backup and rollback owner assigned.
-- [ ] `0011`–`0013` proven in branch/test DB; anon and two-user authorization probes pass.
+- [ ] `0011`–`0014` proven in branch/test DB; anon and two-user authorization probes pass.
 - [ ] Preview `/api/health` 200 and `/api/ready` 200 with every named check `ok`.
 - [ ] Google/X site + extension OAuth, refresh, logout, and account deletion pass. Current production Google web callback and logout pass; X login and release-candidate extension proof remain open.
 - [ ] Real YouTube/podcast/article/commentary artifacts pass trusted validation.

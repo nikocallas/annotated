@@ -520,11 +520,15 @@ export function registerRoutes(
         // Attach the verified intent first. If this step fails, the annotation
         // remains private/processing instead of exposing an untracked URL.
         await mediaStorage.attachMediaUpload(actor.id, media.uploadId, annotationId);
-        await storage.updateAnnotation(annotationId, {
-          clipMediaUrl: media.url,
-          clipStatus: "ready",
-          isPublic: 1,
-        });
+        // Supabase attachment and publication are one row-locked transaction.
+        // Test/development storage has no RPC, so retain its in-memory update.
+        if (storageBackend !== "supabase") {
+          await storage.updateAnnotation(annotationId, {
+            clipMediaUrl: media.url,
+            clipStatus: "ready",
+            isPublic: 1,
+          });
+        }
       }
       return res.status(201).json(media);
     }),

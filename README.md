@@ -62,6 +62,7 @@ Apply migrations in filename order to the exact Annotated project. Migrations `0
 - `0011_security_hardening.sql`: forced RLS, direct privilege revocation, atomic view counter, authorization indexes.
 - `0012_media_uploads.sql`: signed-upload intents, verified metadata, `clip-media`/`commentary-audio` bucket controls.
 - `0013_rate_limits_claim_audit.sql`: atomic distributed limiter, bounded cleanup, claim event audit, moderator RPC.
+- `0014_atomic_media_attachment.sql`: row-locked, single-use media attachment and atomic annotation publication.
 
 The migrations are additive and intentionally are not applied automatically by a web build. Review the preflight and rollback notes in `docs/resubmission-readiness.md` before applying them. Do not use or modify an unrelated project named “Laymen.”
 
