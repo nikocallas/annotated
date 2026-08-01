@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { relative, resolve } from "node:path";
 
@@ -40,4 +41,50 @@ function walk(directory: string) {
 
 walk(repoRoot);
 assert.equal(findings.length, 0, `possible committed or bundled secret in: ${findings.join(", ")}`);
-console.log("secret-pattern scan passed");
+
+const history = execFileSync(
+  "git",
+  [
+    "log",
+    "-p",
+    "--full-history",
+    "--all",
+    "--",
+    ".",
+    ":(exclude)web/script/security-scan.ts",
+    ":(exclude)*.zip",
+    ":(exclude)*.png",
+    ":(exclude)*.jpg",
+    ":(exclude)*.jpeg",
+    ":(exclude)*.gif",
+    ":(exclude)*.webp",
+    ":(exclude)*.woff",
+    ":(exclude)*.woff2",
+  ],
+  { cwd: repoRoot, encoding: "utf8", maxBuffer: 100 * 1024 * 1024 },
+);
+assert.equal(
+  patterns.some((pattern) => pattern.test(history)),
+  false,
+  "possible secret pattern in repository history",
+);
+
+const historicalNames = execFileSync(
+  "git",
+  ["log", "--all", "--name-only", "--pretty=format:"],
+  { cwd: repoRoot, encoding: "utf8", maxBuffer: 20 * 1024 * 1024 },
+)
+  .split("\n")
+  .map((path) => path.trim())
+  .filter(Boolean);
+const sensitiveName = /(^|\/)(\.env($|\.)|.*credentials.*|.*service.?account.*|id_(rsa|ed25519)$)/i;
+const unexpectedSensitiveNames = [...new Set(historicalNames)].filter(
+  (path) => path !== "web/.env.example" && sensitiveName.test(path),
+);
+assert.equal(
+  unexpectedSensitiveNames.length,
+  0,
+  `sensitive-looking filename in repository history: ${unexpectedSensitiveNames.join(", ")}`,
+);
+
+console.log("working-tree and repository-history secret-pattern scan passed");

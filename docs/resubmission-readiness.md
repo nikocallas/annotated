@@ -200,7 +200,7 @@ A Supabase preview branch was unavailable on the current plan (HTTP 402), and a 
 | 16 | Per-annotation canonical/OG works in validators | Implementation/unit pass; deployed validator pending |
 | 17 | Typecheck/tests/build/CI/package pass | Pass: full local CI (29 tests) plus hosted push and pull-request workflows on hardened commit |
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
-| 19 | No service-role/secret leakage | Local source/bundle/package scan passes; PR history scan pending |
+| 19 | No service-role/secret leakage | Pass: source, built bundle, packages, PR diff, and full repository history scans are clean; CI now fetches full history and repeats the guard |
 | 20 | Vercel smoke test has no new runtime errors | Isolated preview pass with expected missing-config 503 logs; connected critical journey pending |
 | 21 | Minimal versioned CWS package ready | 1.8.0 validates with exact hosts/public ID/Chrome 116 guard; real-device/privacy listing review pending |
 | 22 | Lovable checklist line-by-line | Matrix above; provider/manual rows remain open |
