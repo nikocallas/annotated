@@ -164,8 +164,8 @@ Rows distinguish deployed artifacts and recorded browser observations from the r
 
 | Journey | Evidence | Result |
 |---|---|---|
-| Google web OAuth | Hosted authorization endpoint initiates and a historical Google identity exists; current preview callback/refresh/logout pending | Partial |
-| X web OAuth | Hosted X OAuth 2.0 authorization endpoint initiates and a historical X identity exists; current callback/email behavior pending | Partial |
+| Google web OAuth | Real Chrome 150 completes the current production Google redirect, callback exchange, authenticated feed/profile identity, and logout with zero console warnings/errors; release-candidate preview callback and explicit refresh proof remain pending | Partial |
+| X web OAuth | Real Chrome reaches the correct X OAuth 2.0 authorization endpoint; Profile 2 is not signed into X, so owner login and callback/email behavior remain pending | Partial |
 | Google/X extension handoff + refresh | Exact production-origin ping and isolated valid/invalid bundle handoff pass in Chrome; website recipient is pinned to the manifest-derived ID and forged IDs render normal web sign-in; real provider token/refresh pending | Partial |
 | Signed-out data-use disclosure | Rendered extension panel explains active-tab context, Chrome-local OAuth state, user-chosen publication, and claim contact data before authentication; direct Privacy/Terms links and light/dark interaction pass with zero console warnings/errors | Pass |
 | 61-second YouTube capture | Generated 61.016s 426×240 video+audio WebM completed the connected deployed media path | Partial (physical Chrome/YouTube capture pending) |
@@ -194,7 +194,7 @@ Isolated Chrome runtime evidence (Chrome for Testing 151.0.7922.71, fresh tempor
 
 Signed-out disclosure evidence for the current candidate: the locally served side panel renders the expected Annotated identity and a nonblank accessible tree with Google/X controls followed by a `role="note"` disclosure. It states active-tab URL/title/metadata/selection access, Chrome-local provider-session storage, user-chosen publication, and claim contact-data submission before authentication. Privacy and Terms resolve to the canonical production URLs, the framework-overlay count is zero, console warning/error output is empty, and the theme control changes the root to dark mode and its accessible label to “Switch to light mode.” The two deterministic package builders produce byte-identical 1.8.0 ZIPs at SHA-256 `63d5b44177e58fdb40a1f1e6dafdf9adc57b56b7ec167b5fba0acfd7c9494646`.
 
-Current external-browser diagnostics find Google Chrome 150 running, the ChatGPT browser bridge installed and enabled in Profile 2, and its native-host manifest correct. The browser binding is not connected, however; the browser-control procedure requires owner permission before opening the needed Profile 2 window. That is the smallest action that unlocks the physical real-source capture matrix.
+Current external-browser diagnostics find Google Chrome 150 running, the ChatGPT browser bridge installed and enabled in Profile 2, and its native-host manifest correct. After explicit owner permission, a Profile 2 window opened and the browser binding connected successfully. Current production Google sign-in then completed the provider redirect, Annotated callback exchange, authenticated feed/profile identity, and logout with no console warnings/errors. X reached its real authorization page but requires the owner to sign into X before the callback can be observed. Browser security correctly blocks automated access to `chrome://extensions`; the owner must therefore load the pinned-ID unpacked 1.8.0 candidate manually before the physical source/microphone matrix can proceed.
 
 Accessibility browser evidence for the exact candidate source at `772c7144136fec5c41a4ceab08c4ca173bcffa99`: axe 4.12 reports zero WCAG 2.0/2.1 A/AA violations on landing, feed, login, support, privacy, terms, signed-out extension, signed-in clip view, and the claim dialog in light and dark themes. Keyboard traces show visible 2px focus, 44px primary targets, and no hidden recorder controls in the tab order. The claim dialog receives initial focus, wraps Tab and Shift+Tab, closes with Escape, and restores focus to the File a claim button. Public routes at 390×844 and the side panel at 378px show no document-level horizontal overflow; the only intentionally offscreen support elements are the non-focusable bot honeypot. The website viewport permits zoom and both surfaces honor reduced-motion preferences.
 
@@ -210,7 +210,7 @@ The Annotated Supabase organization is on the Free plan and exposes only the `ma
 | 4 | Spoofed actor IDs have no authority | Pass in integration suite and connected two-actor journey |
 | 5 | Cross-user mutation/deletion returns 403 | Pass in integration suite and connected two-actor journey |
 | 6 | Direct anonymous Supabase writes denied | Pass through the encrypted external Supabase route: 401 and zero inserted rows |
-| 7 | Google and X work on site and extension | Both hosted provider authorization endpoints initiate; historical provider identities and pinned extension recipient are proven; current callbacks and refresh remain pending |
+| 7 | Google and X work on site and extension | Partial: current production Google web callback and logout pass in real Chrome; X reaches provider login; release-candidate preview callbacks, X completion, explicit refresh, and real extension handoff remain pending |
 | 8 | Real 61s YouTube → verified 240p | Generated 61.016s/240p artifact passes the connected deployed pipeline; real YouTube device capture pending |
 | 9 | >90s rejected before publication | Pass in extension/API tests |
 | 10 | Real podcast → bounded audio artifact | Generated 61.016s audio-only artifact passes the connected deployed pipeline; real podcast device capture pending |
@@ -245,7 +245,7 @@ These are the smallest external actions required; they do not authorize producti
 - [ ] Database/schema/bucket backup and rollback owner assigned.
 - [ ] `0011`–`0013` proven in branch/test DB; anon and two-user authorization probes pass.
 - [ ] Preview `/api/health` 200 and `/api/ready` 200 with every named check `ok`.
-- [ ] Google/X site + extension OAuth, refresh, logout, and account deletion pass.
+- [ ] Google/X site + extension OAuth, refresh, logout, and account deletion pass. Current production Google web callback and logout pass; X login and release-candidate extension proof remain open.
 - [ ] Real YouTube/podcast/article/commentary artifacts pass trusted validation.
 - [ ] Claim emails and moderator audit/status path pass.
 - [ ] OG/canonical preview validators pass on a real annotation.
@@ -277,4 +277,4 @@ These are the smallest external actions required; they do not authorize producti
 
 ## Go/no-go
 
-**Current recommendation: NO-GO for production resubmission.** The release candidate materially closes the known architecture/security gaps and now passes local CI, exact-commit hosted CI, connected durable serverless/data/social/media/crawler tests, rendered feed/detail/claim/moderation tests, and database outage/recovery. The remaining acceptance work is external: a durable provider-connected preview, current Google/X callback/refresh/logout and extension handoff, physical Chrome media/selection/microphone journeys, real Resend delivery, third-party crawler validators, owner-dashboard privacy/listing review, and explicit approval for production migration/deployment. The branch should remain active until those rows are proven or an exact external limitation is documented.
+**Current recommendation: NO-GO for production resubmission.** The release candidate materially closes the known architecture/security gaps and now passes local CI, exact-commit hosted CI, connected durable serverless/data/social/media/crawler tests, rendered feed/detail/claim/moderation tests, database outage/recovery, and the current production Google web callback/logout in real Chrome. The remaining acceptance work is external: a durable provider-connected preview, X login/callback, candidate Google/X refresh and extension handoff, manual unpacked-extension loading followed by physical Chrome media/selection/microphone journeys, real Resend delivery, third-party crawler validators, owner-dashboard privacy/listing review, and explicit approval for production migration/deployment. The branch should remain active until those rows are proven or an exact external limitation is documented.
