@@ -74,7 +74,7 @@ Enable only Google and Twitter/X in Supabase Auth. Configure the Supabase provid
 - the exact approved Vercel preview callback
 - localhost callbacks only when actively developing
 
-The extension opens the production sign-in page with its runtime ID. The callback exchanges PKCE, synchronizes the app profile through the authenticated API, and sends the full access/refresh session bundle to the allowlisted published extension. The extension refreshes expired sessions through `/api/auth/refresh`; legacy user-only handoffs are rejected.
+The extension opens the production sign-in page with its runtime ID. The website accepts extension mode only for the ID derived from the committed Web Store key, expires the flow after ten minutes, and sends the PKCE access/refresh session bundle only to that pinned recipient. A failed handoff retains an explicit retry path without exposing tokens in UI or logs. The extension refreshes expired sessions through `/api/auth/refresh`; legacy user-only handoffs are rejected.
 
 ## Chrome extension
 

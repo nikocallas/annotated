@@ -26,7 +26,7 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 | Video downgraded to 240 pixels (<480p) | Tab stream is drawn to a 240px-high 15fps canvas, encoded WebM, then dimensions are parsed server-side | Implemented; synthetic 61s/240p acceptance and >240p rejection pass. Real YouTube artifact pending. |
 | Every clip links to its original source URL | Source URL is required HTTPS metadata and appears in feed/detail/source credit; canonical annotation page remains separate | Pass in production browser detail/mobile checks; hardened preview data path pending. |
 | Visible “File a claim” on every annotation | Detail page and extension detail both render the action; API accepts anonymous, validated claims | Pass in production browser detail/mobile checks; live notification proof pending. |
-| Account creation via X or Google only | Supabase PKCE OAuth only; no password/demo identity; API verifies access token on protected operations | Implemented; provider-by-provider preview proof pending. |
+| Account creation via X or Google only | Supabase PKCE OAuth only; no password/demo identity; API verifies access token on protected operations; extension handoff is pinned to the manifest-derived Store ID | Hosted Google/X authorization endpoints initiate successfully and historical identities exist; current callback/refresh proof remains pending. |
 | Public social feed with follow + comment | Feed, profiles, follow/unfollow, threaded comments, votes, bookmarks | Public feed/detail UI passes desktop/mobile browser checks; authenticated mutations pass integration tests. |
 | Commentary supports text and recorded audio | Text plus offscreen microphone recording, preview/discard/replace, signed upload and inspection | Implemented; real microphone publish pending. |
 | Pick current source or paste URL | Side panel detects active tab and offers a different URL; media paste must be opened in the active tab before compliant capture | Implemented; real-device proof pending. |
@@ -37,11 +37,13 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 ## Baseline snapshot before new migrations
 
 - The reviewed branch began at `ce52d0d`. Production was not changed.
-- Production Supabase had recently been resumed. A read-only check on 2026-08-01 showed `/api/feed` recovered with HTTP 200 and durable seeded content. The current production build still returned 404 for `/api/health` and `/api/ready`; those routes exist only in this branch until approved deployment.
+- Production Supabase had recently been resumed. A read-only check on 2026-08-01 showed the project `ACTIVE_HEALTHY`, `/api/feed` recovered with HTTP 200 and 55 durable annotations, and the retained users/most-viewed/detail APIs responding. The current production build still returned 404 for `/api/health` and `/api/ready`; those routes exist only in this branch until approved deployment. Its legacy `/api/users` response also still exposes internal `authId`, which the release candidate redacts.
 - Existing migration history was preserved verbatim as `0001` through `0010`. `0001` explicitly disabled RLS on users, follows, annotations, comments, and claims. Later migrations added bookmarks, views, claim fields, votes/threads, thumbnail fields, and the original `clip-media` bucket.
 - The original code initialized the serverless module through request/startup demo seeding, accepted caller identity fields, used a public-key persistence path, returned clipping command plans, accepted base64/data-URL media, trusted client media claims, and had no CI.
 - Production data assumptions: seeded IDs are referenced by marketing/demo content; user/annotation rows must be preserved; annotation/media URLs may include legacy demo assets; there is no safe authorization to rewrite or delete production content during hardening.
 - The live target's exact policy/bucket export has not been mutated. Before applying the additive migrations, capture a Supabase dashboard/CLI schema-only backup and row counts for all core tables, `storage.buckets`, and `storage.objects` in project `cpqmjujhcwpavrsjadjz`.
+- A hosted read-only inventory confirms migrations `0011`–`0013` are not yet present: `media_uploads`, `rate_limit_buckets`, and `claim_events` are absent. Storage currently has only the public `clip-media` bucket, with zero objects; `commentary-audio` does not exist. This is evidence about current state, not authorization to migrate it.
+- Supabase Auth currently enables Google, X OAuth 2.0, and the backend email provider. Google and X authorization endpoints redirect to their real providers, and two historical provider identities exist, but this does not prove a current callback, refresh, logout, or extension journey. Email must be disabled before release to match the Google/X-only contract.
 
 ## Before/after findings
 
@@ -51,7 +53,7 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 | Persistence | Silent memory fallback possible | Memory exists only in development/tests; production returns explicit 503 when durable storage/config is missing |
 | Identity | Body/query actor IDs trusted | Supabase token verified on every protected request; actor always derived from the token; internal OAuth subject redacted |
 | Database access | RLS disabled; anon-key server path | Service-role API path; forced RLS; all direct product-table privileges revoked from `anon` and `authenticated` |
-| Media | Plans/base64/data URLs/client claims | Real tab artifact; direct signed upload; server parses container/duration/tracks/dimensions/bytes; failed media remains private |
+| Media | Plans/base64/data URLs/client claims | Real tab artifact; direct signed upload; server parses container/duration/tracks/dimensions/bytes; processing/failed annotations stay private and invalid objects are deleted |
 | Views | Read/modify/write race | Service-only atomic RPC |
 | Abuse | Broad CORS and no limits | Exact production/preview/extension origins; atomic distributed per-endpoint limits; 429/Retry-After; bounded cleanup |
 | Claims | Submission and email only | Honeypot/rate limit, private contact data, delivery result, immutable event trail, moderator-only review RPC/API |
@@ -63,7 +65,7 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 ## Security model
 
 1. Supabase Auth is the identity provider; only Google and Twitter/X provider values are accepted.
-2. Browser and extension send an access token in `Authorization: Bearer`. The API calls Supabase `getUser` and maps the verified `(provider, auth subject)` to the app user. Refresh tokens are accepted only by the refresh endpoint and are never logged.
+2. Browser and extension send an access token in `Authorization: Bearer`. The API calls Supabase `getUser` and maps the verified `(provider, auth subject)` to the app user. Refresh tokens are accepted only by the refresh endpoint and are never logged. The website accepts extension OAuth mode only for the ID cryptographically derived from the committed manifest key, sends the session only to that pinned recipient, expires the handoff marker after ten minutes, and retains a bounded retry path if the extension is temporarily unreachable.
 3. Product writes use the service role inside Vercel. The service credential never enters a `VITE_*` value, client bundle, extension package, response, or documentation value.
 4. RLS is enabled and forced on all product tables. Direct table privileges are revoked for `anon` and `authenticated`, preventing clients from bypassing API validation, media inspection, and abuse controls. Claims, media intents, rate buckets, and claim events are server-owned.
 5. Owner checks precede delete/media attachment. Private processing/failed annotations return 404 to non-owners and do not appear in feeds/profiles.
@@ -134,7 +136,7 @@ Current checks implemented:
 - follow, comment/reply, vote, bookmark tests;
 - 90-second/source URL validation;
 - WebM 61s/240p acceptance, >240p rejection, >90s rejection, audio-only enforcement;
-- extension source detection, selection word count, OAuth handoff, capture plan, publish-state tests;
+- extension source detection, selection word count, manifest-derived OAuth recipient pinning, forged/stale handoff rejection, capture plan, and publish-state tests;
 - public-site and extension accessibility invariants, including zoom, headings, labels, modal focus, target sizing, reduced motion, and non-nested controls;
 - liveness/readiness outage behavior;
 - RLS/grant/storage/rate/claim migration assertions;
@@ -142,14 +144,14 @@ Current checks implemented:
 - limiter isolation, 429 headers, expiry, and bounded-memory tests;
 - production build, extension syntax/package contents, secret-pattern scan, and npm audit.
 
-Latest local result (2026-08-01): the complete `npm run ci` release command passes—TypeScript, all 32 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30714228120) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30714229612) pass on hardened code commit `772c7144136fec5c41a4ceab08c4ca173bcffa99`.
+Latest local result (2026-08-01): the complete `npm run ci` release command passes on security commit `f7f38c74225e7a9689a5ded016638fdb4f0dbded`—TypeScript, all 35 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Hosted push/PR proof for this exact commit is pending.
 
 Isolated production-mode integration evidence against a clean local Supabase stack:
 
 - all 13 migrations apply from zero; ten product tables have forced RLS, 21 policies exist, and direct `anon` product-table writes return 401 with zero direct client mutation grants;
 - the atomic distributed limiter allows requests one and two and rejects request three for a two-request bucket;
 - two provider-shaped GoTrue sessions synchronize through the real API while keeping OAuth subject IDs private; anonymous/spoofed/cross-owner mutations return 401/403;
-- a 61.008s 426×240 video+audio WebM, 61.008s audio-only podcast WebM, and 61.008s commentary-audio WebM complete signed direct upload and trusted finalization; objects remain private before verification and public only after attachment;
+- a 61.008s 426×240 video+audio WebM, 61.008s audio-only podcast WebM, and 61.008s commentary-audio WebM complete signed direct upload and trusted finalization; pending objects use unlinked owner/UUID paths, annotations remain non-public until attachment, and invalid objects are deleted;
 - an over-90s publish is rejected with no annotation row created; an article preserves the exact selected passage and source metadata while attaching verified audio commentary;
 - stale-media maintenance removes both the disposable Storage object and upload-intent row (`scanned: 1`, `removed: 1`, `failures: 0`);
 - confirmed account deletion removes the app user, media row, Storage object, and GoTrue identity; a lowercase confirmation attempt returns 400 first.
@@ -162,9 +164,9 @@ No item in this section is marked proven until a URL/artifact/screenshot is reco
 
 | Journey | Evidence | Result |
 |---|---|---|
-| Google web OAuth | Pending preview callback test | Not proven |
-| X web OAuth | Pending provider callback/email-scope test | Not proven |
-| Google/X extension handoff + refresh | Exact production-origin ping and isolated valid/invalid bundle handoff pass in Chrome; real provider token/refresh pending | Partial |
+| Google web OAuth | Hosted authorization endpoint initiates and a historical Google identity exists; current preview callback/refresh/logout pending | Partial |
+| X web OAuth | Hosted X OAuth 2.0 authorization endpoint initiates and a historical X identity exists; current callback/email behavior pending | Partial |
+| Google/X extension handoff + refresh | Exact production-origin ping and isolated valid/invalid bundle handoff pass in Chrome; website recipient is pinned to the manifest-derived ID and forged IDs render normal web sign-in; real provider token/refresh pending | Partial |
 | 61-second YouTube capture | Pending stored-object URL + parsed 240p metadata | Not proven |
 | 61-second podcast capture | Pending stored-object URL + audio-only metadata | Not proven |
 | Article exact passage | Exact-value local Supabase/API evidence; published detail renders correctly in browser | Partial (browser selection action pending) |
@@ -181,7 +183,7 @@ Isolated Chrome runtime evidence (Chrome for Testing 151.0.7922.71, fresh tempor
 
 Accessibility browser evidence for the exact candidate source at `772c7144136fec5c41a4ceab08c4ca173bcffa99`: axe 4.12 reports zero WCAG 2.0/2.1 A/AA violations on landing, feed, login, support, privacy, terms, signed-out extension, signed-in clip view, and the claim dialog in light and dark themes. Keyboard traces show visible 2px focus, 44px primary targets, and no hidden recorder controls in the tab order. The claim dialog receives initial focus, wraps Tab and Shift+Tab, closes with Escape, and restores focus to the File a claim button. Public routes at 390×844 and the side panel at 378px show no document-level horizontal overflow; the only intentionally offscreen support elements are the non-focusable bot honeypot. The website viewport permits zoom and both surfaces honor reduced-motion preferences.
 
-A Supabase preview branch was unavailable on the current plan (HTTP 402), and a disposable third free project in the exact Annotated organization was rejected by Supabase's active-project limit. Nothing was created or changed in either attempt, and no unrelated project was paused or modified.
+The Annotated Supabase organization is on the Free plan and exposes only the `main` branch. A preview branch was unavailable (HTTP 402), and a disposable third free project in the exact Annotated organization was rejected by Supabase's active-project limit. Nothing was created or changed in either attempt, and no unrelated project was paused or modified.
 
 ## Acceptance gates
 
@@ -193,7 +195,7 @@ A Supabase preview branch was unavailable on the current plan (HTTP 402), and a 
 | 4 | Spoofed actor IDs have no authority | Pass in integration suite |
 | 5 | Cross-user mutation/deletion returns 403 | Delete/media ownership implemented; delete test passes |
 | 6 | Direct anonymous Supabase writes denied | Pass against clean migrated local Supabase REST; hosted branch proof pending |
-| 7 | Google and X work on site and extension | Production-origin extension handshake passes in isolated Chrome; real Google/X provider and refresh proof pending |
+| 7 | Google and X work on site and extension | Both hosted provider authorization endpoints initiate; historical provider identities and pinned extension recipient are proven; current callbacks and refresh remain pending |
 | 8 | Real 61s YouTube → verified 240p | Actual 61.008s/240p signed-upload pipeline passes; real YouTube device capture pending |
 | 9 | >90s rejected before publication | Pass in extension/API tests |
 | 10 | Real podcast → bounded audio artifact | Actual 61.008s audio-only signed-upload pipeline passes; real podcast device capture pending |
@@ -203,7 +205,7 @@ A Supabase preview branch was unavailable on the current plan (HTTP 402), and a 
 | 14 | Claim submitted, recorded, notified, reviewed | Integration pass; real Resend/moderator pending |
 | 15 | Retained social behavior works | Public browser surfaces and mutation integrations pass; authenticated browser actions pending |
 | 16 | Per-annotation canonical/OG works in validators | Implementation/unit pass; deployed validator pending |
-| 17 | Typecheck/tests/build/CI/package pass | Pass: full local CI (32 tests) plus hosted push and pull-request workflows on hardened commit |
+| 17 | Typecheck/tests/build/CI/package pass | Partial: full local CI passes with 35 tests and byte-identical packages; hosted push/PR workflows for the exact security commit pending |
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
 | 19 | No service-role/secret leakage | Pass: source, built bundle, packages, PR diff, and full repository history scans are clean; CI now fetches full history and repeats the guard |
 | 20 | Vercel smoke test has no new runtime errors | Isolated preview pass with expected missing-config 503 logs; connected critical journey pending |
@@ -215,8 +217,8 @@ A Supabase preview branch was unavailable on the current plan (HTTP 402), and a 
 These are the smallest external actions required; they do not authorize production mutation.
 
 1. Enable a Supabase preview branch (Pro plan) or temporarily free one allowed project slot in the exact Annotated organization; then capture the preflight export and apply `0011`–`0013` only there. Local migration/REST proof is already complete.
-2. Configure Vercel Preview variables: server/publishable Supabase values, Resend, singular support inbox, owner `MODERATOR_AUTH_IDS`, `CRON_SECRET`, `RATE_LIMIT_SALT`, and the preview OAuth/CORS origin.
-3. Confirm Google and X providers and exact preview callback allowlists. X must return the identity data Supabase requires; if the provider account cannot expose email, document that provider limitation rather than claiming success.
+2. Remove or rotate the existing production-like encrypted secrets in Vercel Preview before connecting a branch. Then configure a complete matched Preview set: server/publishable branch Supabase values, branch-safe Resend credentials, singular support inbox, owner `MODERATOR_AUTH_IDS`, `CRON_SECRET`, `RATE_LIMIT_SALT`, and the exact preview OAuth/CORS origin.
+3. Disable Supabase email sign-in, retain only Google and X OAuth 2.0, and add the exact approved preview callback allowlist. X must return the identity data Supabase requires; if the provider account cannot expose email, document that provider limitation rather than claiming success.
 4. Verify the Resend sender/domain and inbox access, then retain filer/poster/support delivery evidence.
 5. Open a controllable Chrome window for Profile 2, load the pinned-ID unpacked extension 1.8.0, grant microphone/tab capture through normal browser prompts, and run the manual matrix. Installed Store version 1.7.3 was detected read-only; it was not replaced.
 6. Approve production migration/deployment only after every acceptance row is proven. Approve the separate Chrome Web Store upload only after production is stable.
