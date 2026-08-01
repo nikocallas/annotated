@@ -33,6 +33,11 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const now = () => Math.floor(Date.now() / 1000);
 
+function isUniqueViolation(error: unknown): boolean {
+  return !!error && typeof error === "object" && "code" in error
+    && (error as { code?: unknown }).code === "23505";
+}
+
 export interface IStorage {
   // Availability
   healthCheck(): Promise<void>;
@@ -618,7 +623,17 @@ export class SupabaseStorage implements IStorage {
         value,
         created_at: now(),
       });
-      if (iErr) throw iErr;
+      if (iErr) {
+        if (!isUniqueViolation(iErr)) throw iErr;
+        // Another request inserted the same unique user/annotation pair after
+        // our read. Converge on the requested value instead of surfacing 500.
+        const { error: retryError } = await this.client
+          .from("votes")
+          .update({ value, created_at: now() })
+          .eq("user_id", userId)
+          .eq("annotation_id", annotationId);
+        if (retryError) throw retryError;
+      }
     }
     const summary = await this.getVoteSummary(annotationId);
     return { ...summary, viewerVote: value };
@@ -676,7 +691,7 @@ export class SupabaseStorage implements IStorage {
       following_id: followingId,
       created_at: now(),
     });
-    if (error) throw error;
+    if (error && !isUniqueViolation(error)) throw error;
   }
   async unfollow(followerId: string, followingId: string) {
     const { error } = await this.client
@@ -764,7 +779,7 @@ export class SupabaseStorage implements IStorage {
       annotation_id: annotationId,
       created_at: now(),
     });
-    if (error) throw error;
+    if (error && !isUniqueViolation(error)) throw error;
   }
   async unbookmark(userId: string, annotationId: string) {
     const { error } = await this.client

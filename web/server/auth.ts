@@ -73,6 +73,11 @@ function profileFields(user: SupabaseUser) {
   return { displayName: displayName.slice(0, 100), username, avatarUrl };
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return !!error && typeof error === "object" && "code" in error
+    && (error as { code?: unknown }).code === "23505";
+}
+
 export function createAuthService(
   appStorage: IStorage = defaultStorage,
   options: {
@@ -116,22 +121,32 @@ export function createAuthService(
     if (existing) return existing;
 
     const profile = profileFields(user);
-    let username = profile.username;
     for (let attempt = 0; attempt < 8; attempt++) {
-      const taken = await appStorage.getUserByUsername(username);
-      if (!taken) break;
       const suffix = user.id.replace(/-/g, "").slice(0, 6 + Math.min(attempt, 4));
-      username = `${profile.username.slice(0, Math.max(1, 29 - suffix.length))}_${suffix}`;
+      const username = attempt === 0
+        ? profile.username
+        : `${profile.username.slice(0, Math.max(1, 29 - suffix.length))}_${suffix}`;
+      const taken = await appStorage.getUserByUsername(username);
+      if (taken) continue;
+      try {
+        return await appStorage.createUser({
+          username,
+          displayName: profile.displayName,
+          avatarUrl: profile.avatarUrl,
+          bio: null,
+          authProvider: provider,
+          authId: user.id,
+        });
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        // A simultaneous website/extension callback may have inserted this
+        // exact identity after our first read. Treat that committed row as
+        // success; otherwise retry with the next deterministic username.
+        const raced = await existingAppUser(user);
+        if (raced) return raced;
+      }
     }
-
-    return appStorage.createUser({
-      username,
-      displayName: profile.displayName,
-      avatarUrl: profile.avatarUrl,
-      bio: null,
-      authProvider: provider,
-      authId: user.id,
-    });
+    throw new ApiAuthError(503, "Unable to complete sign-in");
   }
 
   async function actorFromRequest(req: Request, createIfMissing: boolean): Promise<User | undefined> {
