@@ -11,11 +11,10 @@ const DEMO_CLIP_POSTER_URL = "/media/annotated-demo-poster.jpg";
 /**
  * Idempotent demo data seed.
  *
- * In long-running dev/server mode this is awaited once at boot. On Vercel
- * serverless functions the module is re-evaluated on cold start; we cache the
- * promise so only one request triggers the seed, and we skip entirely on
- * Supabase unless the table is empty (the SQL seed migration is the
- * authoritative seed for production).
+ * This is never invoked from request handling or server startup. Run it only
+ * through the explicit `npm run seed:demo` command. SQL migrations remain the
+ * authoritative production seed, and production execution requires a second
+ * explicit opt-in to prevent accidental writes.
  */
 export async function seedDemoData() {
   if (!seeded) seeded = doSeed();

@@ -2,10 +2,8 @@ import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { supabaseConfigured } from "@/lib/supabase";
-import { apiRequest } from "@/lib/queryClient";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import type { User } from "@shared/schema";
 
 const EXT_FLOW_KEY = "annotated_extension_auth";
 
@@ -40,35 +38,6 @@ function readExtensionFlow(): { extensionId: string } | null {
   }
 }
 
-interface ChromeRuntimeBridge {
-  runtime?: {
-    sendMessage?: (
-      extensionId: string,
-      message: unknown,
-      callback?: (resp: unknown) => void,
-    ) => void;
-    lastError?: { message: string };
-  };
-}
-
-function sendUserToExtension(extensionId: string, user: User): Promise<boolean> {
-  return new Promise((resolve) => {
-    const c = (window as unknown as { chrome?: ChromeRuntimeBridge }).chrome;
-    if (!c?.runtime?.sendMessage) {
-      resolve(false);
-      return;
-    }
-    try {
-      c.runtime.sendMessage(extensionId, { type: "ANNOTATED_AUTH_SUCCESS", user }, (resp) => {
-        if (c.runtime?.lastError) return resolve(false);
-        resolve(!!(resp as { ok?: boolean } | undefined)?.ok);
-      });
-    } catch {
-      resolve(false);
-    }
-  });
-}
-
 export default function LoginPage() {
   const { loginWithProvider } = useAuth();
   const [busy, setBusy] = useState<"x" | "google" | null>(null);
@@ -88,36 +57,6 @@ export default function LoginPage() {
     setBusy(provider);
     try {
       await loginWithProvider(provider);
-      // When Supabase is configured, the browser is redirected to the OAuth
-      // provider here and never reaches the next line. The fallback demo path
-      // resolves immediately — when the user came from the extension, route
-      // to /auth/callback (which performs the runtime.sendMessage handoff)
-      // so the extension picks up the session without an extra tab.
-      if (!supabaseConfigured) {
-        const ext = readExtensionFlow();
-        if (ext) {
-          // Demo path: the auth-context has already minted a user via
-          // /api/auth/demo. Re-fetch a clean copy and hand it to the
-          // extension directly, then close this tab.
-          try {
-            const res = await apiRequest("POST", "/api/auth/demo", { provider });
-            const data = (await res.json()) as { user: User };
-            const sent = await sendUserToExtension(ext.extensionId, data.user);
-            try { sessionStorage.removeItem(EXT_FLOW_KEY); } catch {}
-            if (sent) {
-              toast({ title: "Signed in", description: "Sent to the extension." });
-              setTimeout(() => {
-                try { window.close(); } catch {}
-              }, 600);
-              return;
-            }
-          } catch {
-            // fall through to feed
-          }
-        }
-        toast({ title: "Signed in", description: "Demo session active." });
-        window.location.assign("/feed");
-      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Sign-in failed";
       toast({ title: "Sign-in failed", description: message, variant: "destructive" });
@@ -150,7 +89,7 @@ export default function LoginPage() {
           <div className="space-y-3">
             <Button
               onClick={() => handleLogin("x")}
-              disabled={!!busy}
+              disabled={!!busy || !supabaseConfigured}
               className="w-full"
               size="lg"
               data-testid="button-signin-x"
@@ -169,7 +108,7 @@ export default function LoginPage() {
             </Button>
             <Button
               onClick={() => handleLogin("google")}
-              disabled={!!busy}
+              disabled={!!busy || !supabaseConfigured}
               variant="outline"
               className="w-full"
               size="lg"
@@ -205,9 +144,8 @@ export default function LoginPage() {
               </>
             ) : (
               <>
-                Auth env vars aren't configured for this build, so the buttons sign you
-                into a demo identity. Set <code>VITE_SUPABASE_URL</code> and{" "}
-                <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> to enable real OAuth.
+                OAuth isn't configured for this deployment. Sign-in is disabled rather
+                than creating an unverifiable demo identity.
               </>
             )}
           </p>

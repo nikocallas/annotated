@@ -18,11 +18,11 @@ import {
 const SITE_URL = "https://annotatedextension.com";
 
 function annotationLink(ann: Pick<Annotation, "id">) {
-  return `${SITE_URL}/#/a/${ann.id}`;
+  return `${SITE_URL}/a/${encodeURIComponent(ann.id)}`;
 }
 
 function profileLink(user: Pick<User, "username">) {
-  return `${SITE_URL}/#/u/${user.username}`;
+  return `${SITE_URL}/u/${encodeURIComponent(user.username)}`;
 }
 
 function reasonLabel(category: string | null | undefined) {

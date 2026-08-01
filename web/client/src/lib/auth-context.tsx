@@ -19,8 +19,8 @@ interface AuthValue {
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-async function exchangeSupabaseSession(accessToken: string): Promise<User | null> {
-  const res = await apiRequest("POST", "/api/auth/supabase", { accessToken });
+async function exchangeSupabaseSession(): Promise<User | null> {
+  const res = await apiRequest("POST", "/api/auth/supabase");
   if (!res.ok) return null;
   const data = (await res.json()) as { user: User };
   return data.user;
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       const token = data.session?.access_token;
       if (token) {
-        const u = await exchangeSupabaseSession(token);
+        const u = await exchangeSupabaseSession();
         if (!cancelled) setUser(u);
       }
       if (!cancelled) setLoading(false);
@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const token = session?.access_token;
       if (!token) return;
-      const u = await exchangeSupabaseSession(token);
+      const u = await exchangeSupabaseSession();
       setUser(u);
     });
 
@@ -68,11 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithProvider = useCallback(async (provider: "x" | "google") => {
     if (!supabase) {
-      // Fallback: demo auth for local dev when Supabase env vars aren't set.
-      const res = await apiRequest("POST", "/api/auth/demo", { provider });
-      const data = (await res.json()) as { user: User };
-      setUser(data.user);
-      return;
+      throw new Error("OAuth is not configured for this deployment");
     }
     // For X (OAuth 2.0) we request users.read so Supabase can read the user
     // profile. X/Twitter OAuth 2.0 does not expose email — that's why Supabase

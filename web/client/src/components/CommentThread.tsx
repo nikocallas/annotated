@@ -28,7 +28,6 @@ export function CommentThread({ annotationId }: { annotationId: string }) {
     mutationFn: async (input: { body: string; parentId?: string | null }) => {
       if (!user) throw new Error("Sign in to comment");
       const res = await apiRequest("POST", `/api/annotations/${annotationId}/comments`, {
-        userId: user.id,
         body: input.body,
         parentId: input.parentId ?? null,
       });

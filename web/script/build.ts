@@ -39,6 +39,7 @@ async function buildAll() {
 
   console.log("building server...");
   const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+  const indexHtml = await readFile("dist/public/index.html", "utf-8");
   const allDeps = [
     ...Object.keys(pkg.dependencies || {}),
     ...Object.keys(pkg.devDependencies || {}),
@@ -73,6 +74,25 @@ async function buildAll() {
     },
     define: {
       "process.env.NODE_ENV": '"production"',
+    },
+    minify: true,
+    external: externals,
+    logLevel: "info",
+  });
+
+  console.log("building per-annotation metadata function...");
+  await esbuild({
+    entryPoints: ["server/annotation-page.ts"],
+    platform: "node",
+    bundle: true,
+    format: "esm",
+    outfile: "api/annotation.js",
+    banner: {
+      js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+    },
+    define: {
+      "process.env.NODE_ENV": '"production"',
+      __ANNOTATED_INDEX_HTML__: JSON.stringify(indexHtml),
     },
     minify: true,
     external: externals,

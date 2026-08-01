@@ -45,13 +45,14 @@ export default function ClaimsPage() {
       <h2>What happens after you submit</h2>
       <ol>
         <li>
-          <strong>We confirm receipt.</strong> You&rsquo;ll get an email acknowledging the claim
-          so you have a record of when it was filed.
+          <strong>We record it immediately.</strong> The confirmation screen gives you a claim
+          reference. When email delivery is available, we also send an acknowledgement to the
+          address you provided.
         </li>
         <li>
-          <strong>We notify the poster.</strong> The user who published the clip is told a claim
-          was filed and given a chance to respond &mdash; for example, by editing the clip,
-          shortening it, or providing context.
+          <strong>We attempt to notify the poster.</strong> When the poster has a deliverable
+          provider email, we tell them a claim was filed and give them a chance to respond
+          &mdash; for example, by removing the clip or providing context.
         </li>
         <li>
           <strong>We review.</strong> Our team weighs the claim, the response, and the clip
@@ -64,8 +65,9 @@ export default function ClaimsPage() {
           poster&rsquo;s account.
         </li>
         <li>
-          <strong>We follow up.</strong> Both the filer and the poster get an email summarising
-          what we decided and why.
+          <strong>We follow up.</strong> We use the contact information available to communicate
+          material updates or request more evidence. If you do not receive an expected update,
+          contact support with the claim reference from your confirmation screen.
         </li>
       </ol>
 

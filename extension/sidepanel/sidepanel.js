@@ -2,19 +2,20 @@
 // Single-file SPA. Talks to the Annotated API. Designed to be loaded by Chrome
 // without a build step.
 
+import {
+  MAX_CLIP_SECONDS,
+  MAX_CLIP_TEXT_WORDS,
+  countWords,
+  detectSourceType,
+  sameMediaSource,
+  capturePlan,
+  nextPublishStatus,
+} from "../shared/clip-utils.mjs";
+
 const DEFAULT_API_BASE = "https://annotatedextension.com";
-const MAX_CLIP_SECONDS = 90;
-const MAX_CLIP_TEXT_WORDS = 100;
 const SUPPORT_EMAIL = "support@annotatedextension.com";
 const PUBLISH_RESET_MS = 10000;
 const FAIR_USE_COPY = "I confirm this annotation uses only the selected clip/text for commentary, criticism, research, or another fair-use purpose.";
-
-function countWords(text) {
-  if (!text) return 0;
-  const trimmed = String(text).trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).filter(Boolean).length;
-}
 
 const CLAIM_REASONS = [
   ["uses_too_much", "Uses too much of my original work"],
@@ -54,6 +55,7 @@ window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change",
 const state = {
   apiBase: DEFAULT_API_BASE,
   user: null,
+  auth: null,
   tab: "clip",
   pageMeta: null,
   selection: null,
@@ -95,15 +97,25 @@ function avatarFallback(name) { return (name || "?").slice(0, 2).toUpperCase(); 
 function isExtension() { return typeof chrome !== "undefined" && !!chrome.runtime?.id; }
 
 async function api(path, options = {}) {
+  const { __retried = false, headers = {}, ...fetchOptions } = options;
+  let accessToken = await validAccessToken();
   let res;
   try {
     res = await fetch(state.apiBase + path, {
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-      ...options,
+      ...fetchOptions,
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...headers,
+      },
     });
   } catch (err) {
     const detail = err?.message || String(err);
     throw new Error(`Couldn't reach ${state.apiBase} (${detail}). Check your internet connection or reload the extension.`);
+  }
+  if (res.status === 401 && state.auth?.refreshToken && !__retried) {
+    accessToken = await refreshAccessToken();
+    if (accessToken) return api(path, { ...options, __retried: true });
   }
   if (!res.ok) {
     let msg = res.statusText;
@@ -111,6 +123,41 @@ async function api(path, options = {}) {
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
   }
   return res.json();
+}
+
+async function persistAuth(auth) {
+  state.auth = auth;
+  state.user = auth?.user || null;
+  if (isExtension() && chrome.storage?.local) {
+    if (auth) await chrome.storage.local.set({ annotatedAuth: auth });
+    else await chrome.storage.local.remove("annotatedAuth");
+  }
+}
+
+async function refreshAccessToken() {
+  const refreshToken = state.auth?.refreshToken;
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch(state.apiBase + "/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) throw new Error("refresh_failed");
+    const auth = await res.json();
+    await persistAuth(auth);
+    return auth.accessToken || null;
+  } catch {
+    await persistAuth(null);
+    return null;
+  }
+}
+
+async function validAccessToken() {
+  if (!state.auth?.accessToken) return null;
+  const expiresAtMs = Number(state.auth.expiresAt || 0) * 1000;
+  if (!expiresAtMs || expiresAtMs > Date.now() + 60_000) return state.auth.accessToken;
+  return refreshAccessToken();
 }
 
 function toast(message, kind = "info") {
@@ -154,20 +201,23 @@ function showDetail(id) { state.detailId = id; render(); }
 async function loadUser() {
   if (!isExtension() || !chrome.storage?.local) return;
   try {
-    const data = await chrome.storage.local.get("annotatedUser");
-    if (data.annotatedUser) state.user = data.annotatedUser;
+    const data = await chrome.storage.local.get(["annotatedAuth", "annotatedUser"]);
+    if (data.annotatedAuth?.user) {
+      state.auth = data.annotatedAuth;
+      state.user = data.annotatedAuth.user;
+      await validAccessToken();
+    } else if (data.annotatedUser) {
+      // Legacy builds persisted an unverifiable user object. Never treat it as
+      // an authenticated session; require a one-time fresh OAuth sign-in.
+      await chrome.storage.local.remove("annotatedUser");
+    }
   } catch {}
-}
-async function saveUser(user) {
-  state.user = user;
-  if (isExtension() && chrome.storage?.local) {
-    try { await chrome.storage.local.set({ annotatedUser: user }); } catch {}
-  }
 }
 async function clearUser() {
   state.user = null;
+  state.auth = null;
   if (isExtension() && chrome.storage?.local) {
-    try { await chrome.storage.local.remove("annotatedUser"); } catch {}
+    try { await chrome.storage.local.remove(["annotatedAuth", "annotatedUser"]); } catch {}
   }
 }
 
@@ -261,11 +311,12 @@ if (isExtension()) {
       setRecordingError(msg.data?.message || "Recorder error");
     }
     // Background SW broadcasts this after the website-tab sign-in flow hands
-    // off the user record. Refresh the panel so the signed-in UI shows up
+    // off the verified session. Refresh the panel so the signed-in UI shows up
     // without a manual reload.
-    if (msg?.type === "ANNOTATED_USER_UPDATED" && msg.user) {
-      state.user = msg.user;
-      toast(`Signed in as @${msg.user.username || "user"}`);
+    if (msg?.type === "ANNOTATED_AUTH_UPDATED" && msg.auth?.user) {
+      state.auth = msg.auth;
+      state.user = msg.auth.user;
+      toast(`Signed in as @${msg.auth.user.username || "user"}`);
       render();
     }
   });
@@ -290,8 +341,9 @@ if (isExtension()) {
   if (chrome.storage?.onChanged?.addListener) {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
-      if ("annotatedUser" in changes) {
-        state.user = changes.annotatedUser.newValue || null;
+      if ("annotatedAuth" in changes) {
+        state.auth = changes.annotatedAuth.newValue || null;
+        state.user = state.auth?.user || null;
         render();
       }
     });
@@ -987,7 +1039,7 @@ function buildPreviewModel() {
   const manualUrl = state.manualSource.url?.trim() || "";
   const manualTitle = state.manualSource.title?.trim() || "";
   const sourceUrl = manualUrl || meta.url || "";
-  const sourceTypeRaw = manualUrl ? sourceTypeForUrl(manualUrl) : meta.sourceType || "unknown";
+  const sourceTypeRaw = manualUrl ? detectSourceType(manualUrl) : meta.sourceType || "unknown";
   const sourceType = sourceTypeRaw === "x" ? "article" : sourceTypeRaw;
   const sourceTitle = manualTitle || meta.title || "Untitled clip";
   const publication = meta.publication || (sourceUrl ? hostname(sourceUrl) : "");
@@ -1148,23 +1200,52 @@ function patchPreviewCard() {
 
 // -------------------- Publish flow ------------------------------------------
 
+function dataUrlToBlob(dataUrl) {
+  const [header, encoded] = String(dataUrl).split(",", 2);
+  const mime = /data:([^;]+)/.exec(header || "")?.[1] || "application/octet-stream";
+  const binary = atob(encoded || "");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: mime.split(";")[0] });
+}
+
+function base64ToBlob(base64, mime) {
+  const binary = atob(base64 || "");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: String(mime || "application/octet-stream").split(";")[0] });
+}
+
+async function uploadVerifiedMedia(kind, blob, annotationId = null) {
+  const upload = await api("/api/uploads/sign", {
+    method: "POST",
+    body: JSON.stringify({ kind, mime: blob.type, sizeBytes: blob.size }),
+  });
+  const response = await fetch(upload.signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": blob.type, "x-upsert": "false" },
+    body: blob,
+  });
+  if (!response.ok) {
+    throw new Error(`Media upload failed (${response.status})`);
+  }
+  return api("/api/uploads/finalize", {
+    method: "POST",
+    body: JSON.stringify({ uploadId: upload.uploadId, annotationId }),
+  });
+}
+
 async function uploadAudioIfPresent() {
   if (!state.audio?.dataUrl) return null;
   try {
-    const result = await api("/api/upload/audio", {
-      method: "POST",
-      body: JSON.stringify({
-        userId: state.user.id,
-        base64: state.audio.dataUrl.split(",")[1],
-        mime: state.audio.mime,
-        durationMs: state.audio.durationMs,
-      }),
-    });
-    if (result?.url) return result.url;
+    const blob = dataUrlToBlob(state.audio.dataUrl);
+    const result = await uploadVerifiedMedia("commentary-audio", blob);
+    if (result?.uploadId) return result.uploadId;
   } catch (err) {
-    console.warn("[Annotated] upload/audio failed; falling back to inline data URL", err);
+    console.warn("[Annotated] upload/audio failed", err);
+    throw err;
   }
-  return state.audio.dataUrl;
+  return null;
 }
 
 async function onPublish(node, publishBtn, errorEl) {
@@ -1188,11 +1269,10 @@ async function onPublish(node, publishBtn, errorEl) {
   const manualTitle = state.manualSource.title?.trim() || "";
   const sourceUrl = manualUrl || meta.url || "";
   const finalSourceType = manualUrl
-    ? sourceTypeForUrl(manualUrl)
+    ? detectSourceType(manualUrl)
     : sourceType === "x" ? "article" : sourceType;
 
   const payload = {
-    userId: state.user.id,
     sourceUrl,
     sourceType: finalSourceType === "unknown" ? "article" : finalSourceType,
     sourceTitle: manualTitle || meta.title || null,
@@ -1200,7 +1280,7 @@ async function onPublish(node, publishBtn, errorEl) {
     sourcePublication: meta.publication || (sourceUrl ? hostname(sourceUrl) : null),
     sourceImage: meta.ogImage || null,
     commentaryText: commentary || null,
-    commentaryAudioUrl: null,
+    commentaryAudioUploadId: null,
   };
 
   if (payload.sourceType === "article") {
@@ -1226,28 +1306,62 @@ async function onPublish(node, publishBtn, errorEl) {
   if (!payload.sourceUrl) {
     return showError(errorEl, "Source URL is required (every clip links back to its source).");
   }
+  if (
+    (payload.sourceType === "youtube" || payload.sourceType === "podcast") &&
+    !sameMediaSource(payload.sourceUrl, meta.url || "")
+  ) {
+    return showError(
+      errorEl,
+      "Open the pasted video or podcast in the active tab before publishing so Annotated can capture the selected range.",
+    );
+  }
 
-  state.publish.status = "publishing";
+  state.publish.status = nextPublishStatus(state.publish.status, "start");
   publishBtn.disabled = true;
   publishBtn.textContent = "Publishing…";
 
+  let createdAnnotationId = null;
   try {
-    payload.commentaryAudioUrl = await uploadAudioIfPresent();
+    payload.commentaryAudioUploadId = await uploadAudioIfPresent();
     const result = await api("/api/clips", { method: "POST", body: JSON.stringify(payload) });
-    state.publish.status = "published";
-    state.publish.annotationId = result.annotation.id;
-    state.publish.pageUrlAtPublish = state.pageMeta?.url || sourceUrl;
+    createdAnnotationId = result.annotation.id;
 
-    // YouTube clips render via a constrained YouTube iframe; podcast clips
-    // render via a constrained Spotify iframe. Neither consumes clip_media_url,
-    // so we no longer capture the active tab's stream after publish.
+    if (payload.sourceType === "youtube" || payload.sourceType === "podcast") {
+      const plan = capturePlan(payload.sourceType, payload.clipStartSec, payload.clipEndSec);
+      publishBtn.textContent = payload.sourceType === "youtube"
+        ? "Capturing 240p clip…"
+        : "Capturing audio clip…";
+      const capture = await sendBg({
+        type: "CAPTURE_ACTIVE_TAB_CLIP",
+        kind: plan.kind,
+        startSec: plan.startSec,
+        durationMs: plan.durationMs,
+      });
+      if (!capture?.ok || !capture.base64) {
+        throw new Error(capture?.error || "The active tab could not be captured");
+      }
+      publishBtn.textContent = "Uploading verified clip…";
+      const blob = base64ToBlob(capture.base64, capture.mime);
+      await uploadVerifiedMedia(
+        payload.sourceType === "youtube" ? "clip-video" : "clip-audio",
+        blob,
+        createdAnnotationId,
+      );
+    }
+
+    state.publish.status = nextPublishStatus(state.publish.status, "success");
+    state.publish.annotationId = createdAnnotationId;
+    state.publish.pageUrlAtPublish = state.pageMeta?.url || sourceUrl;
 
     // Auto-reset after PUBLISH_RESET_MS
     if (state.publish.resetTimer) clearTimeout(state.publish.resetTimer);
     state.publish.resetTimer = setTimeout(() => resetPublishState(), PUBLISH_RESET_MS);
     render();
   } catch (err) {
-    state.publish.status = "idle";
+    if (createdAnnotationId) {
+      api(`/api/annotations/${createdAnnotationId}/clip-failed`, { method: "POST" }).catch(() => {});
+    }
+    state.publish.status = nextPublishStatus(state.publish.status, "failure");
     showError(errorEl, err.message);
     publishBtn.disabled = false;
     publishBtn.textContent = "Publish annotation";
@@ -1296,7 +1410,7 @@ function renderPublishSuccess() {
   `;
   $("[data-view-post]", node).addEventListener("click", () => {
     if (state.publish.annotationId) {
-      const url = `${state.apiBase.replace(/\/api$/, "")}/#/a/${state.publish.annotationId}`;
+      const url = `https://www.annotatedextension.com/a/${encodeURIComponent(state.publish.annotationId)}`;
       if (isExtension() && chrome.tabs?.create) chrome.tabs.create({ url });
       else window.open(url, "_blank", "noopener,noreferrer");
     }
@@ -1305,22 +1419,6 @@ function renderPublishSuccess() {
     resetPublishState();
   });
   return node;
-}
-
-function sourceTypeForUrl(url) {
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, "");
-    if (host.includes("youtube.com") || host === "youtu.be") return "youtube";
-    if (host === "x.com" || host === "twitter.com") return "article";
-    if (
-      host.includes("podcasts.apple.com") ||
-      host === "overcast.fm" ||
-      host === "pca.st" ||
-      host.includes("spotify.com")
-    ) return "podcast";
-  } catch {}
-  return "article";
 }
 
 function showError(el, msg) {
@@ -1439,7 +1537,7 @@ async function renderDetail(id) {
       ${a.commentaryText ? `<div style="border-left:2px solid var(--primary); padding:4px 0 4px 10px; font-size:14px;">${escapeHtml(a.commentaryText)}</div>` : ""}
       ${a.commentaryAudioUrl ? `<audio controls src="${escapeAttr(a.commentaryAudioUrl)}" style="width:100%;"></audio>` : ""}
       <div style="display:flex; gap:8px; padding-top:8px; border-top:1px solid var(--border);">
-        <a class="btn btn-outline btn-sm" href="${state.apiBase.replace(/\/api$/, "")}/#/a/${a.id}" target="_blank">Open landing page</a>
+        <a class="btn btn-outline btn-sm" href="https://www.annotatedextension.com/a/${encodeURIComponent(a.id)}" target="_blank" rel="noopener noreferrer">Open landing page</a>
         <button class="btn btn-danger btn-sm" data-claim>⚠ File a claim</button>
       </div>
     `;
@@ -1478,6 +1576,7 @@ function openClaimModal(annotationId, ctx = {}) {
         : ""
     }
     <div class="field-label">Your name</div>
+    <input type="text" data-cw tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-10000px;" />
     <input type="text" data-cn placeholder="Full name" value="${escapeAttr(prefilledName)}" required />
     <div class="field-label">Contact email</div>
     <input type="email" data-ce placeholder="you@example.com" required />
@@ -1519,24 +1618,26 @@ function openClaimModal(annotationId, ctx = {}) {
     submitBtn.disabled = true;
     submitBtn.textContent = "Submitting…";
     try {
-      await api(`/api/annotations/${annotationId}/claims`, {
+      const result = await api(`/api/annotations/${annotationId}/claims`, {
         method: "POST",
         body: JSON.stringify({
-          claimantUserId: state.user?.id ?? null,
           claimantName: name,
           claimantEmail: email,
           reasonCategory: category,
           details: details || null,
+          website: $(`[data-cw]`, dialog).value,
         }),
       });
+      const emailLine = result?.notifications?.confirmationSent
+        ? `We sent a confirmation to ${escapeHtml(email)}.`
+        : `Your claim is saved. Email delivery may be delayed; contact ${SUPPORT_EMAIL} if needed.`;
       dialog.innerHTML = `
         <h3 style="display:flex; gap:8px; align-items:center;">
           <span style="display:inline-flex; width:20px; height:20px; border-radius:50%; background:var(--gradient-primary); color:var(--primary-foreground); align-items:center; justify-content:center;">✓</span>
           Claim received
         </h3>
         <p class="muted small">
-          Thanks. We sent a confirmation to ${escapeHtml(email)} and notified the user who
-          posted this content.
+          Thanks. ${emailLine} The moderation audit trail records delivery and review status.
         </p>
         <p class="muted small">
           Any questions or concerns? Email <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.

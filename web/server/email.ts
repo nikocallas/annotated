@@ -54,17 +54,16 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       }),
     });
     if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      console.error("[email] resend error", res.status, detail);
-      return { ok: false, reason: "delivery_failed", status: res.status, detail };
+      await res.body?.cancel().catch(() => {});
+      console.error("[email] resend error", { status: res.status });
+      return { ok: false, reason: "delivery_failed", status: res.status };
     }
     return { ok: true };
   } catch (err) {
-    console.error("[email] resend network error", err);
+    console.error("[email] resend network error", { name: err instanceof Error ? err.name : "Error" });
     return {
       ok: false,
       reason: "delivery_failed",
-      detail: err instanceof Error ? err.message : String(err),
     };
   }
 }

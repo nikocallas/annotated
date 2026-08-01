@@ -46,7 +46,7 @@ export function OAuthSignIn({
       <div className={`grid ${compact ? "grid-cols-1 gap-2" : "gap-3"}`}>
         <Button
           onClick={() => handleLogin("x")}
-          disabled={!!busy}
+          disabled={!!busy || !supabaseConfigured}
           className="w-full"
           size={compact ? "default" : "lg"}
           data-testid="button-feed-signin-x"
@@ -65,7 +65,7 @@ export function OAuthSignIn({
         </Button>
         <Button
           onClick={() => handleLogin("google")}
-          disabled={!!busy}
+          disabled={!!busy || !supabaseConfigured}
           variant="outline"
           className="w-full"
           size={compact ? "default" : "lg"}
@@ -94,8 +94,8 @@ export function OAuthSignIn({
       </div>
       {!supabaseConfigured && (
         <p className="text-xs text-muted-foreground mt-4">
-          Auth env vars aren't configured for this build, so the buttons sign you into a demo
-          identity.
+          OAuth isn't configured for this deployment. Sign-in is disabled rather than creating
+          an unverifiable identity.
         </p>
       )}
     </div>

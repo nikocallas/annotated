@@ -10,6 +10,11 @@
     "build": "tsx script/build-extension-zip.ts && tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "test": "tsx --test server/*.test.ts",
+    "validate:extension": "tsx script/validate-extension.ts",
+    "security:scan": "tsx script/security-scan.ts",
+    "ci": "npm run check && npm test && npm run build && npm run validate:extension && npm run security:scan && npm audit --audit-level=high",
+    "seed:demo": "tsx script/seed-demo.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
@@ -96,7 +101,7 @@
     "esbuild": "^0.25.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
-    "tsx": "^4.20.5",
+    "tsx": "^4.23.1",
     "typescript": "5.6.3",
     "vite": "^7.3.0"
   },
@@ -105,7 +110,7 @@
   },
   "overrides": {
     "drizzle-kit": {
-      "@esbuild-kit/esm-loader": "npm:tsx@^4.20.4"
+      "@esbuild-kit/esm-loader": "npm:tsx@^4.23.1"
     }
   }
 }

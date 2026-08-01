@@ -39,7 +39,6 @@ export function VoteButtons({
   const mutation = useMutation({
     mutationFn: async (next: VoteValue) => {
       const res = await apiRequest("POST", `/api/annotations/${annotationId}/vote`, {
-        userId: user?.id,
         value: next,
       });
       return (await res.json()) as VoteSummary;

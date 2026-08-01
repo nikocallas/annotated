@@ -3,7 +3,7 @@ import { LegalLayout } from "@/components/LegalLayout";
 export default function TermsPage() {
   return (
     <LegalLayout title="Terms of Service">
-      <p className="text-sm text-muted-foreground">Effective date: May 3, 2026</p>
+      <p className="text-sm text-muted-foreground">Effective date: August 1, 2026</p>
 
       <p>
         These Terms of Service ("Terms") govern your use of Annotated, including the
@@ -72,7 +72,7 @@ export default function TermsPage() {
       <p>
         If you are a rights holder and you believe a clip on Annotated is not a fair use
         of your work, file a claim using the "File a claim" button on the clip's page or
-        email <a href="mailto:support@annotatedextensions.com">support@annotatedextensions.com</a>.
+        email <a href="mailto:support@annotatedextension.com">support@annotatedextension.com</a>.
         Provide:
       </p>
       <ul>
@@ -87,12 +87,13 @@ export default function TermsPage() {
         terminated.
       </p>
 
-      <h2>6. Beta / as-is service</h2>
+      <h2>6. Service availability and disclaimers</h2>
       <p>
-        The Service is provided "as is" and "as available." It is currently in active
-        development and may change, break, or be discontinued without notice. We make no
-        warranties of any kind, express or implied, including merchantability, fitness for
-        a particular purpose, and non-infringement.
+        The Service is provided "as is" and "as available." We may improve or change features
+        and may occasionally need to interrupt the Service for maintenance, security, or events
+        outside our control. To the extent permitted by law, we make no warranties of any kind,
+        express or implied, including merchantability, fitness for a particular purpose, and
+        non-infringement.
       </p>
 
       <h2>7. Limitation of liability</h2>
@@ -121,7 +122,7 @@ export default function TermsPage() {
 
       <h2>10. Contact</h2>
       <p>
-        Questions or notices: <a href="mailto:support@annotatedextensions.com">support@annotatedextensions.com</a>.
+        Questions or notices: <a href="mailto:support@annotatedextension.com">support@annotatedextension.com</a>.
       </p>
     </LegalLayout>
   );

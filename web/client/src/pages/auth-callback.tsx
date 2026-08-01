@@ -75,7 +75,14 @@ function clearExtensionFlow() {
   try { sessionStorage.removeItem(EXT_FLOW_KEY); } catch {}
 }
 
-function postUserToExtension(extensionId: string, user: User): Promise<boolean> {
+interface ExtensionAuthHandoff {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number | null;
+}
+
+function postUserToExtension(extensionId: string, auth: ExtensionAuthHandoff): Promise<boolean> {
   return new Promise((resolve) => {
     const c = window.chrome;
     if (!c?.runtime?.sendMessage) {
@@ -83,7 +90,7 @@ function postUserToExtension(extensionId: string, user: User): Promise<boolean> 
       return;
     }
     try {
-      c.runtime.sendMessage(extensionId, { type: "ANNOTATED_AUTH_SUCCESS", user }, (resp) => {
+      c.runtime.sendMessage(extensionId, { type: "ANNOTATED_AUTH_SUCCESS", auth }, (resp) => {
         const err = c.runtime?.lastError;
         if (err) return resolve(false);
         resolve(!!(resp as { ok?: boolean } | undefined)?.ok);
@@ -129,17 +136,23 @@ export default function AuthCallbackPage() {
         return;
       }
       const accessToken = data.session?.access_token;
+      const refreshToken = data.session?.refresh_token;
 
       const extFlow = readExtensionFlow();
-      if (extFlow && accessToken) {
+      if (extFlow && accessToken && refreshToken) {
         // Mint the app-local user record server-side (same endpoint the SPA
         // uses) and hand it off to the extension via runtime.sendMessage.
         setProgress("Sending sign-in back to the extension…");
         try {
-          const res = await apiRequest("POST", "/api/auth/supabase", { accessToken });
+          const res = await apiRequest("POST", "/api/auth/supabase");
           if (res.ok) {
             const payload = (await res.json()) as { user: User };
-            const sent = await postUserToExtension(extFlow.extensionId, payload.user);
+            const sent = await postUserToExtension(extFlow.extensionId, {
+              user: payload.user,
+              accessToken,
+              refreshToken,
+              expiresAt: data.session?.expires_at ?? null,
+            });
             clearExtensionFlow();
             setExtensionHandoff(sent ? "ok" : "manual");
             setStatus("extension_done");

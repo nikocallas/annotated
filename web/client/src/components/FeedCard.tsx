@@ -31,7 +31,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
     mutationFn: async (action: "bookmark" | "unbookmark") => {
       if (!user) return;
       const method = action === "bookmark" ? "POST" : "DELETE";
-      await apiRequest(method, `/api/annotations/${a.id}/bookmark`, { userId: user.id });
+      await apiRequest(method, `/api/annotations/${a.id}/bookmark`);
     },
     onSuccess: (_data, action) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks"] });
@@ -49,9 +49,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
     },
   });
 
-  const annotationUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/a/${a.id}`
-    : `/a/${a.id}`;
+  const annotationUrl = `https://www.annotatedextension.com/a/${encodeURIComponent(a.id)}`;
   const shareTitle = a.sourceTitle ?? "Annotated clip";
   const shareText = a.commentaryText
     ? `${shareTitle} — ${a.commentaryText.slice(0, 140)}`

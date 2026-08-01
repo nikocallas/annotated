@@ -2,7 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiFetch, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface FollowButtonProps {
@@ -28,7 +28,7 @@ export function FollowButton({
     queryKey: ["/api/users", targetUserId, "is-following", { followerId: me?.id ?? "" }],
     queryFn: async () => {
       if (!me) return { following: false };
-      const res = await fetch(`/api/users/${targetUserId}/is-following?followerId=${me.id}`);
+      const res = await apiFetch(`/api/users/${targetUserId}/is-following`);
       return res.json();
     },
     enabled: !!me && !isMe,
@@ -38,7 +38,7 @@ export function FollowButton({
     mutationFn: async (action: "follow" | "unfollow") => {
       if (!me) return;
       const method = action === "follow" ? "POST" : "DELETE";
-      await apiRequest(method, `/api/users/${targetUserId}/follow`, { followerId: me.id });
+      await apiRequest(method, `/api/users/${targetUserId}/follow`);
     },
     onSuccess: (_data, action) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users", targetUserId] });

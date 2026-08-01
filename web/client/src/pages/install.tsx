@@ -49,7 +49,7 @@ export default function InstallPage() {
               <div className="font-semibold">Annotated for Chrome</div>
               <p className="text-sm text-muted-foreground mt-1">
                 Manifest V3, Side Panel API, content script for text-selection capture, background
-                service worker, and a React side-panel UI.
+                service worker, and a fully packaged side-panel UI.
               </p>
             </div>
             <DownloadExtensionButton size="lg" label="Install from Chrome Web Store" />
@@ -75,7 +75,7 @@ export default function InstallPage() {
             <Scissors className="w-4 h-4 text-primary mb-2" />
             <div className="text-sm font-semibold mb-1">YouTube clips</div>
             <p className="text-xs text-muted-foreground">
-              Drag start/end. Max 90s. Server downscales to 240p.
+              Drag start/end. Max 90s. Captured at 240p and verified before publishing.
             </p>
           </Card>
           <Card className="p-4 bg-card border-card-border">

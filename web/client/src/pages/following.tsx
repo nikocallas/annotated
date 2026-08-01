@@ -4,6 +4,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { FeedCard } from "@/components/FeedCard";
 import { useAuth } from "@/lib/auth-context";
 import { Link } from "wouter";
+import { apiFetch } from "@/lib/queryClient";
 
 export default function FollowingPage() {
   const { user } = useAuth();
@@ -11,7 +12,7 @@ export default function FollowingPage() {
     queryKey: ["/api/feed", { followerOf: user?.id ?? "" }],
     queryFn: async () => {
       if (!user) return [];
-      const res = await fetch(`/api/feed?followerOf=${user.id}`);
+      const res = await apiFetch("/api/feed?followerOf=1");
       return res.json();
     },
     enabled: !!user,

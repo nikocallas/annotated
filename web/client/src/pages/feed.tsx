@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
+import { apiFetch } from "@/lib/queryClient";
 
 type SortKey = "latest" | "most-viewed" | "most-popular" | "most-commented";
 type FilterKey = "all" | "youtube" | "article" | "podcast";
@@ -296,7 +297,6 @@ function FeedList({
     fetcher: () => Promise<AnnotationWithRelations[]>;
     enabled: boolean;
   }>(() => {
-    const viewerParam = user ? `&userId=${user.id}` : "";
     const viewerKey = user?.id ?? "";
     switch (tab) {
       case "following":
@@ -304,7 +304,7 @@ function FeedList({
           queryKey: ["/api/feed", { followerOf: user?.id ?? "", viewer: viewerKey }],
           fetcher: async () => {
             if (!user) return [];
-            const res = await fetch(`/api/feed?followerOf=${user.id}${viewerParam}`);
+            const res = await apiFetch("/api/feed?followerOf=1");
             return res.json();
           },
           enabled: !!user,
@@ -314,7 +314,7 @@ function FeedList({
           queryKey: ["/api/bookmarks", { userId: user?.id ?? "" }],
           fetcher: async () => {
             if (!user) return [];
-            const res = await fetch(`/api/bookmarks?userId=${user.id}`);
+            const res = await apiFetch("/api/bookmarks");
             return res.json();
           },
           enabled: !!user,
@@ -325,7 +325,7 @@ function FeedList({
         return {
           queryKey: ["/api/feed", { shuffle: 1, viewer: viewerKey }],
           fetcher: async () => {
-            const res = await fetch(`/api/feed?shuffle=1${viewerParam}`);
+            const res = await apiFetch("/api/feed?shuffle=1");
             return res.json();
           },
           enabled: true,
@@ -347,7 +347,7 @@ function FeedList({
     queryKey: ["/api/bookmarks/ids", { userId: user?.id ?? "" }],
     queryFn: async () => {
       if (!user) return { ids: [] };
-      const res = await fetch(`/api/bookmarks/ids?userId=${user.id}`);
+      const res = await apiFetch("/api/bookmarks/ids");
       return res.json();
     },
     enabled: !!user,
