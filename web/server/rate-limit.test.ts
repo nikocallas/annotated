@@ -86,13 +86,20 @@ test("a stalled distributed limiter fails closed before the request deadline", a
     { name: "reads", matches: (req) => req.path === "/feed", limit: 10, windowMs: 60_000 },
   ];
   const server = await start(rules, stalledStore, 25);
+  const logged: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
   try {
     const startedAt = Date.now();
     const response = await fetch(`${server.url}/feed`);
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), { error: "Abuse protection temporarily unavailable" });
     assert.ok(Date.now() - startedAt < 500, "limiter timeout should return well before the route deadline");
+    const serialized = JSON.stringify(logged);
+    assert.match(serialized, /rate_limit_enforcement_unavailable/);
+    assert.doesNotMatch(serialized, /timed out after|25ms/);
   } finally {
+    console.error = originalError;
     await server.close();
   }
 });

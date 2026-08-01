@@ -245,7 +245,11 @@ export function registerRoutes(
         }
         return res.json({ status: "ready", storage: storageBackend, checks });
       } catch (error) {
-        console.error("[readiness] storage unavailable", error);
+        console.error(JSON.stringify({
+          event: "readiness_unavailable",
+          storage: storageBackend,
+          errorName: error instanceof Error ? error.name : "Error",
+        }));
         return res.status(503).json({ status: "not_ready", storage: storageBackend, checks });
       }
     }),
@@ -958,7 +962,10 @@ export function registerRoutes(
     if (err instanceof ClaimModerationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(err);
+    console.error(JSON.stringify({
+      event: "api_request_failed",
+      errorName: err instanceof Error ? err.name : "Error",
+    }));
     return res.status(500).json({ error: "Internal server error" });
   });
 

@@ -114,7 +114,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const html = renderAnnotationPage(__ANNOTATED_INDEX_HTML__, metadataForAnnotation(annotation));
     send(res, 200, req.method === "HEAD" ? "" : html);
   } catch (error) {
-    console.error("[annotation-page] render failed", { id, error });
+    console.error(JSON.stringify({
+      event: "annotation_page_render_failed",
+      errorName: error instanceof Error ? error.name : "Error",
+    }));
     // Keep the public journey available during a transient provider failure;
     // crawlers receive a generic, non-cacheable shell instead of a poisoned
     // serverless module or an unhandled error page.

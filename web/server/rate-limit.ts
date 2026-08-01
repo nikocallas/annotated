@@ -164,7 +164,11 @@ export function createRateLimitMiddleware(
       }
       return next();
     } catch (error) {
-      console.error("[rate-limit] enforcement unavailable", { rule: rule.name, error });
+      console.error(JSON.stringify({
+        event: "rate_limit_enforcement_unavailable",
+        rule: rule.name,
+        errorName: error instanceof Error ? error.name : "Error",
+      }));
       return res.status(503).json({ error: "Abuse protection temporarily unavailable" });
     } finally {
       if (timeout) clearTimeout(timeout);

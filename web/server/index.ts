@@ -26,16 +26,20 @@ export function log(message: string, source = "express") {
   registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const requestedStatus = Number(err?.status || err?.statusCode || 500);
+    const status = requestedStatus >= 400 && requestedStatus < 500 ? requestedStatus : 500;
 
-    console.error("Internal Server Error:", err);
+    console.error(JSON.stringify({
+      event: "standalone_request_failed",
+      status,
+      errorName: err instanceof Error ? err.name : "Error",
+    }));
 
     if (res.headersSent) {
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    return res.status(status).json({ error: status === 500 ? "Internal server error" : "Request failed" });
   });
 
   // importantly only setup vite in development and after

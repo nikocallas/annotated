@@ -83,7 +83,7 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
     <div id="root"></div>
   </body>
 </html>
-`,Jl(s));ut(e,200,r.method==="HEAD"?"":n)}catch(s){console.error("[annotation-page] render failed",{id:t,error:s}),ut(e,503,r.method==="HEAD"?"":`<!doctype html>
+`,Jl(s));ut(e,200,r.method==="HEAD"?"":n)}catch(s){console.error(JSON.stringify({event:"annotation_page_render_failed",errorName:s instanceof Error?s.name:"Error"})),ut(e,503,r.method==="HEAD"?"":`<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />

@@ -692,6 +692,9 @@ test("liveness stays healthy while readiness reports a storage outage", async ()
     }
   }
   const unavailable = await harness(new FailingStorage(), fakeAuth(new Map()));
+  const logged: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
   try {
     const health = await jsonRequest(unavailable.baseUrl, "/api/health");
     const ready = await jsonRequest(unavailable.baseUrl, "/api/ready");
@@ -699,7 +702,35 @@ test("liveness stays healthy while readiness reports a storage outage", async ()
     assert.equal(health.body.status, "ok");
     assert.equal(ready.response.status, 503);
     assert.equal(ready.body.status, "not_ready");
+    const serialized = JSON.stringify(logged);
+    assert.match(serialized, /readiness_unavailable/);
+    assert.doesNotMatch(serialized, /database warming/);
   } finally {
+    console.error = originalError;
+    await unavailable.close();
+  }
+});
+
+test("unexpected storage failures redact raw details from logs and responses", async () => {
+  class FailingFeedStorage extends MemoryStorage {
+    override async listAnnotations() {
+      throw new Error("sentinel-database-detail");
+    }
+  }
+  const unavailable = await harness(new FailingFeedStorage(), fakeAuth(new Map()));
+  const logged: unknown[][] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  try {
+    const result = await jsonRequest(unavailable.baseUrl, "/api/feed");
+    assert.equal(result.response.status, 500);
+    assert.equal(result.body.error, "Internal server error");
+    const serialized = JSON.stringify(logged);
+    assert.match(serialized, /api_request_failed/);
+    assert.doesNotMatch(serialized, /sentinel-database-detail/);
+    assert.doesNotMatch(JSON.stringify(result.body), /sentinel-database-detail/);
+  } finally {
+    console.error = originalError;
     await unavailable.close();
   }
 });
