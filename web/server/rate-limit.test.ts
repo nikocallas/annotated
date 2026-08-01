@@ -2,12 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import express from "express";
 import { createServer } from "node:http";
-import { createRateLimitMiddleware, MemoryRateLimitStore, type RateLimitRule } from "./rate-limit";
+import {
+  createRateLimitMiddleware,
+  MemoryRateLimitStore,
+  type RateLimitRule,
+  type RateLimitStore,
+} from "./rate-limit";
 
-async function start(rules: RateLimitRule[]) {
+async function start(
+  rules: RateLimitRule[],
+  store: RateLimitStore = new MemoryRateLimitStore(),
+  timeoutMs?: number,
+) {
   const app = express();
   app.set("trust proxy", 1);
-  app.use(createRateLimitMiddleware(new MemoryRateLimitStore(), rules));
+  app.use(createRateLimitMiddleware(store, rules, timeoutMs));
   app.all("*path", (_req, res) => res.json({ ok: true }));
   const server = createServer(app);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -47,4 +56,23 @@ test("memory rate-limit storage expires entries and stays bounded", async () => 
   now += 101;
   await store.consume("four", 5, 100);
   assert.equal(store.entryCount, 1);
+});
+
+test("a stalled distributed limiter fails closed before the request deadline", async () => {
+  const stalledStore: RateLimitStore = {
+    consume: () => new Promise(() => {}),
+  };
+  const rules: RateLimitRule[] = [
+    { name: "reads", matches: (req) => req.path === "/feed", limit: 10, windowMs: 60_000 },
+  ];
+  const server = await start(rules, stalledStore, 25);
+  try {
+    const startedAt = Date.now();
+    const response = await fetch(`${server.url}/feed`);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: "Abuse protection temporarily unavailable" });
+    assert.ok(Date.now() - startedAt < 500, "limiter timeout should return well before the route deadline");
+  } finally {
+    await server.close();
+  }
 });

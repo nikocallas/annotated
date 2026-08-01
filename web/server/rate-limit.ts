@@ -33,6 +33,9 @@ export interface RateLimitStore {
   consume(key: string, limit: number, windowMs: number): Promise<RateLimitDecision>;
 }
 
+const SUPABASE_RATE_LIMIT_REQUEST_TIMEOUT_MS = 2_000;
+export const RATE_LIMIT_ENFORCEMENT_TIMEOUT_MS = 2_500;
+
 export class MemoryRateLimitStore implements RateLimitStore {
   private readonly counters = new Map<string, { count: number; resetAt: number; touchedAt: number }>();
 
@@ -81,11 +84,13 @@ export class SupabaseRateLimitStore implements RateLimitStore {
   }
 
   async consume(key: string, limit: number, windowMs: number): Promise<RateLimitDecision> {
-    const { data, error } = await this.client.rpc("consume_rate_limit", {
-      p_bucket_key: key,
-      p_max_requests: limit,
-      p_window_seconds: Math.max(1, Math.ceil(windowMs / 1000)),
-    });
+    const { data, error } = await this.client
+      .rpc("consume_rate_limit", {
+        p_bucket_key: key,
+        p_max_requests: limit,
+        p_window_seconds: Math.max(1, Math.ceil(windowMs / 1000)),
+      })
+      .abortSignal(AbortSignal.timeout(SUPABASE_RATE_LIMIT_REQUEST_TIMEOUT_MS));
     if (error || !Array.isArray(data) || !data[0]) {
       throw new Error("Distributed rate limiter is unavailable");
     }
@@ -127,12 +132,25 @@ function subjectKey(req: Request): string {
 export function createRateLimitMiddleware(
   store: RateLimitStore,
   rules: RateLimitRule[] = RATE_LIMIT_RULES,
+  timeoutMs = RATE_LIMIT_ENFORCEMENT_TIMEOUT_MS,
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {
     const rule = rules.find((candidate) => candidate.matches(req));
     if (!rule) return next();
+    let timeout: NodeJS.Timeout | undefined;
     try {
-      const decision = await store.consume(`${rule.name}:${subjectKey(req)}`, rule.limit, rule.windowMs);
+      // Fail closed before a stalled provider can consume the entire Vercel
+      // invocation deadline. Supabase requests have their own abort signal;
+      // this outer bound also protects alternate/test stores.
+      const decision = await Promise.race([
+        store.consume(`${rule.name}:${subjectKey(req)}`, rule.limit, rule.windowMs),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error(`Rate-limit enforcement timed out after ${timeoutMs}ms`)),
+            timeoutMs,
+          );
+        }),
+      ]);
       const remaining = Math.max(0, rule.limit - decision.count);
       res.setHeader("RateLimit-Limit", String(rule.limit));
       res.setHeader("RateLimit-Remaining", String(remaining));
@@ -145,6 +163,8 @@ export function createRateLimitMiddleware(
     } catch (error) {
       console.error("[rate-limit] enforcement unavailable", { rule: rule.name, error });
       return res.status(503).json({ error: "Abuse protection temporarily unavailable" });
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   };
 }
