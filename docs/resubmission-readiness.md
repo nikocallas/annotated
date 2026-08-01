@@ -141,7 +141,7 @@ Current checks implemented:
 - limiter isolation, 429 headers, expiry, and bounded-memory tests;
 - production build, extension syntax/package contents, secret-pattern scan, and npm audit.
 
-Latest local result (2026-08-01): the complete `npm run ci` release command passes—TypeScript, all 29 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. A GitHub Actions run URL must still be recorded after the branch is pushed.
+Latest local result (2026-08-01): the complete `npm run ci` release command passes—TypeScript, all 29 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30711940413) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30711956582) pass on hardened code commit `e5b57d7af9d5684e82d5cb4f104d9d2919830e74`.
 
 Isolated production-mode integration evidence against a clean local Supabase stack:
 
@@ -174,7 +174,7 @@ No item in this section is marked proven until a URL/artifact/screenshot is reco
 | OG/canonical validators | Pending deployed `/a/:id` validation | Not proven |
 | Cold start and simulated provider recovery | Local outage regression passes; isolated preview health repeatedly survives while missing dependencies fail closed | Partial (connected preview recovery pending) |
 
-Latest isolated Vercel preview: `https://annotated-hyvj019at-laymen.vercel.app` (`dpl_C5kFoQmyuYNHgRJdbg7ar52mH6xH`). The deployment built with zero dependency findings. `/api/health` returns 200 with request ID, HSTS, API CSP, and `Cache-Control: no-store`; `/api/ready` returns a component-by-component 503 because Preview has no Supabase URL/OAuth/moderation/maintenance configuration; `/api/feed` returns a controlled 503 rather than memory/demo data; `/` returns 200. The deployed `/downloads/annotated-extension.zip` exactly matches the validated CWS artifact at SHA-256 `fc2b02760571ac170b91c04acfc519c26099491b574504050e2076ffff726ed4`. Runtime logs contain only expected fail-closed readiness/rate-limit messages and structured request summaries—no crash or secret output.
+Latest isolated Vercel preview for hardened code commit `e5b57d7af9d5684e82d5cb4f104d9d2919830e74`: `https://annotated-hyvj019at-laymen.vercel.app` (`dpl_C5kFoQmyuYNHgRJdbg7ar52mH6xH`). The deployment built with zero dependency findings. `/api/health` returns 200 with request ID, HSTS, API CSP, and `Cache-Control: no-store`; `/api/ready` returns a component-by-component 503 because Preview has no Supabase URL/OAuth/moderation/maintenance configuration; `/api/feed` returns a controlled 503 rather than memory/demo data; `/` returns 200. The deployed `/downloads/annotated-extension.zip` exactly matches the validated CWS artifact at SHA-256 `fc2b02760571ac170b91c04acfc519c26099491b574504050e2076ffff726ed4`. Runtime logs contain only expected fail-closed readiness/rate-limit messages and structured request summaries—no crash or secret output.
 
 A Supabase preview branch was unavailable on the current plan (HTTP 402), and a disposable third free project in the exact Annotated organization was rejected by Supabase's active-project limit. Nothing was created or changed in either attempt, and no unrelated project was paused or modified.
 
@@ -198,7 +198,7 @@ A Supabase preview branch was unavailable on the current plan (HTTP 402), and a 
 | 14 | Claim submitted, recorded, notified, reviewed | Integration pass; real Resend/moderator pending |
 | 15 | Retained social behavior works | Public browser surfaces and mutation integrations pass; authenticated browser actions pending |
 | 16 | Per-annotation canonical/OG works in validators | Implementation/unit pass; deployed validator pending |
-| 17 | Typecheck/tests/build/CI/package pass | Full local CI passes (29 tests); hosted CI pending |
+| 17 | Typecheck/tests/build/CI/package pass | Pass: full local CI (29 tests) plus hosted push and pull-request workflows on hardened commit |
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
 | 19 | No service-role/secret leakage | Local source/bundle/package scan passes; PR history scan pending |
 | 20 | Vercel smoke test has no new runtime errors | Isolated preview pass with expected missing-config 503 logs; connected critical journey pending |
