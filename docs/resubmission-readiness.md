@@ -135,13 +135,14 @@ Current checks implemented:
 - 90-second/source URL validation;
 - WebM 61s/240p acceptance, >240p rejection, >90s rejection, audio-only enforcement;
 - extension source detection, selection word count, OAuth handoff, capture plan, publish-state tests;
+- public-site and extension accessibility invariants, including zoom, headings, labels, modal focus, target sizing, reduced motion, and non-nested controls;
 - liveness/readiness outage behavior;
 - RLS/grant/storage/rate/claim migration assertions;
 - per-annotation metadata escaping/canonical tests;
 - limiter isolation, 429 headers, expiry, and bounded-memory tests;
 - production build, extension syntax/package contents, secret-pattern scan, and npm audit.
 
-Latest local result (2026-08-01): the complete `npm run ci` release command passes—TypeScript, all 29 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30711940413) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30711956582) pass on hardened code commit `e5b57d7af9d5684e82d5cb4f104d9d2919830e74`.
+Latest local result (2026-08-01): the complete `npm run ci` release command passes—TypeScript, all 32 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30714228120) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30714229612) pass on hardened code commit `772c7144136fec5c41a4ceab08c4ca173bcffa99`.
 
 Isolated production-mode integration evidence against a clean local Supabase stack:
 
@@ -174,9 +175,11 @@ No item in this section is marked proven until a URL/artifact/screenshot is reco
 | OG/canonical validators | Pending deployed `/a/:id` validation | Not proven |
 | Cold start and simulated provider recovery | Local outage regression passes; isolated preview health repeatedly survives while missing dependencies fail closed | Partial (connected preview recovery pending) |
 
-Latest isolated Vercel preview for hardened code commit `e5b57d7af9d5684e82d5cb4f104d9d2919830e74`: `https://annotated-hyvj019at-laymen.vercel.app` (`dpl_C5kFoQmyuYNHgRJdbg7ar52mH6xH`). The deployment built with zero dependency findings. `/api/health` returns 200 with request ID, HSTS, API CSP, and `Cache-Control: no-store`; `/api/ready` returns a component-by-component 503 because Preview has no Supabase URL/OAuth/moderation/maintenance configuration; `/api/feed` returns a controlled 503 rather than memory/demo data; `/` returns 200. The deployed `/downloads/annotated-extension.zip` exactly matches the validated CWS artifact at SHA-256 `fc2b02760571ac170b91c04acfc519c26099491b574504050e2076ffff726ed4`. Runtime logs contain only expected fail-closed readiness/rate-limit messages and structured request summaries—no crash or secret output.
+Latest isolated Vercel preview for hardened code commit `e5b57d7af9d5684e82d5cb4f104d9d2919830e74`: `https://annotated-hyvj019at-laymen.vercel.app` (`dpl_C5kFoQmyuYNHgRJdbg7ar52mH6xH`). The deployment built with zero dependency findings. `/api/health` returns 200 with request ID, HSTS, API CSP, and `Cache-Control: no-store`; `/api/ready` returns a component-by-component 503 because Preview has no Supabase URL/OAuth/moderation/maintenance configuration; `/api/feed` returns a controlled 503 rather than memory/demo data; `/` returns 200. The deployed `/downloads/annotated-extension.zip` exactly matches that preview's validated CWS artifact at SHA-256 `fc2b02760571ac170b91c04acfc519c26099491b574504050e2076ffff726ed4`. Runtime logs contain only expected fail-closed readiness/rate-limit messages and structured request summaries—no crash or secret output. This preview predates accessibility commit `772c7144136fec5c41a4ceab08c4ca173bcffa99` and is not deployment evidence for the current package hash.
 
 Isolated Chrome runtime evidence (Chrome for Testing 151.0.7922.71, fresh temporary profiles): unpacked 1.8.0 starts with the exact public Store ID, declared permissions/hosts, empty storage, and no sidebar console errors or horizontal overflow. After the 30-second MV3 idle window removes both sidebar and worker contexts, reopening the sidebar restarts the worker and renders cleanly. The production `www.annotatedextension.com` origin receives the read-only install ping (`ok: true`, version 1.8.0); `example.com` has no external messaging surface. The allowed production origin rejects an invalid bundle, accepts an isolated placeholder bundle, stores only `annotatedAuth` (not legacy `annotatedUser`), and the temporary storage is then cleared. With Chrome's fake media device, real offscreen `MediaRecorder` start/stop produces a 6,397-byte, 2.209s `audio/webm;codecs=opus` artifact and leaves zero offscreen contexts. This proves runtime wiring and lifecycle behavior without treating synthetic media or placeholder auth as provider/device acceptance.
+
+Accessibility browser evidence for the exact candidate source at `772c7144136fec5c41a4ceab08c4ca173bcffa99`: axe 4.12 reports zero WCAG 2.0/2.1 A/AA violations on landing, feed, login, support, privacy, terms, signed-out extension, signed-in clip view, and the claim dialog in light and dark themes. Keyboard traces show visible 2px focus, 44px primary targets, and no hidden recorder controls in the tab order. The claim dialog receives initial focus, wraps Tab and Shift+Tab, closes with Escape, and restores focus to the File a claim button. Public routes at 390×844 and the side panel at 378px show no document-level horizontal overflow; the only intentionally offscreen support elements are the non-focusable bot honeypot. The website viewport permits zoom and both surfaces honor reduced-motion preferences.
 
 A Supabase preview branch was unavailable on the current plan (HTTP 402), and a disposable third free project in the exact Annotated organization was rejected by Supabase's active-project limit. Nothing was created or changed in either attempt, and no unrelated project was paused or modified.
 
@@ -200,12 +203,12 @@ A Supabase preview branch was unavailable on the current plan (HTTP 402), and a 
 | 14 | Claim submitted, recorded, notified, reviewed | Integration pass; real Resend/moderator pending |
 | 15 | Retained social behavior works | Public browser surfaces and mutation integrations pass; authenticated browser actions pending |
 | 16 | Per-annotation canonical/OG works in validators | Implementation/unit pass; deployed validator pending |
-| 17 | Typecheck/tests/build/CI/package pass | Pass: full local CI (29 tests) plus hosted push and pull-request workflows on hardened commit |
+| 17 | Typecheck/tests/build/CI/package pass | Pass: full local CI (32 tests) plus hosted push and pull-request workflows on hardened commit |
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
 | 19 | No service-role/secret leakage | Pass: source, built bundle, packages, PR diff, and full repository history scans are clean; CI now fetches full history and repeats the guard |
 | 20 | Vercel smoke test has no new runtime errors | Isolated preview pass with expected missing-config 503 logs; connected critical journey pending |
 | 21 | Minimal versioned CWS package ready | 1.8.0 validates and loads with exact public ID/hosts; clean worker suspend/restart and synthetic-mic recording pass; real-device/privacy listing review pending |
-| 22 | Lovable checklist line-by-line | Matrix above; provider/manual rows remain open |
+| 22 | Lovable checklist line-by-line | Matrix above plus final accessibility browser evidence; provider/manual rows remain open |
 
 ## Remaining risks and owner/provider actions
 
@@ -230,6 +233,7 @@ These are the smallest external actions required; they do not authorize producti
 - [ ] Claim emails and moderator audit/status path pass.
 - [ ] OG/canonical preview validators pass on a real annotation.
 - [ ] Support, privacy, terms, retention, deletion, and singular support domain reviewed.
+- [x] Keyboard, contrast, zoom/reflow, reduced-motion, and claim-modal accessibility audit passes on the exact release candidate.
 - [ ] Explicit owner approval obtained for production migration/deploy.
 - [ ] Apply migrations, deploy exact reviewed SHA, smoke test, then observe Vercel logs/readiness before declaring stable.
 
@@ -250,7 +254,7 @@ These are the smallest external actions required; they do not authorize producti
 - [ ] Web Store privacy disclosure updated for OAuth tokens, active-tab content, tab audio/video, microphone, user content, and Supabase/Vercel/Resend processing.
 - [x] Ready-to-paste 1.8.0 description, single-purpose statement, permission justifications, and disclosure review drafted in `docs/chrome-web-store-listing.md`.
 - [ ] Listing screenshots/demo/privacy URL/support URL reviewed in the owner dashboard; remove the live listing's “early version” language.
-- [x] Download and CWS builders strip platform metadata and produce the same 1.8.0 bytes with a root manifest; SHA-256 `fc2b02760571ac170b91c04acfc519c26099491b574504050e2076ffff726ed4`.
+- [x] Download and CWS builders strip platform metadata and produce the same 1.8.0 bytes with a root manifest; current candidate SHA-256 `d8d339d8173091ccf775bcb8486aa069fc24c33df5fd58bc0d44b88968ce50ea`.
 - [ ] Production endpoint/migrations stable and explicit owner approval obtained before upload/publish.
 
 ## Go/no-go
