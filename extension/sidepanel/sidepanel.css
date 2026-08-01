@@ -156,6 +156,18 @@ html.dark .tab.active { color: #f7f6f2; }
 }
 .hero p { margin: 0; }
 .auth-buttons { display: flex; flex-direction: column; gap: 8px; }
+.data-disclosure {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+.data-disclosure p { margin: 0; }
+.data-disclosure-links { display: flex; align-items: center; gap: 7px; }
+.data-disclosure a { text-decoration: underline; text-underline-offset: 2px; }
 .hint {
   font-size: 12px; color: var(--muted); margin: 0;
   border-left: 2px solid var(--primary); padding-left: 10px;

@@ -63,9 +63,15 @@ Select the dashboard categories that accurately reflect the shipped behavior:
 
 - **Personally identifiable information**: provider profile name/handle/avatar and claim/support contact information where the user chooses to submit it.
 - **Authentication information**: short-lived access token and rotating refresh token stored in `chrome.storage.local` for Google/X sessions.
+- **Web browsing activity**: the active tab's source URL/domain and navigation context, read only for the user-invoked clipping surface.
 - **User activity**: annotations, follows, comments/replies, votes, bookmarks, and views used to provide the social product.
 - **Website content**: selected article text, source title/author/publisher/image metadata, and the user-selected tab audio/video excerpt.
-- **User-generated content**: written commentary and recorded audio commentary, if presented as a separate dashboard category.
+- **Form data**: source URL/title fields and the name, email, reason, and details a user chooses to submit through the claim form.
+- **User-generated content**: written commentary and recorded audio commentary.
+
+Observed public-listing gap on 2026-08-01: the live 1.7.3 Store page declares only **Personally identifiable information**, **User activity**, and **Website content**. Before submitting 1.8.0, add **Authentication information**, **Web browsing activity**, **Form data**, and **User-generated content** (or the dashboard's exact current equivalents). Chrome's official user-data guidance treats login credentials/tokens, domains and URLs, form entries, and user-created material as separate sensitive data types; the dashboard, privacy policy, listing, and actual behavior must agree.
+
+The 1.8.0 signed-out side panel now provides a pre-authentication disclosure explaining active-tab metadata/selection access, local OAuth-session storage, publication of chosen source excerpts/media/commentary, and claim contact details, with direct Privacy and Terms links.
 
 Confirm the existing declarations remain true:
 

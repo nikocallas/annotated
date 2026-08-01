@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import {
   capturePlan,
@@ -8,6 +10,8 @@ import {
   nextPublishStatus,
   sameMediaSource,
 } from "../../extension/shared/clip-utils.mjs";
+
+const repoRoot = resolve(import.meta.dirname, "..", "..");
 
 test("extension detects current and pasted source types", () => {
   assert.equal(detectSourceType("https://www.youtube.com/watch?v=abc"), "youtube");
@@ -49,4 +53,15 @@ test("extension accepts only full OAuth handoffs and deterministic publish trans
   assert.equal(nextPublishStatus("publishing", "success"), "published");
   assert.equal(nextPublishStatus("published", "reset"), "idle");
   assert.throws(() => nextPublishStatus("idle", "success"), /Invalid publish transition/);
+});
+
+test("side panel discloses data use and policy links before authentication", () => {
+  const html = readFileSync(resolve(repoRoot, "extension/sidepanel/index.html"), "utf8");
+  assert.match(html, /aria-label="How Annotated uses data"/);
+  assert.match(html, /reads the active tab's URL, title/);
+  assert.match(html, /stores your Google or X session in Chrome/);
+  assert.match(html, /Publishing sends only/);
+  assert.match(html, /filing a claim sends the\s+contact details you enter/);
+  assert.match(html, /https:\/\/www\.annotatedextension\.com\/privacy/);
+  assert.match(html, /https:\/\/www\.annotatedextension\.com\/tos/);
 });
