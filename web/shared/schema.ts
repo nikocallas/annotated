@@ -225,8 +225,8 @@ export interface AnnotationWithRelations extends Annotation {
   voteScore: number;
   upvotes: number;
   downvotes: number;
-  // The current viewer's vote on this annotation, if any. Server fills in only
-  // when the request supplies a userId; otherwise null.
+  // The current viewer's vote on this annotation, if any. The server derives
+  // the viewer from a verified bearer token; otherwise this remains null.
   viewerVote: VoteValue | null;
 }
 

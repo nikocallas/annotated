@@ -698,10 +698,10 @@ export function registerRoutes(
   );
 
   // ---- VOTES -------------------------------------------------------------
-  // Mirrors the bookmark/follow API shape: actor's userId comes via the body
-  // (or query string for DELETE). Votes are unique per (user, annotation),
-  // and the same user re-voting in the same direction toggles to clear,
-  // matching common Reddit/HN conventions.
+  // Mirrors the bookmark/follow API shape. The actor always comes from the
+  // verified bearer token. Votes are unique per (user, annotation), and the
+  // same user re-voting in the same direction toggles to clear, matching
+  // common Reddit/HN conventions.
   app.get(
     "/api/annotations/:id/votes",
     asyncHandler(async (req, res) => {
