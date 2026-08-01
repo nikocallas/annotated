@@ -45,6 +45,13 @@ function applyTheme(theme) {
   const root = document.documentElement;
   root.classList.toggle("dark", theme === "dark");
   root.style.colorScheme = theme;
+  const toggle = document.querySelector("[data-theme-toggle]");
+  if (toggle) {
+    const label = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
+    toggle.setAttribute("aria-label", label);
+    toggle.setAttribute("title", label);
+    toggle.setAttribute("aria-pressed", String(theme === "dark"));
+  }
 }
 function resolveTheme(pref) { return pref === "system" ? systemTheme() : pref; }
 applyTheme(resolveTheme(readThemePref()));
@@ -163,6 +170,8 @@ async function validAccessToken() {
 function toast(message, kind = "info") {
   const el = document.createElement("div");
   el.className = `toast ${kind}`;
+  el.setAttribute("role", kind === "error" ? "alert" : "status");
+  el.setAttribute("aria-live", kind === "error" ? "assertive" : "polite");
   el.textContent = message;
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add("show"));
@@ -191,7 +200,12 @@ function sendBg(message) {
 function setTab(tab) {
   state.tab = tab;
   state.detailId = null;
-  $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
+  $$(".tab").forEach((t) => {
+    const active = t.dataset.tab === tab;
+    t.classList.toggle("active", active);
+    if (active) t.setAttribute("aria-current", "page");
+    else t.removeAttribute("aria-current");
+  });
   render();
 }
 function showDetail(id) { state.detailId = id; render(); }
@@ -1394,7 +1408,7 @@ function renderPublishSuccess() {
   const node = document.createElement("section");
   node.className = "view";
   node.innerHTML = `
-    <div class="publish-success">
+    <div class="publish-success" role="status" aria-live="polite">
       <div class="checkmark">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polyline points="20 6 9 17 4 12"/>
@@ -1455,16 +1469,17 @@ async function renderFeed() {
 function renderFeedCard(a) {
   const card = document.createElement("article");
   card.className = "feed-card";
+  const cardTitle = a.sourceTitle || a.sourceUrl || "Open annotation";
   card.innerHTML = `
     <div class="feed-card-head">
-      <div class="avatar">${a.user?.avatarUrl ? `<img src="${a.user.avatarUrl}" alt="" />` : avatarFallback(a.user?.displayName)}</div>
+      <div class="avatar">${a.user?.avatarUrl ? `<img src="${escapeAttr(a.user.avatarUrl)}" alt="${escapeAttr(a.user?.displayName || "Creator")}" />` : avatarFallback(a.user?.displayName)}</div>
       <div style="flex:1; min-width:0;">
         <div style="font-size:13px; font-weight:600;">${escapeHtml(a.user?.displayName || "")}</div>
         <div class="muted small">@${escapeHtml(a.user?.username || "")} · ${escapeHtml(a.sourcePublication || hostname(a.sourceUrl))}</div>
       </div>
       <span class="badge ${a.sourceType}">${a.sourceType}</span>
     </div>
-    <div class="feed-card-title">${escapeHtml(a.sourceTitle || a.sourceUrl)}</div>
+    <button type="button" class="feed-card-open" data-open-detail aria-label="Open annotation: ${escapeAttr(cardTitle)}">${escapeHtml(cardTitle)}</button>
     ${a.clipText ? `<div class="feed-card-quote">"${escapeHtml(a.clipText.slice(0, 220))}${a.clipText.length > 220 ? "…" : ""}"</div>` : ""}
     ${a.commentaryText ? `<div class="feed-card-commentary">${escapeHtml(a.commentaryText)}</div>` : ""}
     <div class="feed-card-foot">
@@ -1472,8 +1487,9 @@ function renderFeedCard(a) {
       <a href="${escapeAttr(a.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;">↗ Source</a>
     </div>
   `;
+  $(`[data-open-detail]`, card).addEventListener("click", () => showDetail(a.id));
   card.addEventListener("click", (e) => {
-    if (e.target.tagName === "A") return;
+    if (e.target?.closest?.("a, button, input, textarea, select, audio, video, iframe")) return;
     showDetail(a.id);
   });
   return card;
@@ -1486,7 +1502,10 @@ async function renderProfile() {
   $("[data-username]", node).textContent = `@${user.username}`;
   $("[data-bio]", node).textContent = user.bio || "";
   const avatarEl = $("[data-avatar]", node);
-  if (user.avatarUrl) avatarEl.src = user.avatarUrl;
+  if (user.avatarUrl) {
+    avatarEl.src = user.avatarUrl;
+    avatarEl.alt = `${user.displayName} profile photo`;
+  }
   else avatarEl.replaceWith(Object.assign(document.createElement("div"), { className: "avatar lg", textContent: avatarFallback(user.displayName) }));
 
   try {
@@ -1551,19 +1570,25 @@ async function renderDetail(id) {
 }
 
 function openClaimModal(annotationId, ctx = {}) {
+  const previouslyFocused = document.activeElement;
   const overlay = document.createElement("div");
   overlay.className = "claim-overlay";
 
   const dialog = document.createElement("div");
   dialog.className = "claim-dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-labelledby", "claim-dialog-title");
+  dialog.setAttribute("aria-describedby", "claim-dialog-description");
+  dialog.tabIndex = -1;
   const reasonOptions = CLAIM_REASONS.map(
     ([id, label]) => `<option value="${escapeAttr(id)}">${escapeHtml(label)}</option>`,
   ).join("");
   const isSignedIn = !!state.user;
   const prefilledName = state.user?.displayName || "";
   dialog.innerHTML = `
-    <h3>Dispute this content</h3>
-    <p class="muted small" style="margin: 0;">
+    <h3 id="claim-dialog-title">Dispute this content</h3>
+    <p id="claim-dialog-description" class="muted small" style="margin: 0;">
       If this clip infringes your copyright or exceeds fair use, file a claim and our
       team will review.
     </p>
@@ -1575,18 +1600,18 @@ function openClaimModal(annotationId, ctx = {}) {
           </div>`
         : ""
     }
-    <div class="field-label">Your name</div>
+    <label class="field-label" for="claim-name">Your name</label>
     <input type="text" data-cw tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-10000px;" />
-    <input type="text" data-cn placeholder="Full name" value="${escapeAttr(prefilledName)}" required />
-    <div class="field-label">Contact email</div>
-    <input type="email" data-ce placeholder="you@example.com" required />
-    <div class="field-label">Reason</div>
-    <select data-rc required>
+    <input id="claim-name" type="text" data-cn autocomplete="name" placeholder="Full name" value="${escapeAttr(prefilledName)}" required />
+    <label class="field-label" for="claim-email">Contact email</label>
+    <input id="claim-email" type="email" data-ce autocomplete="email" placeholder="you@example.com" required />
+    <label class="field-label" for="claim-reason">Reason</label>
+    <select id="claim-reason" data-rc required>
       <option value="" disabled selected>Pick the closest match…</option>
       ${reasonOptions}
     </select>
-    <div class="field-label">Anything else? (optional)</div>
-    <textarea data-cd rows="3" placeholder="Add context — links to your original work, what was copied, etc."></textarea>
+    <label class="field-label" for="claim-details">Anything else? (optional)</label>
+    <textarea id="claim-details" data-cd rows="3" placeholder="Add context — links to your original work, what was copied, etc."></textarea>
     <p class="muted small" style="margin: 0;">
       Filing a claim emails you a confirmation and notifies the post's author so
       they can review. Questions? Email
@@ -1600,10 +1625,42 @@ function openClaimModal(annotationId, ctx = {}) {
   `;
   overlay.appendChild(dialog);
   document.body.appendChild(overlay);
-  $("[data-cancel]", dialog).onclick = () => overlay.remove();
+
+  const closeDialog = () => {
+    document.removeEventListener("keydown", handleDialogKeydown);
+    overlay.remove();
+    if (previouslyFocused?.focus) previouslyFocused.focus();
+  };
+  const handleDialogKeydown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeDialog();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = $$('button:not(:disabled), [href], input:not(:disabled):not([tabindex="-1"]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])', dialog)
+      .filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+    if (!focusable.length) {
+      event.preventDefault();
+      dialog.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  document.addEventListener("keydown", handleDialogKeydown);
+  $("[data-cancel]", dialog).onclick = closeDialog;
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) closeDialog();
   });
+  requestAnimationFrame(() => $("[data-cn]", dialog)?.focus());
 
   $("[data-submit]", dialog).onclick = async () => {
     const submitBtn = $("[data-submit]", dialog);
@@ -1611,8 +1668,15 @@ function openClaimModal(annotationId, ctx = {}) {
     const email = $("[data-ce]", dialog).value.trim();
     const category = $("[data-rc]", dialog).value;
     const details = $("[data-cd]", dialog).value.trim();
+    const requiredFields = [
+      [$("[data-cn]", dialog), !!name],
+      [$("[data-ce]", dialog), !!email],
+      [$("[data-rc]", dialog), !!category],
+    ];
+    requiredFields.forEach(([field, valid]) => field.setAttribute("aria-invalid", String(!valid)));
     if (!name || !email || !category) {
       toast("Please fill in your name, email, and a reason.", "error");
+      requiredFields.find(([, valid]) => !valid)?.[0]?.focus();
       return;
     }
     submitBtn.disabled = true;
@@ -1631,8 +1695,9 @@ function openClaimModal(annotationId, ctx = {}) {
       const emailLine = result?.notifications?.confirmationSent
         ? `We sent a confirmation to ${escapeHtml(email)}.`
         : `Your claim is saved. Email delivery may be delayed; contact ${SUPPORT_EMAIL} if needed.`;
+      dialog.removeAttribute("aria-describedby");
       dialog.innerHTML = `
-        <h3 style="display:flex; gap:8px; align-items:center;">
+        <h3 id="claim-dialog-title" style="display:flex; gap:8px; align-items:center;">
           <span style="display:inline-flex; width:20px; height:20px; border-radius:50%; background:var(--gradient-primary); color:var(--primary-foreground); align-items:center; justify-content:center;">✓</span>
           Claim received
         </h3>
@@ -1646,7 +1711,8 @@ function openClaimModal(annotationId, ctx = {}) {
           <button class="btn btn-primary btn-sm" data-close>Done</button>
         </div>
       `;
-      $("[data-close]", dialog).onclick = () => overlay.remove();
+      $("[data-close]", dialog).onclick = closeDialog;
+      $("[data-close]", dialog).focus();
     } catch (err) {
       toast(err.message, "error");
       submitBtn.disabled = false;

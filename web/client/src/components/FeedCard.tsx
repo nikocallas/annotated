@@ -101,8 +101,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
       className="overflow-hidden border-card-border bg-card hover-elevate"
       data-testid={`card-annotation-${a.id}`}
     >
-      <Link href={`/a/${a.id}`} className="block">
-        <div className="p-5 flex flex-col gap-4">
+      <div className="p-5 flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <Avatar className="h-9 w-9">
               <AvatarImage src={a.user.avatarUrl ?? undefined} alt={a.user.displayName} />
@@ -125,9 +124,14 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
           {/* Source attribution */}
           <div className="text-sm">
             <div className="text-muted-foreground text-xs mb-1">From {a.sourcePublication ?? hostname(a.sourceUrl)}</div>
-            <div className="font-medium leading-snug" data-testid={`text-source-title-${a.id}`}>
+            <Link
+              href={`/a/${a.id}`}
+              className="inline-flex min-h-11 items-center rounded-sm font-medium leading-snug underline-offset-4 hover:underline"
+              aria-label={`Open annotation: ${a.sourceTitle ?? a.sourceUrl}`}
+              data-testid={`text-source-title-${a.id}`}
+            >
               {a.sourceTitle ?? a.sourceUrl}
-            </div>
+            </Link>
             {a.sourceAuthor && (
               <div className="text-xs text-muted-foreground mt-0.5">By {a.sourceAuthor}</div>
             )}
@@ -220,8 +224,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
               />
             </div>
           </div>
-        </div>
-      </Link>
+      </div>
     </Card>
   );
 }

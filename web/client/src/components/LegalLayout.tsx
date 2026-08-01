@@ -17,7 +17,7 @@ export function LegalLayout({ title, children }: { title: string; children: Reac
             <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
             <a
               href="/login"
-              className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
+              className="md:hidden min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
               data-testid="link-signin-header-mobile"
             >
               <UserIcon className="w-4 h-4" />
@@ -36,11 +36,11 @@ export function LegalLayout({ title, children }: { title: string; children: Reac
         <div className="mx-auto max-w-3xl px-6 py-8 text-sm text-muted-foreground flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           <Logo />
           <div className="flex gap-4 flex-wrap">
-            <a href="/demo" className="hover:text-foreground">Demo Video</a>
-            <a href="/support" className="hover:text-foreground">Support</a>
-            <a href="/privacy" className="hover:text-foreground">Privacy</a>
-            <a href="/tos" className="hover:text-foreground">Terms</a>
-            <a href="/" className="hover:text-foreground">Home</a>
+            <a href="/demo" className="inline-flex min-h-11 items-center hover:text-foreground">Demo Video</a>
+            <a href="/support" className="inline-flex min-h-11 items-center hover:text-foreground">Support</a>
+            <a href="/privacy" className="inline-flex min-h-11 items-center hover:text-foreground">Privacy</a>
+            <a href="/tos" className="inline-flex min-h-11 items-center hover:text-foreground">Terms</a>
+            <a href="/" className="inline-flex min-h-11 items-center hover:text-foreground">Home</a>
           </div>
         </div>
         <div

@@ -89,7 +89,7 @@ export default function SupportPage() {
             <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
             <a
               href="/login"
-              className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
+              className="md:hidden min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
               data-testid="link-signin-header-mobile"
             >
               <UserIcon className="w-4 h-4" />
@@ -199,6 +199,8 @@ export default function SupportPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={submitting}
+                  aria-invalid={state.kind === "error" && !email.trim()}
+                  aria-describedby={state.kind === "error" && !email.trim() ? "support-error" : undefined}
                   data-testid="input-support-email"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -232,6 +234,8 @@ export default function SupportPage() {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   disabled={submitting}
+                  aria-invalid={state.kind === "error" && !message.trim()}
+                  aria-describedby={state.kind === "error" && !message.trim() ? "support-error" : undefined}
                   placeholder="Tell us what's on your mind. Include steps to reproduce if it's a bug."
                   data-testid="input-support-message"
                 />
@@ -242,6 +246,7 @@ export default function SupportPage() {
 
               {state.kind === "error" && (
                 <div
+                  id="support-error"
                   role="alert"
                   className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/5 text-destructive px-3 py-2 text-sm"
                   data-testid="support-error"
@@ -270,12 +275,12 @@ export default function SupportPage() {
           <Logo />
           <DownloadExtensionButton size="sm" />
           <div className="flex gap-4 flex-wrap">
-            <a href="/" className="hover:text-foreground">Home</a>
-            <a href="/feed" className="hover:text-foreground">Feed</a>
-            <a href="/demo" className="hover:text-foreground">Demo Video</a>
-            <a href="/support" className="hover:text-foreground">Support</a>
-            <a href="/privacy" className="hover:text-foreground">Privacy</a>
-            <a href="/tos" className="hover:text-foreground">Terms</a>
+            <a href="/" className="inline-flex min-h-11 items-center hover:text-foreground">Home</a>
+            <a href="/feed" className="inline-flex min-h-11 items-center hover:text-foreground">Feed</a>
+            <a href="/demo" className="inline-flex min-h-11 items-center hover:text-foreground">Demo Video</a>
+            <a href="/support" className="inline-flex min-h-11 items-center hover:text-foreground">Support</a>
+            <a href="/privacy" className="inline-flex min-h-11 items-center hover:text-foreground">Privacy</a>
+            <a href="/tos" className="inline-flex min-h-11 items-center hover:text-foreground">Terms</a>
           </div>
         </div>
         <div

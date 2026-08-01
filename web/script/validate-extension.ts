@@ -85,6 +85,23 @@ for (const file of ["sidepanel/index.html", "offscreen/offscreen.html"]) {
   assert(!/<link[^>]+rel=["']stylesheet["'][^>]+href=["']https?:/i.test(html), `${file} loads a remote stylesheet`);
 }
 
+const sidepanelHtml = readFileSync(resolve(extensionDir, "sidepanel/index.html"), "utf8");
+const sidepanelSource = readFileSync(resolve(extensionDir, "sidepanel/sidepanel.js"), "utf8");
+const sidepanelCss = readFileSync(resolve(extensionDir, "sidepanel/sidepanel.css"), "utf8");
+assert.match(sidepanelHtml, /<html lang="en">/, "side panel must declare its document language");
+assert.match(sidepanelHtml, /aria-label="Extension sections"/, "side panel navigation needs an accessible name");
+assert.match(sidepanelHtml, /for="annotation-commentary"/, "commentary control needs an associated label");
+assert.match(sidepanelHtml, /aria-label="Source URL"/, "pasted source input needs an accessible name");
+assert.match(sidepanelSource, /aria-modal/, "claim UI must expose modal dialog semantics");
+assert.match(sidepanelSource, /event\.key === "Escape"/, "claim dialog must close with Escape");
+assert.match(sidepanelSource, /previouslyFocused/, "claim dialog must restore focus");
+assert.match(sidepanelSource, /data-open-detail/, "feed cards need a keyboard-operable detail control");
+assert.match(sidepanelSource, /kind === "error" \? "alert" : "status"/, "toast messages need live-region roles");
+assert.match(sidepanelCss, /prefers-reduced-motion:\s*reduce/, "side panel must respect reduced motion");
+assert.match(sidepanelCss, /:focus-visible/, "side panel must preserve a visible keyboard focus indicator");
+assert.match(sidepanelCss, /min-height:\s*44px/, "side panel controls need 44px touch targets");
+assert.match(sidepanelCss, /\[hidden\]\s*\{\s*display:\s*none\s*!important/, "hidden recorder/dialog states must leave the keyboard order");
+
 const tempDir = mkdtempSync(resolve(tmpdir(), "annotated-extension-check-"));
 const zipPath = resolve(tempDir, "annotated-extension.zip");
 try {

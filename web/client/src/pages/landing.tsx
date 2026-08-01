@@ -16,7 +16,7 @@ export default function LandingPage() {
             <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
             <a
               href="/login"
-              className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
+              className="md:hidden min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
               data-testid="link-signin-header-mobile"
             >
               <UserIcon className="w-4 h-4" />
@@ -56,7 +56,7 @@ export default function LandingPage() {
             <DownloadExtensionButton size="lg" />
             <a
               href="/feed"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground"
+              className="inline-flex min-h-11 items-center text-sm font-medium text-muted-foreground hover:text-foreground"
               data-testid="link-explore-feed"
             >
               Explore the feed →
@@ -69,11 +69,11 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-6 py-10 flex flex-col sm:flex-row gap-6 sm:items-center sm:justify-between text-sm text-muted-foreground">
           <Logo />
           <div className="flex gap-5 flex-wrap">
-            <a href="/feed" className="hover:text-foreground">Feed</a>
-            <a href="/demo" className="hover:text-foreground">Demo Video</a>
-            <a href="/support" className="hover:text-foreground">Support</a>
-            <a href="/privacy" className="hover:text-foreground">Privacy</a>
-            <a href="/tos" className="hover:text-foreground">Terms</a>
+            <a href="/feed" className="inline-flex min-h-11 items-center hover:text-foreground">Feed</a>
+            <a href="/demo" className="inline-flex min-h-11 items-center hover:text-foreground">Demo Video</a>
+            <a href="/support" className="inline-flex min-h-11 items-center hover:text-foreground">Support</a>
+            <a href="/privacy" className="inline-flex min-h-11 items-center hover:text-foreground">Privacy</a>
+            <a href="/tos" className="inline-flex min-h-11 items-center hover:text-foreground">Terms</a>
           </div>
         </div>
         <div

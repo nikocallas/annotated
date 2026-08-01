@@ -48,7 +48,7 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <title>Annotated - Clip. Annotate.</title>
@@ -73,11 +73,11 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
       href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-DYv6_YNl.js"></script>
+    <script type="module" crossorigin src="/assets/index-DTyV7E5Z.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-B8J79hfM.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CzPQJi3P.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-C32nV0CO.css">
   </head>
   <body>
     <div id="root"></div>
@@ -87,7 +87,7 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <title>Annotated - Clip. Annotate.</title>
@@ -112,11 +112,11 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
       href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-DYv6_YNl.js"></script>
+    <script type="module" crossorigin src="/assets/index-DTyV7E5Z.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-B8J79hfM.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CzPQJi3P.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-C32nV0CO.css">
   </head>
   <body>
     <div id="root"></div>

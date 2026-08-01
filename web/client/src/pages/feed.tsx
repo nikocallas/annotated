@@ -117,6 +117,7 @@ export default function FeedPage() {
 
         {/* Center feed */}
         <div className="min-w-0">
+          <h1 className="sr-only">Annotated public feed</h1>
           {!tabLocked && (
             <TopFilters
               filter={filter}
@@ -171,7 +172,7 @@ function LeftSidebar({
               key={opt.key}
               type="button"
               onClick={() => onTabChange(opt.key)}
-              className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium hover-elevate ${
+              className={`min-h-11 w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium hover-elevate ${
                 active
                   ? "bg-sidebar-accent text-foreground"
                   : "text-muted-foreground"
@@ -230,7 +231,7 @@ function TopFilters({
             key={opt.key}
             type="button"
             onClick={() => onFilterChange(opt.key)}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium hover-elevate ${
+            className={`min-h-11 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium hover-elevate ${
               active
                 ? "bg-foreground text-background border-foreground"
                 : "bg-card text-foreground border-card-border"
@@ -249,7 +250,7 @@ function TopFilters({
           <SelectTrigger
             aria-label="Sort feed"
             data-testid="select-feed-sort"
-            className="rounded-full border border-card-border bg-card px-4 py-1.5 h-auto text-sm font-medium hover-elevate w-auto gap-2 whitespace-nowrap [&>span]:line-clamp-none [&>span]:whitespace-nowrap"
+            className="min-h-11 rounded-full border border-card-border bg-card px-4 py-1.5 h-auto text-sm font-medium hover-elevate w-auto gap-2 whitespace-nowrap [&>span]:line-clamp-none [&>span]:whitespace-nowrap"
           >
             <ArrowUpDown className="w-3.5 h-3.5 opacity-70 shrink-0" />
             <SelectValue />

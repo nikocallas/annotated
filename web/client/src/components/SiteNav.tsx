@@ -21,10 +21,11 @@ export function SiteNav({ current = null }: { current?: Current }) {
           <a
             key={item.key}
             href={item.href}
-            className={className}
+            className={`${className} min-h-11`}
+            aria-current={active ? "page" : undefined}
             data-testid={`link-nav-${item.label.toLowerCase()}`}
           >
-            <item.Icon className="w-4 h-4" />
+            <item.Icon className="w-4 h-4" aria-hidden />
             {item.label}
           </a>
         );
