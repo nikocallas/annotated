@@ -23,16 +23,16 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 |---|---|---|
 | Sidebar Chrome extension is the primary surface | MV3 `side_panel`; active-page/pasted-source creation; no web creation form | Implemented; package validation passes. Real-device run pending. |
 | Max clip size: 90 seconds | Side panel and shared capture plan reject >90s; API Zod/range validation; database constraint; trusted WebM inspection allows only container tolerance | Implemented; unit/API tests cover 90s/91s. |
-| Video downgraded to 240 pixels (<480p) | Tab stream is drawn to a 240px-high 15fps canvas, encoded WebM, then dimensions are parsed server-side | Implemented; synthetic 61s/240p acceptance and >240p rejection pass. Real YouTube artifact pending. |
-| Every clip links to its original source URL | Source URL is required HTTPS metadata and appears in feed/detail/source credit; canonical annotation page remains separate | Pass in production browser detail/mobile checks; hardened preview data path pending. |
+| Video downgraded to 240 pixels (<480p) | Tab stream is drawn to a 240px-high 15fps canvas, encoded WebM, then dimensions are parsed server-side | A generated 61.016s 426×240 artifact passes through deployed signing, upload, inspection, and publication; real YouTube capture pending. |
+| Every clip links to its original source URL | Source URL is required HTTPS metadata and appears in feed/detail/source credit; canonical annotation page remains separate | Pass in production browser detail/mobile checks and connected durable detail/crawler data. |
 | Visible “File a claim” on every annotation | Detail page and extension detail both render the action; API accepts anonymous, validated claims | Pass in production browser detail/mobile checks; live notification proof pending. |
 | Account creation via X or Google only | Supabase PKCE OAuth only; no password/demo identity; API verifies access token on protected operations; extension handoff is pinned to the manifest-derived Store ID | Hosted Google/X authorization endpoints initiate successfully and historical identities exist; current callback/refresh proof remains pending. |
-| Public social feed with follow + comment | Feed, profiles, follow/unfollow, threaded comments, votes, bookmarks | Public feed/detail UI passes desktop/mobile browser checks; authenticated mutations pass integration tests. |
-| Commentary supports text and recorded audio | Text plus offscreen microphone recording, preview/discard/replace, signed upload and inspection | Implemented; real microphone publish pending. |
+| Public social feed with follow + comment | Feed, profiles, follow/unfollow, threaded comments, votes, bookmarks | Public UI passes desktop/mobile checks; two provider-shaped actors pass the full retained mutation set through connected Vercel/Supabase. |
+| Commentary supports text and recorded audio | Text plus offscreen microphone recording, preview/discard/replace, signed upload and inspection | Generated commentary audio passes through the deployed media path and fake-device Chrome recording passes; physical microphone publish pending. |
 | Pick current source or paste URL | Side panel detects active tab and offers a different URL; media paste must be opened in the active tab before compliant capture | Implemented; real-device proof pending. |
-| News/article passage plus metadata | Content script captures selected text and OG/title/author/publication; API preserves the passage and validates metadata | Implemented; exact-passage integration evidence passes; browser selection proof pending. |
-| Podcast 90-second audio segment | Tab audio capture, audio-only WebM encode, direct upload, trusted no-video/duration validation | Implemented; real podcast artifact pending. |
-| Public landing page | `/a/:id` returns crawler-visible per-annotation metadata and hydrates the React detail page | Implemented; preview crawler validator proof pending. |
+| News/article passage plus metadata | Content script captures selected text and OG/title/author/publication; API preserves the passage and validates metadata | Exact passage/metadata passes through connected Vercel/Supabase; browser selection action pending. |
+| Podcast 90-second audio segment | Tab audio capture, audio-only WebM encode, direct upload, trusted no-video/duration validation | A generated 61.016s audio-only artifact passes through deployed signing, upload, inspection, and publication; real podcast capture pending. |
+| Public landing page | `/a/:id` returns crawler-visible per-annotation metadata and hydrates the React detail page | Connected deployed crawler request returns unique title/description/canonical/OG/Twitter tags; third-party validator pending. |
 
 ## Baseline snapshot before new migrations
 
@@ -141,10 +141,10 @@ Current checks implemented:
 - liveness/readiness outage behavior;
 - RLS/grant/storage/rate/claim migration assertions;
 - per-annotation metadata escaping/canonical tests;
-- limiter isolation, 429 headers, expiry, and bounded-memory tests;
+- limiter isolation, 429 headers, expiry, bounded-memory behavior, and stalled-provider fail-closed timing tests;
 - production build, extension syntax/package contents, secret-pattern scan, and npm audit.
 
-Latest local result (2026-08-01): the complete `npm run ci` release command passes on security commit `f7f38c74225e7a9689a5ded016638fdb4f0dbded`—TypeScript, all 35 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30715234220) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30715235647) pass on branch head `d73eb2c2873b2cea2d07e17d83a9b683700e6d53`, which contains that security commit.
+Latest local result (2026-08-01): the complete `npm run ci` release command passes on outage-hardening commit `06a6b52628b9a3023b8047704e1cbba341c799da`—TypeScript, all 36 tests, production build, extension validation, source/bundle/package secret scan, and dependency audit. `npm audit` reports zero vulnerabilities. The frontend no longer emits the >500KB chunk warning. Tailwind 3 still triggers PostCSS 8.5's generic “generated parse has no from value” warning; this comes from Tailwind's in-memory generated rules, not an imported asset. It is retained rather than downgrading below the patched PostCSS version and should be re-evaluated during a planned Tailwind 4 migration. Both the [push workflow](https://github.com/nikocallas/annotated/actions/runs/30716242546) and [pull-request workflow](https://github.com/nikocallas/annotated/actions/runs/30716244240) pass on that exact commit.
 
 Isolated production-mode integration evidence against a clean local Supabase stack:
 
@@ -160,26 +160,32 @@ No production migration or write was used for this evidence.
 
 ## Manual/real-device QA evidence
 
-No item in this section is marked proven until a URL/artifact/screenshot is recorded.
+Rows distinguish deployed artifacts and recorded browser observations from the remaining physical-device/provider work.
 
 | Journey | Evidence | Result |
 |---|---|---|
 | Google web OAuth | Hosted authorization endpoint initiates and a historical Google identity exists; current preview callback/refresh/logout pending | Partial |
 | X web OAuth | Hosted X OAuth 2.0 authorization endpoint initiates and a historical X identity exists; current callback/email behavior pending | Partial |
 | Google/X extension handoff + refresh | Exact production-origin ping and isolated valid/invalid bundle handoff pass in Chrome; website recipient is pinned to the manifest-derived ID and forged IDs render normal web sign-in; real provider token/refresh pending | Partial |
-| 61-second YouTube capture | Pending stored-object URL + parsed 240p metadata | Not proven |
-| 61-second podcast capture | Pending stored-object URL + audio-only metadata | Not proven |
-| Article exact passage | Exact-value local Supabase/API evidence; published detail renders correctly in browser | Partial (browser selection action pending) |
-| Text/audio commentary preview, replace, publish | Isolated Chrome fake-device recording produces a valid 2.209s Opus WebM and closes offscreen context; physical microphone/publish pending | Partial |
-| Source link + File a claim | Production canonical detail and 390×844 mobile detail each show the claim action and original-source links | Pass for retained production content; preview data pending |
+| 61-second YouTube capture | Generated 61.016s 426×240 video+audio WebM completed the connected deployed media path | Partial (physical Chrome/YouTube capture pending) |
+| 61-second podcast capture | Generated 61.016s audio-only WebM completed the connected deployed media path | Partial (physical Chrome/podcast capture pending) |
+| Article exact passage | Exact passage and metadata passed through connected Vercel/Supabase; published detail renders correctly in browser | Partial (browser selection action pending) |
+| Text/audio commentary preview, replace, publish | Connected deployed text/commentary media passes; isolated Chrome fake-device recording produces a valid 2.209s Opus WebM and closes offscreen context | Partial (physical microphone publish pending) |
+| Source link + File a claim | Production canonical detail and 390×844 mobile detail show both controls; connected durable detail/crawler data retains source metadata | Pass for retained production content; connected UI remains protected |
 | Claim recorded/notified/reviewed | Pending Resend inbox + moderator audit event | Not proven |
-| Feed/profile/follow/comment/reply/vote/bookmark | Production feed loads 50+ cards without console errors or horizontal overflow; authenticated mutations pass integration tests | Partial (provider-authenticated browser mutations pending) |
-| OG/canonical validators | Pending deployed `/a/:id` validation | Not proven |
-| Cold start and simulated provider recovery | Local outage regression passes; isolated preview health repeatedly survives while missing dependencies fail closed | Partial (connected preview recovery pending) |
+| Feed/profile/follow/comment/reply/vote/bookmark | Production feed loads 50+ cards without console errors or horizontal overflow; two provider-shaped actors complete deployed retained mutations | Pass for server behavior; provider-browser UI remains in the OAuth row |
+| OG/canonical validators | Connected deployed crawler request returns unique annotation title/description/canonical/OG/Twitter metadata | Partial (third-party validator pending because preview is protected) |
+| Cold start and simulated provider recovery | Connected Vercel health survives the database pause, readiness/feed fail closed within bounds, and the same deployment recovers after unpause | Pass |
 
-Latest isolated Vercel preview for branch head `d73eb2c2873b2cea2d07e17d83a9b683700e6d53` (security code commit `f7f38c74225e7a9689a5ded016638fdb4f0dbded`): `https://annotated-4ehas5hvc-laymen.vercel.app` (`dpl_rS3LCZFLEdEzgg3nnH8Ro6wsNH7T`). The deployment is Ready. Through Vercel's authenticated preview bypass, `/` returns 200; `/api/health` returns 200 with request ID, HSTS, API CSP, and `Cache-Control: no-store`; `/api/ready` returns the expected component-by-component 503 because Preview lacks complete Supabase/OAuth/notification/moderation/maintenance configuration; and `/api/feed` returns a controlled 503 rather than memory/demo data. The official extension origin receives a 204 preflight with its exact `Access-Control-Allow-Origin`, while `https://evil.example` receives 403 with no allow-origin header. The deployed `/downloads/annotated-extension.zip` exactly matches the current validated CWS artifact at SHA-256 `d8d339d8173091ccf775bcb8486aa069fc24c33df5fd58bc0d44b88968ce50ea`. Runtime logs contain only the expected fail-closed readiness/rate-limit messages and structured request summaries—no crash or secret output. Vercel deployment protection intentionally redirects unauthenticated public requests to team SSO.
+Latest isolated Vercel preview for outage-hardening commit `06a6b52628b9a3023b8047704e1cbba341c799da`: `https://annotated-62xxajxz1-laymen.vercel.app` (`dpl_CAimYNNJEWCNheC8CcLQFY1isQnc`). The deployment is Ready. Through Vercel's authenticated preview bypass, `/api/health` returns 200 with request ID, HSTS, API CSP, and `Cache-Control: no-store`; `/api/ready` returns the expected component-by-component 503 because the standard Preview environment lacks complete Supabase/OAuth/notification/moderation/maintenance configuration; and durable routes fail closed rather than serving memory/demo data. The official extension origin receives a 204 preflight with its exact `Access-Control-Allow-Origin`, while `https://evil.example` receives 403 with no allow-origin header. The deployed `/downloads/annotated-extension.zip` exactly matches the validated CWS artifact at SHA-256 `d8d339d8173091ccf775bcb8486aa069fc24c33df5fd58bc0d44b88968ce50ea`. Vercel deployment protection intentionally redirects unauthenticated public requests to team SSO.
 
 Rendered login regression evidence on the production build for `f7f38c74225e7a9689a5ded016638fdb4f0dbded`: `/login?extension=1&extensionId=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` renders the ordinary “Sign in” journey, while the manifest-derived `eaealcbiidjigfndjchchbnjdjicbajb` renders “Sign in to the extension.” The automated test independently derives the ID from the manifest public key and proves that malicious, malformed, stale, and future handoff records are rejected.
+
+Connected production-runtime evidence for outage-hardening commit `06a6b52628b9a3023b8047704e1cbba341c799da`: protected Vercel deployment `https://annotated-87lzxt8n6-laymen.vercel.app` (`dpl_xyHjMnzLbLA9jsK56xx8t2cisy3M`) was connected through a short-lived encrypted tunnel to the disposable, fully migrated local Annotated Supabase stack. This did not use production, the unrelated Laymen project, or mock/in-memory persistence. Healthy `/api/ready`, feed, users, most-viewed, annotation detail, and crawler routes returned 200 with 55 durable annotations; readiness reported every configuration-level component `ok` (no Resend message was sent); rate-limit rows were consumed atomically; API user JSON contained no `authId`; and direct tunneled anon REST insertion returned 401 with zero rows created. After recording the evidence, the tunnel and its temporary Vercel alias were removed and only the Annotated local stack was stopped with its data volume preserved; the unrelated Laymen stack remained running.
+
+The same deployment was tested through a deliberate database pause and recovery. Health stayed 200 in 0.2s; readiness returned a structured 503 in 4.1s; the first version exposed a real defect when feed exhausted the Vercel deadline with 504; commit `06a6b52` added a 2s abort plus a 2.5s enforcement bound and regression test; the redeployed feed then returned the intended structured 503 in 2.1s. After unpause, the same deployment recovered immediately to readiness/feed 200. No HTTP 500/504 remained in the fixed deployment logs.
+
+Two provider-shaped GoTrue identities then synchronized through the deployed API and completed actor-spoof rejection, cross-user delete 403, article publication with the exact passage, follow, comment, reply, vote, bookmark, and account deletion. A 61.016s 426×240 video+audio WebM, 61.016s audio-only podcast WebM, and 2.508s recorded-commentary WebM each completed deployed sign → direct Storage PUT → server download/inspection → attach/publish. Account cleanup removed both identities, all probe annotations/media rows, and all Storage objects. These are real generated WebM artifacts through the connected production runtime, but they are not mislabeled as physical Chrome/YouTube/podcast/microphone acceptance.
 
 Isolated Chrome runtime evidence (Chrome for Testing 151.0.7922.71, fresh temporary profiles): unpacked 1.8.0 starts with the exact public Store ID, declared permissions/hosts, empty storage, and no sidebar console errors or horizontal overflow. After the 30-second MV3 idle window removes both sidebar and worker contexts, reopening the sidebar restarts the worker and renders cleanly. The production `www.annotatedextension.com` origin receives the read-only install ping (`ok: true`, version 1.8.0); `example.com` has no external messaging surface. The allowed production origin rejects an invalid bundle, accepts an isolated placeholder bundle, stores only `annotatedAuth` (not legacy `annotatedUser`), and the temporary storage is then cleared. With Chrome's fake media device, real offscreen `MediaRecorder` start/stop produces a 6,397-byte, 2.209s `audio/webm;codecs=opus` artifact and leaves zero offscreen contexts. This proves runtime wiring and lifecycle behavior without treating synthetic media or placeholder auth as provider/device acceptance.
 
@@ -191,26 +197,26 @@ The Annotated Supabase organization is on the Free plan and exposes only the `ma
 
 | # | Gate | Current result |
 |---:|---|---|
-| 1 | Preview survives cold starts/temporary DB failure | Isolated preview health survives cold invocations and fails dependencies closed; connected recovery pending |
-| 2 | Core feed/detail APIs return durable data | Production feed/detail recovered after resume; hardened connected preview pending |
-| 3 | Anonymous mutations return 401 | Pass in integration suite |
-| 4 | Spoofed actor IDs have no authority | Pass in integration suite |
-| 5 | Cross-user mutation/deletion returns 403 | Delete/media ownership implemented; delete test passes |
-| 6 | Direct anonymous Supabase writes denied | Pass against clean migrated local Supabase REST; hosted branch proof pending |
+| 1 | Preview survives cold starts/temporary DB failure | Pass: connected Vercel stays live, fails ready/feed closed within bounds, then recovers on the same deployment |
+| 2 | Core feed/detail APIs return durable data | Pass: connected migrated Supabase preview returns 55 durable annotations plus feed/detail/users/most-viewed |
+| 3 | Anonymous mutations return 401 | Pass in integration suite and connected deployed API |
+| 4 | Spoofed actor IDs have no authority | Pass in integration suite and connected two-actor journey |
+| 5 | Cross-user mutation/deletion returns 403 | Pass in integration suite and connected two-actor journey |
+| 6 | Direct anonymous Supabase writes denied | Pass through the encrypted external Supabase route: 401 and zero inserted rows |
 | 7 | Google and X work on site and extension | Both hosted provider authorization endpoints initiate; historical provider identities and pinned extension recipient are proven; current callbacks and refresh remain pending |
-| 8 | Real 61s YouTube → verified 240p | Actual 61.008s/240p signed-upload pipeline passes; real YouTube device capture pending |
+| 8 | Real 61s YouTube → verified 240p | Generated 61.016s/240p artifact passes the connected deployed pipeline; real YouTube device capture pending |
 | 9 | >90s rejected before publication | Pass in extension/API tests |
-| 10 | Real podcast → bounded audio artifact | Actual 61.008s audio-only signed-upload pipeline passes; real podcast device capture pending |
-| 11 | Article publishes exact selection + metadata | Pass in production-mode local API; browser selection action pending |
-| 12 | Text and recorded audio commentary work | Text and verified commentary media pass local API; isolated Chrome offscreen recording passes; physical microphone publish pending |
-| 13 | Source link and File a claim on every page | Pass on retained production detail in desktop/mobile browser; hardened preview data pending |
+| 10 | Real podcast → bounded audio artifact | Generated 61.016s audio-only artifact passes the connected deployed pipeline; real podcast device capture pending |
+| 11 | Article publishes exact selection + metadata | Exact passage/metadata passes through connected Vercel/Supabase; browser selection action pending |
+| 12 | Text and recorded audio commentary work | Connected deployed text plus verified WebM commentary pass; physical microphone publish pending |
+| 13 | Source link and File a claim on every page | Pass on retained production detail in desktop/mobile browser; connected durable metadata/crawler path also passes |
 | 14 | Claim submitted, recorded, notified, reviewed | Integration pass; real Resend/moderator pending |
-| 15 | Retained social behavior works | Public browser surfaces and mutation integrations pass; authenticated browser actions pending |
-| 16 | Per-annotation canonical/OG works in validators | Implementation/unit pass; deployed validator pending |
-| 17 | Typecheck/tests/build/CI/package pass | Pass: full local CI has 35 tests, both hosted workflows pass on the security head, and the download/CWS packages are byte-identical |
+| 15 | Retained social behavior works | Pass through connected Vercel/Supabase with two verified actors; provider-browser UI remains part of gate 7 |
+| 16 | Per-annotation canonical/OG works in validators | Connected crawler HTML pass; third-party validator pending because the preview is protected |
+| 17 | Typecheck/tests/build/CI/package pass | Pass: full local CI has 36 tests, both hosted workflows pass on the exact code commit, and deployed/download/CWS packages are byte-identical |
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
 | 19 | No service-role/secret leakage | Pass: source, built bundle, packages, PR diff, and full repository history scans are clean; CI now fetches full history and repeats the guard |
-| 20 | Vercel smoke test has no new runtime errors | Isolated preview pass with expected missing-config 503 logs; connected critical journey pending |
+| 20 | Vercel smoke test has no new runtime errors | Pass on connected critical API/media/social/outage journey; fixed deployment has no HTTP 500/504 logs |
 | 21 | Minimal versioned CWS package ready | 1.8.0 validates and loads with exact public ID/hosts; clean worker suspend/restart and synthetic-mic recording pass; real-device/privacy listing review pending |
 | 22 | Lovable checklist line-by-line | Matrix above plus final accessibility browser evidence; provider/manual rows remain open |
 
@@ -218,7 +224,7 @@ The Annotated Supabase organization is on the Free plan and exposes only the `ma
 
 These are the smallest external actions required; they do not authorize production mutation.
 
-1. Enable a Supabase preview branch (Pro plan) or temporarily free one allowed project slot in the exact Annotated organization; then capture the preflight export and apply `0011`–`0013` only there. Local migration/REST proof is already complete.
+1. Enable a durable Supabase preview branch (Pro plan) or temporarily free one allowed project slot in the exact Annotated organization; then capture the preflight export and apply `0011`–`0013` only there. The short-lived connected-tunnel proof now covers migration, serverless, outage/recovery, RLS, social, media, and crawler behavior, but a durable hosted branch is still required for real provider callbacks and the final release rehearsal.
 2. Remove or rotate the existing production-like encrypted secrets in Vercel Preview before connecting a branch. Then configure a complete matched Preview set: server/publishable branch Supabase values, branch-safe Resend credentials, singular support inbox, owner `MODERATOR_AUTH_IDS`, `CRON_SECRET`, `RATE_LIMIT_SALT`, and the exact preview OAuth/CORS origin.
 3. Disable Supabase email sign-in, retain only Google and X OAuth 2.0, and add the exact approved preview callback allowlist. X must return the identity data Supabase requires; if the provider account cannot expose email, document that provider limitation rather than claiming success.
 4. Verify the Resend sender/domain and inbox access, then retain filer/poster/support delivery evidence.
@@ -263,4 +269,4 @@ These are the smallest external actions required; they do not authorize producti
 
 ## Go/no-go
 
-**Current recommendation: NO-GO for production resubmission.** The release candidate materially closes the known architecture/security gaps and has broad local automated coverage, but acceptance requires provider-applied migrations, a branch preview, real Google/X flows, real-device media artifacts, real notification evidence, crawler validation, and clean Vercel runtime observation. The branch should remain active until those rows are proven or an exact external limitation is documented.
+**Current recommendation: NO-GO for production resubmission.** The release candidate materially closes the known architecture/security gaps and now passes local CI, exact-commit hosted CI, connected durable serverless/data/social/media/crawler tests, and database outage/recovery. The remaining acceptance work is external: a durable provider-connected preview, current Google/X callback/refresh/logout and extension handoff, physical Chrome media/selection/microphone journeys, real Resend/moderator evidence, third-party crawler validators, owner-dashboard privacy/listing review, and explicit approval for production migration/deployment. The branch should remain active until those rows are proven or an exact external limitation is documented.
