@@ -79,15 +79,30 @@ export const bookmarks = sqliteTable("bookmarks", {
 export type Bookmark = typeof bookmarks.$inferSelect;
 
 export const insertAnnotationSchema = createInsertSchema(annotations)
-  .omit({ id: true, createdAt: true, clipStatus: true, clipMediaUrl: true, clipThumbnailUrl: true })
+  .omit({
+    id: true,
+    userId: true,
+    createdAt: true,
+    clipStatus: true,
+    clipMediaUrl: true,
+    clipThumbnailUrl: true,
+  })
   .extend({
-    sourceUrl: z.string().url("A valid source URL is required"),
+    sourceUrl: z.string().url("A valid source URL is required").refine((value) => {
+      const url = new URL(value);
+      return url.protocol === "https:" && !url.username && !url.password;
+    }, "Source URL must use HTTPS and cannot contain credentials"),
     sourceType: z.enum(["youtube", "article", "podcast"]),
+    sourceTitle: z.string().trim().min(1).max(500).optional().nullable(),
+    sourceAuthor: z.string().trim().min(1).max(200).optional().nullable(),
+    sourceImage: z.string().url().refine((value) => new URL(value).protocol === "https:", "Source image must use HTTPS").optional().nullable(),
+    sourcePublication: z.string().trim().min(1).max(200).optional().nullable(),
     clipStartSec: z.number().int().min(0).optional().nullable(),
     clipEndSec: z.number().int().min(0).optional().nullable(),
-    clipText: z.string().optional().nullable(),
-    commentaryText: z.string().optional().nullable(),
-    commentaryAudioUrl: z.string().optional().nullable(),
+    clipText: z.string().max(10000).optional().nullable(),
+    commentaryText: z.string().trim().max(4000).optional().nullable(),
+    commentaryAudioUrl: z.string().url().refine((value) => new URL(value).protocol === "https:", "Commentary audio must use HTTPS").optional().nullable(),
+    isPublic: z.union([z.literal(0), z.literal(1)]).optional(),
   })
   .refine(
     (data) => {
@@ -193,11 +208,11 @@ export const insertClaimSchema = createInsertSchema(claims)
   .omit({ id: true, createdAt: true, status: true })
   .extend({
     claimantUserId: z.string().optional().nullable(),
-    claimantName: z.string().min(1).max(200),
-    claimantEmail: z.string().email(),
+    claimantName: z.string().trim().min(1).max(200),
+    claimantEmail: z.string().trim().email().max(320),
     reasonCategory: z.enum(CLAIM_REASON_CATEGORIES),
-    reason: z.string().min(1).max(4000),
-    details: z.string().max(4000).optional().nullable(),
+    reason: z.string().trim().min(1).max(4000),
+    details: z.string().trim().max(4000).optional().nullable(),
   });
 export type InsertClaim = z.infer<typeof insertClaimSchema>;
 export type Claim = typeof claims.$inferSelect;
@@ -210,8 +225,8 @@ export interface AnnotationWithRelations extends Annotation {
   voteScore: number;
   upvotes: number;
   downvotes: number;
-  // The current viewer's vote on this annotation, if any. Server fills in only
-  // when the request supplies a userId; otherwise null.
+  // The current viewer's vote on this annotation, if any. The server derives
+  // the viewer from a verified bearer token; otherwise this remains null.
   viewerVote: VoteValue | null;
 }
 

@@ -16,6 +16,15 @@ const extensionDir = resolve(repoRoot, "extension");
 const outDir = resolve(import.meta.dirname, "..", "client", "public", "downloads");
 const outFile = resolve(outDir, "annotated-extension.zip");
 
+// The release archive is checked in after local validation. Vercel normalizes
+// source mtimes during upload, so repacking there would produce different zip
+// bytes even when every entry is identical. Serve the reviewed artifact
+// unchanged in deploy builds so its published checksum remains auditable.
+if (process.env.VERCEL && existsSync(outFile)) {
+  console.log(`using validated extension archive → ${outFile}`);
+  process.exit(0);
+}
+
 if (!existsSync(extensionDir)) {
   if (existsSync(outFile)) {
     console.warn(
@@ -34,7 +43,7 @@ if (existsSync(outFile)) rmSync(outFile);
 
 execFileSync(
   "zip",
-  ["-r", outFile, ".", "-x", "*.DS_Store", "node_modules/*", "dist/*"],
+  ["-X", "-r", outFile, ".", "-x", "*.DS_Store", "node_modules/*", "dist/*", "*.d.mts", "**/*.d.mts"],
   { cwd: extensionDir, stdio: "inherit" },
 );
 

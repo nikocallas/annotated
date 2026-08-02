@@ -43,20 +43,24 @@ export function FileClaimButton({
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittedClaimId, setSubmittedClaimId] = useState<string | null>(null);
+  const [confirmationSent, setConfirmationSent] = useState<boolean | null>(null);
   const { user } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [category, setCategory] = useState<ClaimReasonCategory | "">("");
   const [details, setDetails] = useState("");
+  const [website, setWebsite] = useState("");
   const { toast } = useToast();
 
   function reset() {
     setSubmitting(false);
     setSubmittedClaimId(null);
+    setConfirmationSent(null);
     setName("");
     setEmail("");
     setCategory("");
     setDetails("");
+    setWebsite("");
   }
 
   function openDialog() {
@@ -79,18 +83,24 @@ export function FileClaimButton({
     setSubmitting(true);
     try {
       const res = await apiRequest("POST", `/api/annotations/${annotationId}/claims`, {
-        claimantUserId: user?.id ?? null,
         claimantName: name,
         claimantEmail: email,
         reasonCategory: category,
         details: details || null,
+        website,
       });
-      const data = (await res.json().catch(() => null)) as { claim?: { id: string } } | null;
+      const data = (await res.json().catch(() => null)) as {
+        claim?: { id: string };
+        notifications?: { confirmationSent?: boolean };
+      } | null;
       const id = data?.claim?.id ?? "received";
       setSubmittedClaimId(id);
+      setConfirmationSent(!!data?.notifications?.confirmationSent);
       toast({
         title: "Claim received",
-        description: `We emailed a confirmation to ${email || "you"}. Reach us at ${SUPPORT_EMAIL} with any questions.`,
+        description: data?.notifications?.confirmationSent
+          ? `We emailed a confirmation to ${email || "you"}.`
+          : `Your claim is saved. If email is delayed, contact ${SUPPORT_EMAIL}.`,
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Could not submit claim";
@@ -129,14 +139,15 @@ export function FileClaimButton({
                 </div>
                 <DialogTitle className="text-center">Claim received</DialogTitle>
                 <DialogDescription className="text-center">
-                  Thanks. Your claim is being reviewed and we've emailed a confirmation
-                  to {email}.
+                  {confirmationSent
+                    ? `Thanks. Your claim is being reviewed and we've emailed a confirmation to ${email}.`
+                    : "Thanks. Your claim is saved for review. Email delivery may be delayed."}
                 </DialogDescription>
               </DialogHeader>
               <div className="text-sm text-muted-foreground space-y-2">
                 <p>
-                  We've also notified the user who posted this content so they have a chance
-                  to review it.
+                  The claim audit trail records notification delivery so the moderation team can
+                  follow up if any message is delayed.
                 </p>
                 <p>
                   Any questions or concerns? Reach us at{" "}
@@ -163,6 +174,16 @@ export function FileClaimButton({
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="absolute -left-[10000px]" aria-hidden="true">
+                  <Label htmlFor="claim-website">Website</Label>
+                  <Input
+                    id="claim-website"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                  />
+                </div>
                 {postTitle ? (
                   <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                     <div className="font-medium text-foreground line-clamp-1">{postTitle}</div>
@@ -192,7 +213,8 @@ export function FileClaimButton({
                     data-testid="input-claim-email"
                   />
                   <p className="text-xs text-muted-foreground">
-                    We'll send you a confirmation at this address.
+                    We use this address for claim updates. A confirmation is sent when
+                    email delivery is available.
                   </p>
                 </div>
                 <div className="grid gap-1.5">
@@ -225,8 +247,9 @@ export function FileClaimButton({
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Filing a claim emails you a confirmation and notifies the post's author
-                  so they can review. Questions? Email{" "}
+                  Filing saves your claim immediately. Annotated also attempts a confirmation
+                  and author notification, and records whether those messages were delivered.
+                  Questions? Email{" "}
                   <a className="text-primary underline" href={`mailto:${SUPPORT_EMAIL}`}>
                     {SUPPORT_EMAIL}
                   </a>

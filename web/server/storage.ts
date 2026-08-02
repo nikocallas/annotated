@@ -33,13 +33,22 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const now = () => Math.floor(Date.now() / 1000);
 
+function isUniqueViolation(error: unknown): boolean {
+  return !!error && typeof error === "object" && "code" in error
+    && (error as { code?: unknown }).code === "23505";
+}
+
 export interface IStorage {
+  // Availability
+  healthCheck(): Promise<void>;
+
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByAuth(provider: string, authId: string): Promise<User | undefined>;
   listUsers(): Promise<User[]>;
   createUser(input: InsertUser): Promise<User>;
+  deleteUser(id: string): Promise<void>;
 
   // Annotations
   getAnnotation(id: string): Promise<Annotation | undefined>;
@@ -317,6 +326,11 @@ function claimFromRow(r: ClaimRow): Claim {
 export class SupabaseStorage implements IStorage {
   constructor(private client: SupabaseClient) {}
 
+  async healthCheck() {
+    const { error } = await this.client.from("users").select("id").limit(1);
+    if (error) throw error;
+  }
+
   async getUser(id: string) {
     const { data, error } = await this.client
       .from("users")
@@ -368,6 +382,10 @@ export class SupabaseStorage implements IStorage {
     if (error) throw error;
     return user;
   }
+  async deleteUser(id: string) {
+    const { error } = await this.client.from("users").delete().eq("id", id);
+    if (error) throw error;
+  }
 
   async getAnnotation(id: string) {
     const { data, error } = await this.client
@@ -405,6 +423,7 @@ export class SupabaseStorage implements IStorage {
     let query = this.client.from("annotations").select("*").order("created_at", { ascending: false }).limit(limit);
     if (opts.userId) {
       query = query.eq("user_id", opts.userId);
+      if (opts.viewerUserId !== opts.userId) query = query.eq("is_public", 1);
     } else if (opts.followerOf) {
       const { data: follows, error: fErr } = await this.client
         .from("follows")
@@ -413,7 +432,7 @@ export class SupabaseStorage implements IStorage {
       if (fErr) throw fErr;
       const ids = (follows ?? []).map((r: { following_id: string }) => r.following_id);
       if (ids.length === 0) return [];
-      query = query.in("user_id", ids);
+      query = query.in("user_id", ids).eq("is_public", 1);
     } else {
       query = query.eq("is_public", 1);
     }
@@ -496,7 +515,9 @@ export class SupabaseStorage implements IStorage {
       clipText: input.clipText ?? null,
       commentaryText: input.commentaryText ?? null,
       commentaryAudioUrl: input.commentaryAudioUrl ?? null,
-      isPublic: input.isPublic ?? 1,
+      // Media annotations remain private while the extension captures and the
+      // server verifies their artifact. Finalization publishes atomically.
+      isPublic: input.sourceType === "article" ? (input.isPublic ?? 1) : 0,
       viewCount: 0,
       userId: input.userId,
       sourceUrl: input.sourceUrl,
@@ -602,7 +623,17 @@ export class SupabaseStorage implements IStorage {
         value,
         created_at: now(),
       });
-      if (iErr) throw iErr;
+      if (iErr) {
+        if (!isUniqueViolation(iErr)) throw iErr;
+        // Another request inserted the same unique user/annotation pair after
+        // our read. Converge on the requested value instead of surfacing 500.
+        const { error: retryError } = await this.client
+          .from("votes")
+          .update({ value, created_at: now() })
+          .eq("user_id", userId)
+          .eq("annotation_id", annotationId);
+        if (retryError) throw retryError;
+      }
     }
     const summary = await this.getVoteSummary(annotationId);
     return { ...summary, viewerVote: value };
@@ -660,7 +691,7 @@ export class SupabaseStorage implements IStorage {
       following_id: followingId,
       created_at: now(),
     });
-    if (error) throw error;
+    if (error && !isUniqueViolation(error)) throw error;
   }
   async unfollow(followerId: string, followingId: string) {
     const { error } = await this.client
@@ -748,7 +779,7 @@ export class SupabaseStorage implements IStorage {
       annotation_id: annotationId,
       created_at: now(),
     });
-    if (error) throw error;
+    if (error && !isUniqueViolation(error)) throw error;
   }
   async unbookmark(userId: string, annotationId: string) {
     const { error } = await this.client
@@ -838,23 +869,11 @@ export class SupabaseStorage implements IStorage {
   }
 
   async incrementViewCount(annotationId: string) {
-    // Best-effort increment. Read-modify-write is racy under concurrent load,
-    // but Supabase doesn't expose atomic increments via the JS client without
-    // an RPC; for view counters this is acceptable.
-    const { data, error } = await this.client
-      .from("annotations")
-      .select("view_count")
-      .eq("id", annotationId)
-      .maybeSingle();
+    const { data, error } = await this.client.rpc("increment_annotation_view", {
+      target_annotation_id: annotationId,
+    });
     if (error) throw error;
-    const current = Number((data as { view_count?: number } | null)?.view_count ?? 0);
-    const next = current + 1;
-    const { error: uErr } = await this.client
-      .from("annotations")
-      .update({ view_count: next })
-      .eq("id", annotationId);
-    if (uErr) throw uErr;
-    return next;
+    return Number(data ?? 0);
   }
   async getMostViewedAnnotation() {
     const { data, error } = await this.client
@@ -899,6 +918,8 @@ export class MemoryStorage implements IStorage {
   private claims = new Map<string, Claim>();
   private bookmarks = new Map<string, Bookmark>();
   private votes = new Map<string, Vote>();
+
+  async healthCheck() {}
 
   private voteSummary(annotationId: string) {
     let upvotes = 0;
@@ -946,6 +967,27 @@ export class MemoryStorage implements IStorage {
     this.users.set(u.id, u);
     return u;
   }
+  async deleteUser(id: string) {
+    this.users.delete(id);
+    for (const [annotationId, annotation] of Array.from(this.annotations.entries())) {
+      if (annotation.userId === id) await this.deleteAnnotation(annotationId);
+    }
+    for (const [followId, follow] of Array.from(this.follows.entries())) {
+      if (follow.followerId === id || follow.followingId === id) this.follows.delete(followId);
+    }
+    for (const [commentId, comment] of Array.from(this.comments.entries())) {
+      if (comment.userId === id) this.comments.delete(commentId);
+    }
+    for (const [bookmarkId, bookmark] of Array.from(this.bookmarks.entries())) {
+      if (bookmark.userId === id) this.bookmarks.delete(bookmarkId);
+    }
+    for (const [voteId, vote] of Array.from(this.votes.entries())) {
+      if (vote.userId === id) this.votes.delete(voteId);
+    }
+    for (const [claimId, claim] of Array.from(this.claims.entries())) {
+      if (claim.claimantUserId === id) this.claims.set(claimId, { ...claim, claimantUserId: null });
+    }
+  }
 
   async getAnnotation(id: string) {
     return this.annotations.get(id);
@@ -972,12 +1014,13 @@ export class MemoryStorage implements IStorage {
     let rows = Array.from(this.annotations.values());
     if (opts.userId) {
       rows = rows.filter((a) => a.userId === opts.userId);
+      if (opts.viewerUserId !== opts.userId) rows = rows.filter((a) => a.isPublic === 1);
     } else if (opts.followerOf) {
       const followingIds = new Set(
         Array.from(this.follows.values()).filter((f) => f.followerId === opts.followerOf).map((f) => f.followingId)
       );
       if (followingIds.size === 0) return [];
-      rows = rows.filter((a) => followingIds.has(a.userId));
+      rows = rows.filter((a) => followingIds.has(a.userId) && a.isPublic === 1);
     } else {
       rows = rows.filter((a) => a.isPublic === 1);
     }
@@ -1016,7 +1059,7 @@ export class MemoryStorage implements IStorage {
       clipText: input.clipText ?? null,
       commentaryText: input.commentaryText ?? null,
       commentaryAudioUrl: input.commentaryAudioUrl ?? null,
-      isPublic: input.isPublic ?? 1,
+      isPublic: input.sourceType === "article" ? (input.isPublic ?? 1) : 0,
       viewCount: 0,
       userId: input.userId,
       sourceUrl: input.sourceUrl,
@@ -1234,12 +1277,59 @@ export class MemoryStorage implements IStorage {
 
 // ---------- Active storage selection ----------------------------------------
 
-function buildStorage(): { storage: IStorage; backend: "supabase" | "memory" } {
+export class StorageUnavailableError extends Error {
+  readonly statusCode = 503;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "StorageUnavailableError";
+  }
+}
+
+export type StorageBackend = "supabase" | "memory" | "unavailable";
+
+function unavailableStorage(message: string): IStorage {
+  const error = new StorageUnavailableError(message);
+  return new Proxy({} as IStorage, {
+    get(_target, property) {
+      if (property === "healthCheck") {
+        return async () => {
+          throw error;
+        };
+      }
+      return async () => {
+        throw error;
+      };
+    },
+  });
+}
+
+function buildStorage(): { storage: IStorage; backend: StorageBackend } {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_ANON_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const publishableKey = process.env.SUPABASE_ANON_KEY;
+  if (process.env.NODE_ENV === "production" && url && !serviceKey) {
+    return {
+      storage: unavailableStorage("Production Supabase persistence requires a server-only service role key"),
+      backend: "unavailable",
+    };
+  }
+  const key = serviceKey || publishableKey;
   if (url && key) {
     const client = createClient(url, key, { auth: { persistSession: false } });
     return { storage: new SupabaseStorage(client), backend: "supabase" };
+  }
+  if (url || serviceKey || publishableKey) {
+    return {
+      storage: unavailableStorage("Supabase persistence is partially configured"),
+      backend: "unavailable",
+    };
+  }
+  if (process.env.NODE_ENV === "production") {
+    return {
+      storage: unavailableStorage("Durable Supabase persistence is not configured"),
+      backend: "unavailable",
+    };
   }
   return { storage: new MemoryStorage(), backend: "memory" };
 }

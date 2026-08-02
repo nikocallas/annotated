@@ -4,42 +4,12 @@ import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
+import { configureHttpSecurity } from "./http-security";
 
 const app = express();
 const httpServer = createServer(app);
 
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
-  }
-}
-
-app.use(
-  express.json({
-    // Bump from default 100kb to accommodate inline audio commentary (capped
-    // at ~90s of 32kbps Opus ≈ 360KB, base64 + JSON envelope ≈ 600KB) and
-    // captured-tab video clips uploaded by the extension (capped at ≤90s,
-    // ≤480p — typically 4–10MB base64).
-    limit: "32mb",
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-
-app.use(express.urlencoded({ extended: false }));
-
-// Permissive CORS so the Chrome extension (origin: chrome-extension://...) and
-// the file:// or deployed sidepanel can hit the API. Production should narrow
-// this to the extension ID and the deployed origin.
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-  next();
-});
+configureHttpSecurity(app);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -52,46 +22,24 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
-    }
-  });
-
-  next();
-});
-
 (async () => {
-  await registerRoutes(httpServer, app);
+  registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const requestedStatus = Number(err?.status || err?.statusCode || 500);
+    const status = requestedStatus >= 400 && requestedStatus < 500 ? requestedStatus : 500;
 
-    console.error("Internal Server Error:", err);
+    console.error(JSON.stringify({
+      event: "standalone_request_failed",
+      status,
+      errorName: err instanceof Error ? err.name : "Error",
+    }));
 
     if (res.headersSent) {
       return next(err);
     }
 
-    return res.status(status).json({ message });
+    return res.status(status).json({ error: status === 500 ? "Internal server error" : "Request failed" });
   });
 
   // importantly only setup vite in development and after
@@ -113,7 +61,6 @@ app.use((req, res, next) => {
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
     },
     () => {
       log(`serving on port ${port}`);

@@ -1,11 +1,26 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { useRoute } from "wouter";
 import { AppLayout } from "@/components/AppLayout";
 import { FeedCard } from "@/components/FeedCard";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiFetch, apiRequest, queryClient } from "@/lib/queryClient";
 import type { AnnotationWithRelations, User } from "@shared/schema";
 
 interface ProfileData {
@@ -18,7 +33,10 @@ interface ProfileData {
 export default function ProfilePage() {
   const [, params] = useRoute("/u/:username");
   const username = (params?.username ?? "").toLowerCase();
-  const { user: me } = useAuth();
+  const { user: me, logout } = useAuth();
+  const { toast } = useToast();
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   // Fetch the profile by username directly. This is authoritative — it doesn't
   // depend on the /api/users list (which can be cached, paginated, or stale)
@@ -26,7 +44,7 @@ export default function ProfilePage() {
   const { data, isLoading, isError, error } = useQuery<ProfileData>({
     queryKey: ["/api/users/by-username", username],
     queryFn: async () => {
-      const res = await fetch(`/api/users/by-username/${encodeURIComponent(username)}`);
+      const res = await apiFetch(`/api/users/by-username/${encodeURIComponent(username)}`);
       if (res.status === 404) {
         throw new Error("not_found");
       }
@@ -47,7 +65,7 @@ export default function ProfilePage() {
     queryKey: ["/api/users", targetId, "is-following", { followerId: me?.id ?? "" }],
     queryFn: async () => {
       if (!me || !targetId) return { following: false };
-      const res = await fetch(`/api/users/${targetId}/is-following?followerId=${me.id}`);
+      const res = await apiFetch(`/api/users/${targetId}/is-following`);
       return res.json();
     },
     enabled: !!me && !!targetId,
@@ -57,7 +75,7 @@ export default function ProfilePage() {
     mutationFn: async (action: "follow" | "unfollow") => {
       if (!me || !targetId) return;
       const method = action === "follow" ? "POST" : "DELETE";
-      await apiRequest(method, `/api/users/${targetId}/follow`, { followerId: me.id });
+      await apiRequest(method, `/api/users/${targetId}/follow`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users/by-username", username] });
@@ -97,6 +115,23 @@ export default function ProfilePage() {
 
   const isMe = me?.id === target.id;
   const isFollowing = followingState?.following ?? false;
+
+  async function deleteAccount() {
+    if (deleteConfirmation !== "DELETE") return;
+    setDeleting(true);
+    try {
+      await apiRequest("DELETE", "/api/account", { confirmation: deleteConfirmation });
+      await logout().catch(() => {});
+      window.location.assign("/");
+    } catch (error) {
+      setDeleting(false);
+      toast({
+        title: "Account deletion failed",
+        description: error instanceof Error ? error.message : "Please try again or contact support.",
+        variant: "destructive",
+      });
+    }
+  }
 
   return (
     <AppLayout>
@@ -148,6 +183,51 @@ export default function ProfilePage() {
             (data?.annotations ?? []).map((a) => <FeedCard key={a.id} annotation={a} />)
           )}
         </div>
+
+        {isMe && (
+          <section className="mt-12 border-t border-border pt-6" aria-labelledby="account-controls-title">
+            <h2 id="account-controls-title" className="text-sm font-semibold">Account controls</h2>
+            <p className="mt-1 text-xs text-muted-foreground max-w-xl">
+              Deleting your account permanently removes your profile, annotations, comments,
+              social interactions, stored clips, commentary audio, and OAuth identity.
+            </p>
+            <AlertDialog onOpenChange={(open) => { if (!open) setDeleteConfirmation(""); }}>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="mt-4" data-testid="button-delete-account">
+                  Delete account
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete your Annotated account?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This cannot be undone. Type DELETE to remove your account and published content.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="grid gap-2">
+                  <Label htmlFor="delete-account-confirmation">Confirmation</Label>
+                  <Input
+                    id="delete-account-confirmation"
+                    value={deleteConfirmation}
+                    onChange={(event) => setDeleteConfirmation(event.target.value)}
+                    autoComplete="off"
+                    data-testid="input-delete-account-confirmation"
+                  />
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={(event) => { event.preventDefault(); void deleteAccount(); }}
+                    disabled={deleting || deleteConfirmation !== "DELETE"}
+                    data-testid="button-confirm-delete-account"
+                  >
+                    {deleting ? "Deleting…" : "Permanently delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </section>
+        )}
       </div>
     </AppLayout>
   );

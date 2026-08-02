@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
+import { apiFetch } from "@/lib/queryClient";
 
 type SortKey = "latest" | "most-viewed" | "most-popular" | "most-commented";
 type FilterKey = "all" | "youtube" | "article" | "podcast";
@@ -116,6 +117,7 @@ export default function FeedPage() {
 
         {/* Center feed */}
         <div className="min-w-0">
+          <h1 className="sr-only">Annotated public feed</h1>
           {!tabLocked && (
             <TopFilters
               filter={filter}
@@ -170,7 +172,7 @@ function LeftSidebar({
               key={opt.key}
               type="button"
               onClick={() => onTabChange(opt.key)}
-              className={`w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium hover-elevate ${
+              className={`min-h-11 w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium hover-elevate ${
                 active
                   ? "bg-sidebar-accent text-foreground"
                   : "text-muted-foreground"
@@ -229,7 +231,7 @@ function TopFilters({
             key={opt.key}
             type="button"
             onClick={() => onFilterChange(opt.key)}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium hover-elevate ${
+            className={`min-h-11 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium hover-elevate ${
               active
                 ? "bg-foreground text-background border-foreground"
                 : "bg-card text-foreground border-card-border"
@@ -248,7 +250,7 @@ function TopFilters({
           <SelectTrigger
             aria-label="Sort feed"
             data-testid="select-feed-sort"
-            className="rounded-full border border-card-border bg-card px-4 py-1.5 h-auto text-sm font-medium hover-elevate w-auto gap-2 whitespace-nowrap [&>span]:line-clamp-none [&>span]:whitespace-nowrap"
+            className="min-h-11 rounded-full border border-card-border bg-card px-4 py-1.5 h-auto text-sm font-medium hover-elevate w-auto gap-2 whitespace-nowrap [&>span]:line-clamp-none [&>span]:whitespace-nowrap"
           >
             <ArrowUpDown className="w-3.5 h-3.5 opacity-70 shrink-0" />
             <SelectValue />
@@ -296,7 +298,6 @@ function FeedList({
     fetcher: () => Promise<AnnotationWithRelations[]>;
     enabled: boolean;
   }>(() => {
-    const viewerParam = user ? `&userId=${user.id}` : "";
     const viewerKey = user?.id ?? "";
     switch (tab) {
       case "following":
@@ -304,7 +305,7 @@ function FeedList({
           queryKey: ["/api/feed", { followerOf: user?.id ?? "", viewer: viewerKey }],
           fetcher: async () => {
             if (!user) return [];
-            const res = await fetch(`/api/feed?followerOf=${user.id}${viewerParam}`);
+            const res = await apiFetch("/api/feed?followerOf=1");
             return res.json();
           },
           enabled: !!user,
@@ -314,7 +315,7 @@ function FeedList({
           queryKey: ["/api/bookmarks", { userId: user?.id ?? "" }],
           fetcher: async () => {
             if (!user) return [];
-            const res = await fetch(`/api/bookmarks?userId=${user.id}`);
+            const res = await apiFetch("/api/bookmarks");
             return res.json();
           },
           enabled: !!user,
@@ -325,7 +326,7 @@ function FeedList({
         return {
           queryKey: ["/api/feed", { shuffle: 1, viewer: viewerKey }],
           fetcher: async () => {
-            const res = await fetch(`/api/feed?shuffle=1${viewerParam}`);
+            const res = await apiFetch("/api/feed?shuffle=1");
             return res.json();
           },
           enabled: true,
@@ -347,7 +348,7 @@ function FeedList({
     queryKey: ["/api/bookmarks/ids", { userId: user?.id ?? "" }],
     queryFn: async () => {
       if (!user) return { ids: [] };
-      const res = await fetch(`/api/bookmarks/ids?userId=${user.id}`);
+      const res = await apiFetch("/api/bookmarks/ids");
       return res.json();
     },
     enabled: !!user,

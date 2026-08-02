@@ -1,8 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import { apiRequest } from "@/lib/queryClient";
+import {
+  ANNOTATED_EXTENSION_ID,
+  EXTENSION_AUTH_FLOW_KEY,
+  parseStoredExtensionAuthFlow,
+} from "@/lib/extension-auth";
 import type { User } from "@shared/schema";
 
 type ErrorKind = "x_no_email" | "generic";
@@ -46,36 +52,32 @@ declare global {
   }
 }
 
-// Returns the extensionId carried over from the sidepanel sign-in tab launcher.
-// We rely on a query parameter (extensionId) supplied by the sidepanel rather
-// than guessing — the same web page is opened in non-extension contexts and
-// must not assume an ID. We persist the parameter through Supabase's OAuth
-// hop using sessionStorage so it survives the redirect to the provider.
-const EXT_FLOW_KEY = "annotated_extension_auth";
-
-function readExtensionFlow(): { extensionId: string } | null {
+// The side panel marks the OAuth tab before the provider redirect. The parsed
+// flow is accepted only when it names Annotated's pinned public extension ID.
+function readExtensionFlow(): { extensionId: typeof ANNOTATED_EXTENSION_ID } | null {
   try {
-    const raw = sessionStorage.getItem(EXT_FLOW_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { extensionId?: string; ts?: number };
-    if (!parsed.extensionId) return null;
-    // Ignore very old entries (>10 min) so a stale value can't hijack a
-    // future sign-in.
-    if (parsed.ts && Date.now() - parsed.ts > 10 * 60 * 1000) {
-      sessionStorage.removeItem(EXT_FLOW_KEY);
-      return null;
-    }
-    return { extensionId: parsed.extensionId };
+    const parsed = parseStoredExtensionAuthFlow(
+      sessionStorage.getItem(EXTENSION_AUTH_FLOW_KEY),
+    );
+    if (!parsed) sessionStorage.removeItem(EXTENSION_AUTH_FLOW_KEY);
+    return parsed ? { extensionId: parsed.extensionId } : null;
   } catch {
     return null;
   }
 }
 
 function clearExtensionFlow() {
-  try { sessionStorage.removeItem(EXT_FLOW_KEY); } catch {}
+  try { sessionStorage.removeItem(EXTENSION_AUTH_FLOW_KEY); } catch {}
 }
 
-function postUserToExtension(extensionId: string, user: User): Promise<boolean> {
+interface ExtensionAuthHandoff {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number | null;
+}
+
+function postUserToExtension(auth: ExtensionAuthHandoff): Promise<boolean> {
   return new Promise((resolve) => {
     const c = window.chrome;
     if (!c?.runtime?.sendMessage) {
@@ -83,7 +85,7 @@ function postUserToExtension(extensionId: string, user: User): Promise<boolean> 
       return;
     }
     try {
-      c.runtime.sendMessage(extensionId, { type: "ANNOTATED_AUTH_SUCCESS", user }, (resp) => {
+      c.runtime.sendMessage(ANNOTATED_EXTENSION_ID, { type: "ANNOTATED_AUTH_SUCCESS", auth }, (resp) => {
         const err = c.runtime?.lastError;
         if (err) return resolve(false);
         resolve(!!(resp as { ok?: boolean } | undefined)?.ok);
@@ -94,11 +96,52 @@ function postUserToExtension(extensionId: string, user: User): Promise<boolean> 
   });
 }
 
+interface PendingExtensionSession {
+  extensionId: typeof ANNOTATED_EXTENSION_ID;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number | null;
+}
+
 export default function AuthCallbackPage() {
   const [status, setStatus] = useState<"working" | "error" | "extension_done">("working");
   const [error, setError] = useState<AuthError | null>(null);
   const [progress, setProgress] = useState<string>("Finishing sign-in...");
-  const [extensionHandoff, setExtensionHandoff] = useState<"pending" | "ok" | "manual">("pending");
+  const [extensionHandoff, setExtensionHandoff] = useState<"pending" | "retrying" | "ok" | "manual">("pending");
+  const pendingExtensionSession = useRef<PendingExtensionSession | null>(null);
+
+  const attemptExtensionHandoff = useCallback(async () => {
+    const pending = pendingExtensionSession.current;
+    if (!pending || pending.extensionId !== ANNOTATED_EXTENSION_ID) return;
+    setStatus("working");
+    setProgress("Sending sign-in back to the extension…");
+    setExtensionHandoff("retrying");
+    try {
+      const res = await apiRequest("POST", "/api/auth/supabase");
+      const payload = (await res.json()) as { user: User };
+      const sent = await postUserToExtension({
+        user: payload.user,
+        accessToken: pending.accessToken,
+        refreshToken: pending.refreshToken,
+        expiresAt: pending.expiresAt,
+      });
+      if (sent) {
+        clearExtensionFlow();
+        pendingExtensionSession.current = null;
+        setExtensionHandoff("ok");
+        setStatus("extension_done");
+        setTimeout(() => {
+          try { window.close(); } catch {}
+        }, 800);
+        return;
+      }
+    } catch {
+      // Keep the bounded, pinned flow and session in memory so the user can
+      // retry after installing/re-enabling the official extension.
+    }
+    setExtensionHandoff("manual");
+    setStatus("extension_done");
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -115,59 +158,45 @@ export default function AuthCallbackPage() {
         setError(classifyError(errParam));
         return;
       }
-      if (!code) {
-        // No code present — Supabase may have already established the session
-        // (e.g. user navigated back). Bounce to the feed.
-        window.location.replace("/feed");
-        return;
-      }
-      setProgress("Exchanging session…");
-      const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-      if (exchangeError) {
-        setStatus("error");
-        setError(classifyError(exchangeError.message));
-        return;
-      }
-      const accessToken = data.session?.access_token;
-
       const extFlow = readExtensionFlow();
-      if (extFlow && accessToken) {
-        // Mint the app-local user record server-side (same endpoint the SPA
-        // uses) and hand it off to the extension via runtime.sendMessage.
-        setProgress("Sending sign-in back to the extension…");
-        try {
-          const res = await apiRequest("POST", "/api/auth/supabase", { accessToken });
-          if (res.ok) {
-            const payload = (await res.json()) as { user: User };
-            const sent = await postUserToExtension(extFlow.extensionId, payload.user);
-            clearExtensionFlow();
-            setExtensionHandoff(sent ? "ok" : "manual");
-            setStatus("extension_done");
-            // Auto-close after a beat if the handoff worked. Some browsers
-            // disallow window.close() on tabs they didn't open; in that case
-            // we leave the success page visible.
-            if (sent) {
-              setTimeout(() => {
-                try { window.close(); } catch {}
-              }, 800);
-            }
-            return;
-          }
-        } catch {
-          // Fall through to the manual instruction state — user can still
-          // close the tab and return to the side panel, where loadUser()
-          // picks up the next time the panel mounts.
-          clearExtensionFlow();
-          setExtensionHandoff("manual");
-          setStatus("extension_done");
+      let session;
+      if (code) {
+        setProgress("Exchanging session…");
+        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          setStatus("error");
+          setError(classifyError(exchangeError.message));
           return;
         }
+        session = data.session;
+      } else {
+        // A reload after a failed extension handoff no longer discards the
+        // completed OAuth session. Reuse it while the pinned flow is fresh.
+        const { data } = await supabase.auth.getSession();
+        session = data.session;
+      }
+
+      if (extFlow && session?.access_token && session.refresh_token) {
+        pendingExtensionSession.current = {
+          extensionId: extFlow.extensionId,
+          accessToken: session.access_token,
+          refreshToken: session.refresh_token,
+          expiresAt: session.expires_at ?? null,
+        };
+        await attemptExtensionHandoff();
+        return;
+      }
+      if (extFlow && !session) {
+        window.location.replace(
+          `/login?extension=1&extensionId=${encodeURIComponent(ANNOTATED_EXTENSION_ID)}`,
+        );
+        return;
       }
 
       // Default (web app): send the user to the feed.
       window.location.replace("/feed");
     })();
-  }, []);
+  }, [attemptExtensionHandoff]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -204,10 +233,20 @@ export default function AuthCallbackPage() {
                   This tab will close automatically — if it doesn't, you can close it now.
                 </p>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  We couldn't reach the Annotated extension automatically.
-                  Close this tab and reopen the side panel — your sign-in will be picked up.
-                </p>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    We couldn't reach the official Annotated extension. Make sure
+                    it is installed and enabled, then retry this secure handoff.
+                  </p>
+                  <Button
+                    type="button"
+                    onClick={() => void attemptExtensionHandoff()}
+                    disabled={extensionHandoff === "retrying"}
+                    data-testid="button-extension-handoff-retry"
+                  >
+                    {extensionHandoff === "retrying" ? "Retrying…" : "Retry extension handoff"}
+                  </Button>
+                </div>
               )}
               <div className="mt-6 text-xs">
                 <a href="/feed" className="underline hover:text-foreground">

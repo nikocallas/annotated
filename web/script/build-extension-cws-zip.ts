@@ -22,6 +22,7 @@ if (existsSync(outFile)) rmSync(outFile);
 execFileSync(
   "zip",
   [
+    "-X",
     "-r",
     outFile,
     ".",
@@ -35,6 +36,8 @@ execFileSync(
     "**/dist/*",
     ".git/*",
     "*.md",
+    "*.d.mts",
+    "**/*.d.mts",
   ],
   { cwd: extensionDir, stdio: "inherit" },
 );

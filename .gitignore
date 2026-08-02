@@ -4,6 +4,10 @@ annotated-chrome-web-store.zip
 annotated-extension-local-test.zip
 .vercel
 
+# Supabase CLI state is machine-local and may contain linked-project metadata.
+supabase/.branches/
+supabase/.temp/
+
 # macOS metadata
 .DS_Store
 **/.DS_Store

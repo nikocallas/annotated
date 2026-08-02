@@ -35,20 +35,20 @@ export function AppLayout({
       <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 h-14 flex items-center gap-4 sm:gap-6">
           <Logo />
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1" aria-label="Primary">
             {NAV.map((item) => {
               // External links (Home → /) bypass the SPA hash router so the
               // user lands on the path-based landing page.
               const active = !item.external && location === item.href;
               const Icon = item.icon;
-              const className = `px-3 py-1.5 rounded-md text-sm font-medium hover-elevate flex items-center gap-2 ${
+              const className = `min-h-11 px-3 py-1.5 rounded-md text-sm font-medium hover-elevate flex items-center gap-2 ${
                 active ? "text-foreground" : "text-muted-foreground"
               }`;
               const testId = `link-nav-${item.label.toLowerCase()}`;
               if (item.external) {
                 return (
-                  <a key={`${item.label}-${item.href}`} href={item.href} className={className} data-testid={testId}>
-                    <Icon className="w-4 h-4" />
+                  <a key={`${item.label}-${item.href}`} href={item.href} className={className} aria-current={active ? "page" : undefined} data-testid={testId}>
+                    <Icon className="w-4 h-4" aria-hidden />
                     {item.label}
                   </a>
                 );
@@ -58,9 +58,10 @@ export function AppLayout({
                   key={`${item.label}-${item.href}`}
                   href={item.href}
                   className={className}
+                  aria-current={active ? "page" : undefined}
                   data-testid={testId}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-4 h-4" aria-hidden />
                   {item.label}
                 </Link>
               );
@@ -101,24 +102,24 @@ export function AppLayout({
           </div>
         </div>
         {/* Mobile nav */}
-        <nav className="md:hidden border-t border-border flex">
+        <nav className="md:hidden border-t border-border flex" aria-label="Primary mobile">
           {NAV.map((item) => {
             const active = !item.external && location === item.href;
             const Icon = item.icon;
-            const className = `flex-1 px-3 py-2 text-xs font-medium hover-elevate flex items-center justify-center gap-1.5 ${
+            const className = `min-h-11 flex-1 px-3 py-2 text-xs font-medium hover-elevate flex items-center justify-center gap-1.5 ${
               active ? "text-foreground" : "text-muted-foreground"
             }`;
             if (item.external) {
               return (
-                <a key={`${item.label}-${item.href}-m`} href={item.href} className={className}>
-                  <Icon className="w-3.5 h-3.5" />
+                <a key={`${item.label}-${item.href}-m`} href={item.href} className={className} aria-current={active ? "page" : undefined}>
+                  <Icon className="w-3.5 h-3.5" aria-hidden />
                   {item.label}
                 </a>
               );
             }
             return (
-              <Link key={`${item.label}-${item.href}-m`} href={item.href} className={className}>
-                <Icon className="w-3.5 h-3.5" />
+              <Link key={`${item.label}-${item.href}-m`} href={item.href} className={className} aria-current={active ? "page" : undefined}>
+                <Icon className="w-3.5 h-3.5" aria-hidden />
                 {item.label}
               </Link>
             );
@@ -130,11 +131,11 @@ export function AppLayout({
         <div className="mx-auto max-w-6xl px-6 py-8 text-sm text-muted-foreground flex flex-col md:flex-row gap-6 md:gap-4 md:items-center md:justify-between">
           <Logo />
           <div className="flex gap-4 flex-wrap">
-            <a href="/" className="hover:text-foreground">Home</a>
-            <a href="/demo" className="hover:text-foreground" data-testid="link-footer-demo">Demo Video</a>
-            <a href="/support" className="hover:text-foreground" data-testid="link-footer-support">Support</a>
-            <a href="/privacy" className="hover:text-foreground" data-testid="link-footer-privacy">Privacy</a>
-            <a href="/tos" className="hover:text-foreground" data-testid="link-footer-tos">Terms</a>
+            <a href="/" className="inline-flex min-h-11 items-center hover:text-foreground">Home</a>
+            <a href="/demo" className="inline-flex min-h-11 items-center hover:text-foreground" data-testid="link-footer-demo">Demo Video</a>
+            <a href="/support" className="inline-flex min-h-11 items-center hover:text-foreground" data-testid="link-footer-support">Support</a>
+            <a href="/privacy" className="inline-flex min-h-11 items-center hover:text-foreground" data-testid="link-footer-privacy">Privacy</a>
+            <a href="/tos" className="inline-flex min-h-11 items-center hover:text-foreground" data-testid="link-footer-tos">Terms</a>
           </div>
         </div>
         <div

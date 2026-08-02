@@ -23,9 +23,11 @@ import {
 } from "lucide-react";
 import { SiX } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiFetch, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
 import type { AnnotationWithRelations } from "@shared/schema";
+
+const CANONICAL_ORIGIN = "https://www.annotatedextension.com";
 
 export default function AnnotationDetailPage() {
   const [, params] = useRoute("/a/:id");
@@ -37,8 +39,7 @@ export default function AnnotationDetailPage() {
   const { data, isLoading } = useQuery<AnnotationWithRelations>({
     queryKey: ["/api/annotations", id, { userId: user?.id ?? "" }],
     queryFn: async () => {
-      const url = user ? `/api/annotations/${id}?userId=${user.id}` : `/api/annotations/${id}`;
-      const res = await fetch(url);
+      const res = await apiFetch(`/api/annotations/${id}`);
       if (!res.ok) throw new Error(`${res.status}`);
       return res.json();
     },
@@ -50,7 +51,7 @@ export default function AnnotationDetailPage() {
     queryKey: ["/api/bookmarks/ids", { userId: user?.id ?? "" }],
     queryFn: async () => {
       if (!user) return { ids: [] };
-      const res = await fetch(`/api/bookmarks/ids?userId=${user.id}`);
+      const res = await apiFetch("/api/bookmarks/ids");
       return res.json();
     },
     enabled: !!user,
@@ -63,7 +64,7 @@ export default function AnnotationDetailPage() {
     mutationFn: async (action: "bookmark" | "unbookmark") => {
       if (!user) return;
       const method = action === "bookmark" ? "POST" : "DELETE";
-      await apiRequest(method, `/api/annotations/${id}/bookmark`, { userId: user.id });
+      await apiRequest(method, `/api/annotations/${id}/bookmark`);
     },
     onSuccess: (_d, action) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookmarks"] });
@@ -88,7 +89,7 @@ export default function AnnotationDetailPage() {
   }, [id]);
 
   function handleShare() {
-    const url = typeof window !== "undefined" ? window.location.href : "";
+    const url = `${CANONICAL_ORIGIN}/a/${encodeURIComponent(id)}`;
     if (navigator.clipboard) {
       navigator.clipboard
         .writeText(url)
@@ -103,7 +104,7 @@ export default function AnnotationDetailPage() {
 
   function handlePostOnX() {
     if (!data) return;
-    const url = typeof window !== "undefined" ? window.location.href : "";
+    const url = `${CANONICAL_ORIGIN}/a/${encodeURIComponent(id)}`;
     const text = `${data.sourceTitle ?? "Annotated clip"} — clipped on @annotated`;
     const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
     window.open(intent, "_blank", "noopener,noreferrer");

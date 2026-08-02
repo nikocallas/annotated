@@ -1,228 +1,96 @@
-# annotated
+# Annotated
 
-A Chrome side-panel extension + companion web app for clipping and annotating
-the best moments on the web.
+Annotated is a public social annotation network whose primary creation surface is a Chrome Manifest V3 side panel. A user can select a passage or a 90-second-or-shorter moment from the active page, add written or recorded commentary, publish it, and discuss it on a canonical public annotation page that always links to the original source.
 
-```
-annotated/
-├── extension/                     # Chrome MV3 side-panel extension (load unpacked)
-├── shared/                        # Shared TypeScript types
-├── supabase/migrations/           # Postgres schema + seed for the live database
-└── web/                           # Express + Vite + React app, deploys to Vercel
-```
+Production: [www.annotatedextension.com](https://www.annotatedextension.com)
 
-## What's wired up
+Chrome Web Store: [Annotated](https://chromewebstore.google.com/detail/annotated/eaealcbiidjigfndjchchbnjdjicbajb)
 
-- **Chrome extension** (Manifest V3, Side Panel API) with background service
-  worker, content script that detects YouTube / article / podcast pages and
-  forwards text selections, and a vanilla-JS sidepanel UI.
-- **Web app** (Express + Vite + React + Tailwind + shadcn) serving the public
-  feed, profiles, and annotation landing pages — including the **prominent
-  "File a claim" button** required by the spec on every annotation page, and
-  a **clickable source URL** on every clip.
-- **API** (Express, Supabase client) with users, annotations, follows,
-  comments, claims, and a clip-creation endpoint that enforces the **90-second
-  cap** and **240p downscale** server-side. Falls back to in-memory storage
-  when Supabase env vars are absent.
-- **Demo data** seeded by `supabase/migrations/0002_seed.sql` (users,
-  annotations across all three source types, follows, comments). The Express
-  API also seeds the in-memory fallback automatically for local dev.
+## Architecture
 
-## Hard requirements (from spec)
-
-| Requirement                                       | Where                                       |
-|---------------------------------------------------|---------------------------------------------|
-| Sidebar Chrome extension is the primary surface   | `extension/` (MV3 + Side Panel API)         |
-| Visible "File a claim" button on every page       | `web/client/src/components/FileClaimButton.tsx` (rendered top + bottom of every annotation detail page) |
-| Source URL link on every clip                     | `web/client/src/components/FeedCard.tsx`, `pages/annotation-detail.tsx` |
-| Max 90s clips, video < 480p (240p)                | `web/server/clip-processing.ts`, `web/shared/schema.ts`, `supabase/migrations/0001_init.sql` (CHECK constraint) |
-| OAuth via X or Google only                        | `web/client/src/pages/login.tsx`, `web/server/routes.ts` |
-| Public social feed with follow + comments         | Feed/Following pages, `CommentThread`       |
-| Text + audio commentary                           | Sidepanel `MediaRecorder` + commentary fields |
-| Hash routing for SPA                              | `web/client/src/App.tsx` uses `useHashLocation` |
-
-The fair-use dispute API is available at both `POST /api/annotations/:id/claims`
-and the spec-compatible `POST /api/claims` shape with `annotationId` in the body.
-
-## Live deployment — Vercel + Supabase
-
-Live service:
-
-- Web app: `https://annotatedextension.com` (custom domain in front of the Vercel deployment; the legacy `annotated-seven.vercel.app` URL also resolves)
-- GitHub repo: `https://github.com/nikocallas/annotated`
-- Supabase project: `cpqmjujhcwpavrsjadjz` in the Laymen organization
-- Vercel project: `niko-callas-projects/annotated`
-
-This project is designed to deploy to **Vercel** with **Supabase** as the
-Postgres backend. The Vercel build serves the Vite SPA from `web/dist/public`
-and routes `/api/*` to a single serverless function at `web/api/index.js`.
-`web/api/index.js` is a checked-in placeholder; `npm run build` overwrites it
-with a bundled Express handler from `web/server/vercel-handler.ts`.
-
-### 1. Apply the Supabase schema
-
-The Supabase project is preconfigured at
-`https://cpqmjujhcwpavrsjadjz.supabase.co` (project id
-`cpqmjujhcwpavrsjadjz`). Apply migrations once via the Supabase SQL editor or
-the Supabase MCP:
-
-```
-supabase/migrations/0001_init.sql      # tables, indexes, constraints (incl. 90s cap)
-supabase/migrations/0002_seed.sql      # idempotent demo seed (users, annotations, follows, comments)
+```text
+extension/                  Chrome MV3 side panel, active-tab capture, OAuth handoff
+web/client/                 React public site and social experience
+web/server/                 Express API and Vercel handlers
+web/shared/                 Runtime schemas and shared product types
+supabase/migrations/        Additive Postgres, RLS, Storage, and audit migrations
+docs/resubmission-readiness.md
 ```
 
-The `0001_init.sql` migration mirrors the existing API shape verbatim — same
-column names (snake_case), same defaults, same enum-style CHECK constraints.
-The 90-second clip cap is enforced as a Postgres CHECK constraint as well as
-in Zod and the Express handlers (defense in depth).
+The extension captures the user-selected tab interval with Chrome's supported `tabCapture`/offscreen-document APIs. Video is rendered through a 240p canvas before WebM encoding; podcasts are encoded audio-only. The blob uploads directly to a short-lived, owner-scoped Supabase signed URL. The API downloads the completed object in a trusted finalization step and inspects its WebM container, duration, tracks, and dimensions before publishing the annotation. Large media never crosses a Vercel JSON endpoint, and database rows never contain `data:` URLs.
 
-### 2. Configure Vercel
+The web client uses Supabase only for Google/X OAuth. Every product mutation goes through the API with a bearer access token; the API verifies that token and derives the actor. Production uses the server-only service role for validated persistence. Direct `anon` and `authenticated` table privileges are revoked even though RLS policies are also enabled and forced.
 
-Set the project's root directory to `web/`. Vercel will read `web/vercel.json`,
-which:
+## Local verification
 
-- Builds with `npm run build` and serves `dist/public/` as the static SPA.
-- Routes `/api/*` to the bundled serverless function `api/index.js`.
-- Falls back all other paths to `index.html` so hash routing keeps working.
-
-Set the following **environment variables** in Vercel (production + preview):
-
-| Var                                | Used by  | Notes                                                       |
-|------------------------------------|----------|-------------------------------------------------------------|
-| `SUPABASE_URL`                     | server   | `https://cpqmjujhcwpavrsjadjz.supabase.co`                  |
-| `SUPABASE_ANON_KEY`                | server   | Supabase publishable key                                    |
-| `VITE_SUPABASE_URL`                | client   | Same value as `SUPABASE_URL`; Vite inlines this at build    |
-| `VITE_SUPABASE_PUBLISHABLE_KEY`    | client   | Same value as `SUPABASE_ANON_KEY`                           |
-| `VITE_CHROME_WEB_STORE_URL`        | client   | Optional. When set, "Get the Chrome Extension" buttons link to the Web Store listing (e.g. `https://chromewebstore.google.com/detail/<extension-id>`); when unset, they fall back to the bundled `/downloads/annotated-extension.zip`. |
-| `RESEND_API_KEY`                   | server   | Required for `/support` to send email via Resend's REST API. When unset, `POST /api/support` returns 503 and the form shows a friendly error. **Must be set in Vercel for live emails.** |
-| `SUPPORT_TO_EMAIL`                  | server   | Destination address for the `/support` contact form. Defaults to `support@annotatedextensions.com`. Server-side only — never exposed to the browser. |
-| `SUPPORT_FROM_EMAIL`                | server   | Optional sender. Defaults to `Annotated Support <onboarding@resend.dev>` (Resend's shared sandbox sender, fine for testing). For production, set up a verified sending domain in Resend and use it here, e.g. `Annotated Support <support@annotatedextensions.com>`. |
-| `SUPABASE_SERVICE_ROLE_KEY`         | server   | Optional. Used by the File-a-claim flow to look up the post owner's email via Supabase Auth admin so the poster can be notified when a claim is filed. Without it, the filer + support emails still go out; the poster simply isn't emailed. Must be the **service role** key, server-side only. |
-
-When both server vars are set the API talks to Supabase. When either is
-missing the API silently falls back to an in-memory `MemoryStorage` backend so
-previews still work without a database. Likewise, when the `VITE_*` vars are
-absent the frontend falls back to the demo auth path instead of brokering real
-OAuth.
-
-### OAuth setup (Google and X)
-
-The web app uses Supabase Auth as the OAuth broker. To wire up real sign-in:
-
-1. In the Supabase dashboard, enable the **Google** and **Twitter / X**
-   providers under *Authentication → Providers* with the client IDs /
-   secrets from the respective developer consoles.
-2. Set the **Site URL** to `https://www.annotatedextension.com` and add
-   **all** of the following to the **Redirect URLs** allowlist:
-   - `https://www.annotatedextension.com/auth/callback`
-   - `https://annotatedextension.com/auth/callback`
-   - `http://localhost:5000/auth/callback` and `http://localhost:5173/auth/callback` (only if you actively develop locally)
-   - any preview domain you want to support, e.g. `https://*.vercel.app/auth/callback`
-
-   If `redirectTo` doesn't match an entry on this list, Supabase silently
-   falls back to the **Site URL** — that's how a misconfigured project
-   ends up bouncing real users to `localhost:3000` after a successful
-   OAuth handshake. Keep the Site URL pointed at the production domain.
-3. In each provider's developer console, add the Supabase project's OAuth
-   callback (e.g. `https://cpqmjujhcwpavrsjadjz.supabase.co/auth/v1/callback`)
-   as an authorized redirect URI.
-
-The frontend always passes `${window.location.origin}/auth/callback` as the
-redirect target on production hosts; if the origin somehow resolves to
-`localhost` in a non-dev build it falls back to the canonical
-`https://www.annotatedextension.com/auth/callback` (see
-`web/client/src/lib/supabase.ts`).
-
-#### X (Twitter) and email
-
-Supabase needs an email address to create a user. X's OAuth 2.0 flow does
-**not** include email by default — if you see
-`Error getting user email from external provider` in the callback URL, the
-X app needs to be set up to expose email:
-
-- Use the **Twitter (OAuth 1.0a)** provider in Supabase if you want email
-  by default, or
-- Configure the X (OAuth 2.0) app with the `users.email` scope (requires
-  Elevated access in the X developer portal) and add `users.email` to the
-  scopes the frontend requests.
-
-The app shows a tailored message and recommends Google sign-in when the X
-flow fails for this reason — see `web/client/src/pages/auth-callback.tsx`.
-
-### 3. Deploy
-
-`vercel deploy --prod` (or push to the connected branch). The same Vite
-`dist/public/` output that ships to S3 in preview mode is served from Vercel's
-edge as static files; `/api/*` hits the Node serverless runtime.
-
-## Run locally
+Requirements: Node 24, npm, and the system `zip`/`unzip` utilities.
 
 ```bash
 cd web
-cp .env.example .env       # uses the live Supabase project; remove vars to use in-memory storage
-npm install
-npm run dev                # Express + Vite on port 5000
+npm ci
+npm run ci
 ```
 
-Open <http://localhost:5000>. With `SUPABASE_URL` + `SUPABASE_ANON_KEY` set the
-dev server talks to Supabase; without them it falls back to in-memory storage
-(seeded with the same demo data via `web/server/seed.ts`).
+`npm run ci` runs type-checking, unit/integration tests, the production build, Chrome-extension syntax/package validation, a secret-pattern scan, and `npm audit`. `npm run dev` serves the app on port 5000. Without Supabase variables, local development uses an empty in-memory store; seed data is never created during startup or a request. Use the explicit `npm run seed:demo` command only in an intentional development environment.
 
-To produce the production bundles locally:
+## Required configuration
+
+Copy `web/.env.example` for local development. Configure the equivalent values in Vercel Preview and Production; never commit real server credentials.
+
+| Variable | Exposure | Purpose |
+|---|---|---|
+| `SUPABASE_URL` | server | Exact project `cpqmjujhcwpavrsjadjz` |
+| `SUPABASE_ANON_KEY` | server | Verify Supabase OAuth access tokens |
+| `SUPABASE_SERVICE_ROLE_KEY` | server only | Validated data writes, signed uploads, media inspection, moderation, rate limits |
+| `VITE_SUPABASE_URL` | public build value | Browser OAuth broker |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | public build value | Browser OAuth broker |
+| `RESEND_API_KEY` | server only | Claim and support notifications |
+| `SUPPORT_TO_EMAIL` | server | Must be `support@annotatedextension.com` or the intended inbox alias |
+| `SUPPORT_FROM_EMAIL` | server | Verified sender recommended for production |
+| `MODERATOR_AUTH_IDS` | server only | Comma-separated Supabase Auth subjects allowed to review claims |
+| `CRON_SECRET` | server only | Authorizes daily orphan-media cleanup |
+| `RATE_LIMIT_SALT` | server only | Optional additional salt for hashed limiter subjects |
+| `ALLOWED_ORIGINS` | server | Additional exact preview origins; never `*` |
+| `VITE_CHROME_WEB_STORE_URL` | public build value | Published listing URL override |
+
+`GET /api/health` is dependency-free liveness. `GET /api/ready` checks durable database access, both required Storage buckets, OAuth configuration, notification delivery, moderation, and maintenance configuration without returning any credential values.
+
+## Supabase migrations
+
+Apply migrations in filename order to the exact Annotated project. Migrations `0001`–`0010` are existing history and must not be rewritten. This release adds:
+
+- `0011_security_hardening.sql`: forced RLS, direct privilege revocation, atomic view counter, authorization indexes.
+- `0012_media_uploads.sql`: signed-upload intents, verified metadata, `clip-media`/`commentary-audio` bucket controls.
+- `0013_rate_limits_claim_audit.sql`: atomic distributed limiter, bounded cleanup, claim event audit, moderator RPC.
+- `0014_atomic_media_attachment.sql`: row-locked, single-use media attachment and atomic annotation publication.
+
+The migrations are additive and intentionally are not applied automatically by a web build. Review the preflight and rollback notes in `docs/resubmission-readiness.md` before applying them. Do not use or modify an unrelated project named “Laymen.”
+
+## OAuth
+
+Enable only Google and Twitter/X in Supabase Auth. Configure the Supabase provider callback with Google/X, then allow these application callbacks:
+
+- `https://www.annotatedextension.com/auth/callback`
+- `https://annotatedextension.com/auth/callback`
+- the exact approved Vercel preview callback
+- localhost callbacks only when actively developing
+
+The extension opens the production sign-in page with its runtime ID. The website accepts extension mode only for the ID derived from the committed Web Store key, expires the flow after ten minutes, and sends the PKCE access/refresh session bundle only to that pinned recipient. A failed handoff retains an explicit retry path without exposing tokens in UI or logs. The extension refreshes expired sessions through `/api/auth/refresh`; legacy user-only handoffs are rejected.
+
+## Chrome extension
+
+Load `extension/` unpacked for development in Chrome 116 or newer. The manifest's public Web Store key preserves the published extension ID for realistic OAuth/CORS testing. The package requests only `sidePanel`, `activeTab`, `scripting`, `tabs`, `storage`, `offscreen`, and `tabCapture`; host access is limited to the two Annotated production origins and the exact Annotated Supabase host needed for signed direct uploads. External OAuth messages remain limited to the Annotated origins. Permission justifications and the release checklist are in the readiness document.
 
 ```bash
-npm run build              # Vite client + esbuild server + serverless entry
-NODE_ENV=production node dist/index.cjs   # optional — runs the same Express app outside Vercel
+cd web
+npm run validate:extension
+npm run build:extension:cws
 ```
 
-## Load the Chrome extension
+The Web Store artifact is `annotated-chrome-web-store.zip`, with `manifest.json` at its root. Version `1.8.0` includes the hardened session handoff and real constrained-media workflow. Building or previewing does not publish a Web Store update.
 
-1. Visit `chrome://extensions`
-2. Enable **Developer mode** (top right)
-3. Click **Load unpacked**
-4. Select `annotated/extension/`
-5. Pin the Annotated icon. Click it on any tab — the side panel slides in.
+## Deployment safety
 
-By default the sidepanel talks to <https://annotatedextension.com>. To point
-it at another deployed URL, open the panel with
-`?api=https://your-deploy.example.com` appended (or update `DEFAULT_API_BASE` in
-`extension/sidepanel/sidepanel.js`).
+Vercel's root directory is `web/`. `npm run build` emits the static client, API function, per-annotation metadata function, and downloadable extension archive. `/a/:id` is rendered through the metadata function so crawlers receive a unique title, description, image, and canonical production URL before the React app hydrates.
 
-## Publish to the Chrome Web Store
-
-1. From `web/`, run `npm run build:extension:cws`. This produces
-   `annotated-chrome-web-store.zip` at the repo root with `manifest.json` at
-   the zip root (no parent folder, no node_modules / dist / dotfile junk).
-2. Upload the zip to the Chrome Web Store Developer Dashboard. After the
-   listing is approved, copy the public listing URL (e.g.
-   `https://chromewebstore.google.com/detail/<extension-id>`).
-3. Set `VITE_CHROME_WEB_STORE_URL` to that URL in Vercel (production +
-   preview) and redeploy. The "Get the Chrome Extension" buttons across the
-   site will then link directly to the Web Store. Until that var is set, the
-   buttons fall back to downloading the bundled
-   `/downloads/annotated-extension.zip` so the site keeps working pre-listing.
-
-## Architecture notes
-
-- The web app is a hash-routed SPA (`/#/`, `/#/a/:id`, `/#/u/:username`) so it
-  can be served from a sandboxed iframe (preview) or from Vercel's static
-  hosting (production) with no server-side rewrite needed for client-side
-  routes.
-- The web app uses hash routing for the main feed/profile/annotation views,
-  but a few path-based routes are served directly: `/privacy`, `/tos`, and
-  `/auth/callback`. `web/client/src/main.tsx` switches between the hash-routed
-  app and the path-based pages by inspecting `window.location.pathname` before
-  rendering.
-- Supabase JS persists the session in `localStorage` so the PKCE code
-  verifier survives the OAuth round trip. This is the standard SPA approach;
-  the previous in-memory-only constraint applied to the demo deployment that
-  predated real auth. The Chrome extension still uses `chrome.storage.local`
-  in the extension context.
-- All persistent data lives in Supabase Postgres in production. The API is
-  written against an `IStorage` interface with two implementations:
-  - `SupabaseStorage` — talks to `SUPABASE_URL` via `@supabase/supabase-js`.
-  - `MemoryStorage` — process-local fallback when env vars are absent.
-- Production wiring still has TODO hooks for clip processing (BullMQ + R2/S3
-  for the actual yt-dlp + ffmpeg pipeline) and OAuth (X PKCE + Google Identity
-  API). The current API validates inputs and returns the FFmpeg/yt-dlp command
-  it *would* run.
+Do not merge, deploy to production, apply production migrations, or publish version `1.8.0` without explicit owner approval. Branch previews and branch-scoped database testing are the required proof path first.

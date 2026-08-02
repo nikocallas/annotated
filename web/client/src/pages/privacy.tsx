@@ -3,7 +3,7 @@ import { LegalLayout } from "@/components/LegalLayout";
 export default function PrivacyPage() {
   return (
     <LegalLayout title="Privacy Policy">
-      <p className="text-sm text-muted-foreground">Effective date: May 3, 2026</p>
+      <p className="text-sm text-muted-foreground">Effective date: August 1, 2026</p>
 
       <p>
         This Privacy Policy describes how Annotated ("we", "us") collects, uses, and shares
@@ -17,13 +17,14 @@ export default function PrivacyPage() {
         <li>
           <strong>Account identity from OAuth.</strong> When you sign in with Google or X
           (Twitter), we receive a stable user identifier, your display name, your username
-          or handle, and a profile image URL from the provider. We do not receive or store
-          your provider password.
+          or handle, a profile image URL, and any email address the provider makes available
+          for authentication and account notices. We do not receive or store your provider
+          password, and your email is not shown on your public Annotated profile.
         </li>
         <li>
           <strong>Content you create.</strong> Annotations, clip metadata (source URL,
-          start/end seconds, text), commentary text, audio commentary, comments, and any
-          fair-use claims you submit.
+          start/end seconds, text), commentary text, audio commentary, comments, social
+          interactions, and any claim or support information you choose to submit.
         </li>
         <li>
           <strong>Usage and technical data.</strong> Standard request logs from our hosting
@@ -32,10 +33,11 @@ export default function PrivacyPage() {
         </li>
         <li>
           <strong>Browser data the extension uses locally.</strong> The Chrome extension
-          stores a small amount of state in <code>chrome.storage.local</code> (your
-          signed-in identity and the extension's configured API base) so the side panel
-          works across page loads. This data does not leave your device unless you
-          explicitly publish a clip.
+          stores a small amount of state in <code>chrome.storage.local</code>, including your
+          Annotated profile and short-lived access and refresh session tokens, so the side
+          panel remains signed in across page loads. The extension sends the access token to
+          the Annotated API to authenticate your requests and sends the refresh token only to
+          Annotated's session-refresh endpoint. It does not expose those tokens to source pages.
         </li>
       </ul>
 
@@ -56,7 +58,8 @@ export default function PrivacyPage() {
       </p>
       <ul>
         <li>
-          <strong>Supabase</strong> — managed Postgres database and authentication broker.
+          <strong>Supabase</strong> — managed Postgres database, authentication broker, and
+          media-object storage.
         </li>
         <li>
           <strong>Vercel</strong> — application hosting, serverless functions, and edge
@@ -65,6 +68,10 @@ export default function PrivacyPage() {
         <li>
           <strong>OAuth providers (Google, X / Twitter)</strong> — sign-in. They only see
           that you authorized Annotated; they do not see what you do inside the app.
+        </li>
+        <li>
+          <strong>Resend</strong> — transactional delivery for support and claim notices when
+          email delivery is configured.
         </li>
       </ul>
 
@@ -81,11 +88,24 @@ export default function PrivacyPage() {
         the Service. Do not publish content you would not want to be public.
       </p>
 
+      <h2>Retention and deletion</h2>
+      <p>
+        We retain account and published content while your account is active. Incomplete media
+        uploads are automatically removed after a 24-hour cleanup window, and abuse-prevention
+        counters expire after their rate-limit window. Claim records and their audit trail may be
+        retained as needed to resolve a dispute and meet legal obligations.
+      </p>
+      <p>
+        You can permanently delete your account from the Account controls section of your profile.
+        This removes your profile, annotations, comments, social interactions, stored media, and
+        linked OAuth identity. You may also contact support if you cannot access your account.
+      </p>
+
       <h2>Your rights and contact</h2>
       <p>
-        You can request access to, correction of, or deletion of your account and the
-        content you have created. To make a request, email{" "}
-        <a href="mailto:support@annotatedextensions.com">support@annotatedextensions.com</a>. We will
+        You can request access to or correction of your information. You can delete your account
+        directly from your profile, or make a request by emailing{" "}
+        <a href="mailto:support@annotatedextension.com">support@annotatedextension.com</a>. We will
         respond within a reasonable time.
       </p>
 
@@ -103,7 +123,7 @@ export default function PrivacyPage() {
 
       <h2>Contact</h2>
       <p>
-        Questions: <a href="mailto:support@annotatedextensions.com">support@annotatedextensions.com</a>.
+        Questions: <a href="mailto:support@annotatedextension.com">support@annotatedextension.com</a>.
       </p>
     </LegalLayout>
   );

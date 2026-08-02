@@ -16,13 +16,15 @@ import {
 } from "@shared/schema";
 
 const SITE_URL = "https://annotatedextension.com";
+const SUPABASE_AUTH_USER_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function annotationLink(ann: Pick<Annotation, "id">) {
-  return `${SITE_URL}/#/a/${ann.id}`;
+  return `${SITE_URL}/a/${encodeURIComponent(ann.id)}`;
 }
 
 function profileLink(user: Pick<User, "username">) {
-  return `${SITE_URL}/#/u/${user.username}`;
+  return `${SITE_URL}/u/${encodeURIComponent(user.username)}`;
 }
 
 function reasonLabel(category: string | null | undefined) {
@@ -48,6 +50,12 @@ export async function resolvePosterContact(
   const url = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) return { email: null, source: "missing_credentials" };
+  // Retained demo authors predate Supabase Auth and use descriptive legacy
+  // subjects. Do not send those values into the admin SDK or emit its raw
+  // validation stack; the support notification remains the review fallback.
+  if (!SUPABASE_AUTH_USER_ID_PATTERN.test(poster.authId)) {
+    return { email: null, source: "not_found" };
+  }
   try {
     const admin = createClient(url, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -55,8 +63,8 @@ export async function resolvePosterContact(
     const { data, error } = await admin.auth.admin.getUserById(poster.authId);
     if (error || !data?.user) return { email: null, source: "not_found" };
     return { email: data.user.email ?? null, source: "supabase_admin" };
-  } catch (err) {
-    console.warn("[claim-email] poster lookup failed", err);
+  } catch {
+    console.warn(JSON.stringify({ event: "claim_poster_lookup_failed" }));
     return { email: null, source: "lookup_failed" };
   }
 }

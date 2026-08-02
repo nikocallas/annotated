@@ -16,6 +16,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "wouter"],
+          data: ["@supabase/supabase-js", "@tanstack/react-query"],
+          icons: ["lucide-react", "react-icons/si"],
+        },
+      },
+    },
   },
   server: {
     fs: {

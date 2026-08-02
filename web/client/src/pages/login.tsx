@@ -2,12 +2,14 @@ import { AppLayout } from "@/components/AppLayout";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { supabaseConfigured } from "@/lib/supabase";
-import { apiRequest } from "@/lib/queryClient";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import type { User } from "@shared/schema";
-
-const EXT_FLOW_KEY = "annotated_extension_auth";
+import {
+  ANNOTATED_EXTENSION_ID,
+  EXTENSION_AUTH_FLOW_KEY,
+  isAnnotatedExtensionId,
+  parseStoredExtensionAuthFlow,
+} from "@/lib/extension-auth";
 
 // When the Chrome extension's sidepanel opens this page in a new tab, it
 // passes ?extension=1&extensionId=<id>. The auth-callback page consumes
@@ -18,12 +20,15 @@ function captureExtensionFlowFromQuery(): { extensionId: string } | null {
     const params = new URLSearchParams(window.location.search);
     if (params.get("extension") !== "1") return null;
     const extensionId = params.get("extensionId") || "";
-    if (!extensionId) return null;
+    if (!isAnnotatedExtensionId(extensionId)) {
+      sessionStorage.removeItem(EXTENSION_AUTH_FLOW_KEY);
+      return null;
+    }
     sessionStorage.setItem(
-      EXT_FLOW_KEY,
-      JSON.stringify({ extensionId, ts: Date.now() }),
+      EXTENSION_AUTH_FLOW_KEY,
+      JSON.stringify({ extensionId: ANNOTATED_EXTENSION_ID, ts: Date.now() }),
     );
-    return { extensionId };
+    return { extensionId: ANNOTATED_EXTENSION_ID };
   } catch {
     return null;
   }
@@ -31,42 +36,14 @@ function captureExtensionFlowFromQuery(): { extensionId: string } | null {
 
 function readExtensionFlow(): { extensionId: string } | null {
   try {
-    const raw = sessionStorage.getItem(EXT_FLOW_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { extensionId?: string };
-    return parsed.extensionId ? { extensionId: parsed.extensionId } : null;
+    const parsed = parseStoredExtensionAuthFlow(
+      sessionStorage.getItem(EXTENSION_AUTH_FLOW_KEY),
+    );
+    if (!parsed) sessionStorage.removeItem(EXTENSION_AUTH_FLOW_KEY);
+    return parsed ? { extensionId: parsed.extensionId } : null;
   } catch {
     return null;
   }
-}
-
-interface ChromeRuntimeBridge {
-  runtime?: {
-    sendMessage?: (
-      extensionId: string,
-      message: unknown,
-      callback?: (resp: unknown) => void,
-    ) => void;
-    lastError?: { message: string };
-  };
-}
-
-function sendUserToExtension(extensionId: string, user: User): Promise<boolean> {
-  return new Promise((resolve) => {
-    const c = (window as unknown as { chrome?: ChromeRuntimeBridge }).chrome;
-    if (!c?.runtime?.sendMessage) {
-      resolve(false);
-      return;
-    }
-    try {
-      c.runtime.sendMessage(extensionId, { type: "ANNOTATED_AUTH_SUCCESS", user }, (resp) => {
-        if (c.runtime?.lastError) return resolve(false);
-        resolve(!!(resp as { ok?: boolean } | undefined)?.ok);
-      });
-    } catch {
-      resolve(false);
-    }
-  });
 }
 
 export default function LoginPage() {
@@ -88,36 +65,6 @@ export default function LoginPage() {
     setBusy(provider);
     try {
       await loginWithProvider(provider);
-      // When Supabase is configured, the browser is redirected to the OAuth
-      // provider here and never reaches the next line. The fallback demo path
-      // resolves immediately — when the user came from the extension, route
-      // to /auth/callback (which performs the runtime.sendMessage handoff)
-      // so the extension picks up the session without an extra tab.
-      if (!supabaseConfigured) {
-        const ext = readExtensionFlow();
-        if (ext) {
-          // Demo path: the auth-context has already minted a user via
-          // /api/auth/demo. Re-fetch a clean copy and hand it to the
-          // extension directly, then close this tab.
-          try {
-            const res = await apiRequest("POST", "/api/auth/demo", { provider });
-            const data = (await res.json()) as { user: User };
-            const sent = await sendUserToExtension(ext.extensionId, data.user);
-            try { sessionStorage.removeItem(EXT_FLOW_KEY); } catch {}
-            if (sent) {
-              toast({ title: "Signed in", description: "Sent to the extension." });
-              setTimeout(() => {
-                try { window.close(); } catch {}
-              }, 600);
-              return;
-            }
-          } catch {
-            // fall through to feed
-          }
-        }
-        toast({ title: "Signed in", description: "Demo session active." });
-        window.location.assign("/feed");
-      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Sign-in failed";
       toast({ title: "Sign-in failed", description: message, variant: "destructive" });
@@ -150,7 +97,7 @@ export default function LoginPage() {
           <div className="space-y-3">
             <Button
               onClick={() => handleLogin("x")}
-              disabled={!!busy}
+              disabled={!!busy || !supabaseConfigured}
               className="w-full"
               size="lg"
               data-testid="button-signin-x"
@@ -169,7 +116,7 @@ export default function LoginPage() {
             </Button>
             <Button
               onClick={() => handleLogin("google")}
-              disabled={!!busy}
+              disabled={!!busy || !supabaseConfigured}
               variant="outline"
               className="w-full"
               size="lg"
@@ -205,9 +152,8 @@ export default function LoginPage() {
               </>
             ) : (
               <>
-                Auth env vars aren't configured for this build, so the buttons sign you
-                into a demo identity. Set <code>VITE_SUPABASE_URL</code> and{" "}
-                <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> to enable real OAuth.
+                OAuth isn't configured for this deployment. Sign-in is disabled rather
+                than creating an unverifiable demo identity.
               </>
             )}
           </p>

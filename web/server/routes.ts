@@ -1,8 +1,18 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "node:http";
-import { createClient } from "@supabase/supabase-js";
-import { storage } from "./storage";
-import { seedDemoData } from "./seed";
+import { timingSafeEqual } from "node:crypto";
+import {
+  storage as defaultStorage,
+  storageBackend as defaultStorageBackend,
+  StorageUnavailableError,
+  type IStorage,
+  type StorageBackend,
+} from "./storage";
+import {
+  authService as defaultAuthService,
+  ApiAuthError,
+  type AuthService,
+} from "./auth";
 import {
   insertAnnotationSchema,
   insertCommentSchema,
@@ -15,27 +25,24 @@ import {
 } from "@shared/schema";
 import { dispatchClaimEmails } from "./claim-email";
 import {
-  buildYouTubeClipCommands,
-  buildPodcastClipCommands,
+  claimModerationService as defaultClaimModeration,
+  ClaimModerationError,
+  type ClaimModerationService,
+  type ModerationStatus,
+} from "./claim-moderation";
+import {
   ClipValidationError,
   validateClipDuration,
   validateSourceUrl,
   MAX_CLIP_SECONDS,
   TARGET_VIDEO_HEIGHT,
 } from "./clip-processing";
-
-/**
- * Demo auth: the deployed sandbox cannot complete real X / Google OAuth without
- * configured credentials, so the API exposes a /api/auth/demo endpoint that
- * accepts a provider id and returns a session-less user record. Production
- * wiring is sketched in TODOs below.
- *
- * TODO(prod auth):
- *   - X (Twitter) OAuth 2.0 PKCE: client id/secret env, callback at /api/auth/x/callback.
- *   - Google: validate id_token via google-auth-library; client id env.
- *   - Issue HTTP-only cookie session; current frontend uses an in-memory user via
- *     React Query (no localStorage / cookies in sandbox).
- */
+import {
+  mediaStorageService as defaultMediaStorageService,
+  type MediaStorageService,
+  MediaStorageError,
+} from "./media-storage";
+import { MediaValidationError } from "./media-validation";
 
 function asyncHandler(fn: (req: Request, res: Response) => Promise<unknown>) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -43,7 +50,49 @@ function asyncHandler(fn: (req: Request, res: Response) => Promise<unknown>) {
   };
 }
 
-async function createClaim(annotationId: string, body: Request["body"], res: Response) {
+function redactInternalIdentity(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactInternalIdentity);
+  if (!value || typeof value !== "object") return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "authId") continue;
+    output[key] = redactInternalIdentity(nested);
+  }
+  return output;
+}
+
+function safeOptionalHttpsUrl(value: unknown): string | null | undefined {
+  if (value == null || value === "") return value == null ? value : null;
+  if (typeof value !== "string") return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && !parsed.username && !parsed.password ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function boundedIntegerQuery(value: unknown, fallback: number, maximum: number): number {
+  if (typeof value !== "string") return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(1, Math.floor(parsed)));
+}
+
+async function createClaim(
+  storage: IStorage,
+  annotationId: string,
+  body: Request["body"],
+  claimantUserId: string | null,
+  emailDispatcher: typeof dispatchClaimEmails,
+  moderation: ClaimModerationService,
+  res: Response,
+) {
+  // Browser autofill bots commonly populate this visually hidden field. Do
+  // not persist it, and do not disclose that the trap was hit.
+  if (typeof body?.website === "string" && body.website.trim()) {
+    return res.status(201).json({ received: true, status: "received", claim: { id: "received" } });
+  }
   const reasonCategory = body?.reasonCategory as string | undefined;
   const details = typeof body?.details === "string" ? body.details.trim() : "";
   const explicitReason = typeof body?.reason === "string" ? body.reason.trim() : "";
@@ -63,7 +112,7 @@ async function createClaim(annotationId: string, body: Request["body"], res: Res
 
   const parsed = insertClaimSchema.safeParse({
     annotationId,
-    claimantUserId: body?.claimantUserId ?? null,
+    claimantUserId,
     claimantName: body?.claimantName,
     claimantEmail: body?.claimantEmail,
     reasonCategory: reasonCategory ?? "other",
@@ -74,7 +123,7 @@ async function createClaim(annotationId: string, body: Request["body"], res: Res
     return res.status(400).json({ error: parsed.error.flatten() });
   }
   const ann = await storage.getAnnotation(annotationId);
-  if (!ann) return res.status(404).json({ error: "Annotation not found" });
+  if (!ann || ann.isPublic !== 1) return res.status(404).json({ error: "Annotation not found" });
   const claim = await storage.createClaim(parsed.data);
 
   // Fire-and-forget email dispatch — failures must not roll back the claim.
@@ -82,137 +131,175 @@ async function createClaim(annotationId: string, body: Request["body"], res: Res
   try {
     const poster = await storage.getUser(ann.userId);
     if (poster) {
-      emailSummary = await dispatchClaimEmails({ claim, annotation: ann, poster });
+      emailSummary = await emailDispatcher({ claim, annotation: ann, poster });
+      await moderation.recordNotifications(claim.id, emailSummary);
     }
-  } catch (err) {
-    console.error("[claims] email dispatch failed", err);
+  } catch {
+    // Provider and database errors can carry request details. Keep operational
+    // logs useful without copying claimant contact data or provider payloads.
+    console.error(JSON.stringify({ event: "claim_notification_dispatch_failed", claimId: claim.id }));
   }
 
   return res.status(201).json({
     claim,
     received: true,
     status: claim.status,
-    emails: emailSummary,
+    notifications: emailSummary
+      ? {
+          confirmationSent: emailSummary.filer.sent,
+          posterNotified: emailSummary.poster.sent,
+        }
+      : { confirmationSent: false, posterNotified: false },
     supportEmail: "support@annotatedextension.com",
   });
 }
 
-export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
-  await seedDemoData();
+const READINESS_TIMEOUT_MS = 4_000;
 
-  // ---- AUTH (demo) -------------------------------------------------------
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new StorageUnavailableError(`Storage readiness timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export interface RouteDependencies {
+  storage?: IStorage;
+  storageBackend?: StorageBackend;
+  auth?: AuthService;
+  claimModeration?: ClaimModerationService;
+  claimEmailDispatcher?: typeof dispatchClaimEmails;
+  mediaStorage?: MediaStorageService;
+}
+
+export function registerRoutes(
+  httpServer: Server,
+  app: Express,
+  dependencies: RouteDependencies = {},
+): Server {
+  const storage = dependencies.storage ?? defaultStorage;
+  const storageBackend = dependencies.storageBackend ?? defaultStorageBackend;
+  const auth = dependencies.auth ?? defaultAuthService;
+  const moderation = dependencies.claimModeration ?? defaultClaimModeration;
+  const claimEmailDispatcher = dependencies.claimEmailDispatcher ?? dispatchClaimEmails;
+  const mediaStorage = dependencies.mediaStorage ?? defaultMediaStorageService;
+  // OAuth provider subject IDs are internal authorization material and never
+  // belong in public/API JSON, including nested feed/profile user objects.
+  app.use((_req, res, next) => {
+    const sendJson = res.json.bind(res);
+    res.json = ((body: unknown) => sendJson(redactInternalIdentity(body))) as typeof res.json;
+    next();
+  });
+  // Liveness deliberately has no database dependency. It must remain useful
+  // while Supabase is paused, warming, or unavailable.
+  app.get("/api/health", (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ status: "ok", service: "annotated-api", timestamp: new Date().toISOString() });
+  });
+
+  // Readiness proves that this instance can reach its durable store. Memory
+  // storage is valid only in development/tests and is never production-ready.
+  app.get(
+    "/api/ready",
+    asyncHandler(async (_req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      const checks: Record<string, "ok" | "unavailable" | "missing"> = {
+        database: "unavailable",
+        mediaStorage: process.env.NODE_ENV === "production" ? "unavailable" : "ok",
+        oauth: process.env.NODE_ENV === "production" ? "missing" : "ok",
+        notifications: process.env.NODE_ENV === "production" ? "missing" : "ok",
+        moderation: process.env.NODE_ENV === "production" ? "missing" : "ok",
+        maintenance: process.env.NODE_ENV === "production" ? "missing" : "ok",
+      };
+      try {
+        await withTimeout(
+          Promise.all([
+            storage.healthCheck().then(() => { checks.database = "ok"; }),
+            ...(process.env.NODE_ENV === "production"
+              ? [mediaStorage.healthCheck().then(() => { checks.mediaStorage = "ok"; })]
+              : []),
+          ]),
+          READINESS_TIMEOUT_MS,
+        );
+        if (process.env.NODE_ENV === "production" && storageBackend !== "supabase") {
+          throw new StorageUnavailableError("Production requires durable Supabase persistence");
+        }
+        if (process.env.NODE_ENV === "production") {
+          checks.oauth = process.env.SUPABASE_ANON_KEY ? "ok" : "missing";
+          checks.notifications = process.env.RESEND_API_KEY && process.env.SUPPORT_TO_EMAIL ? "ok" : "missing";
+          checks.moderation = process.env.MODERATOR_AUTH_IDS ? "ok" : "missing";
+          checks.maintenance = process.env.CRON_SECRET ? "ok" : "missing";
+          if (Object.values(checks).some((status) => status !== "ok")) {
+            return res.status(503).json({ status: "not_ready", storage: storageBackend, checks });
+          }
+        }
+        return res.json({ status: "ready", storage: storageBackend, checks });
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "readiness_unavailable",
+          storage: storageBackend,
+          errorName: error instanceof Error ? error.name : "Error",
+        }));
+        return res.status(503).json({ status: "not_ready", storage: storageBackend, checks });
+      }
+    }),
+  );
+
+  // ---- AUTH --------------------------------------------------------------
   app.get(
     "/api/auth/me",
     asyncHandler(async (req, res) => {
-      const userId = (req.query.userId as string) || "";
-      if (!userId) return res.json({ user: null });
-      const user = await storage.getUser(userId);
+      const user = await auth.optionalActor(req);
       return res.json({ user: user ?? null });
     })
   );
 
-  app.post(
-    "/api/auth/demo",
+  app.delete(
+    "/api/account",
     asyncHandler(async (req, res) => {
-      const { provider } = req.body as { provider?: string };
-      if (provider !== "x" && provider !== "google") {
-        return res.status(400).json({ error: "Provider must be 'x' or 'google'" });
+      const actor = await auth.requireActor(req);
+      if (req.body?.confirmation !== "DELETE") {
+        return res.status(400).json({ error: "Type DELETE to confirm account deletion" });
       }
-      // Return the seeded Niko Callas user as the "logged in" demo identity.
-      const user = await storage.getUserByUsername("nikocallas");
-      if (!user) return res.status(500).json({ error: "Demo user missing" });
-      return res.json({ user, provider });
-    })
+      if (storageBackend === "supabase") await mediaStorage.deleteAllUserMedia(actor.id);
+      await storage.deleteUser(actor.id);
+      await auth.deleteIdentity(actor);
+      res.setHeader("Clear-Site-Data", '"cache", "cookies", "storage"');
+      return res.json({ ok: true, deleted: true });
+    }),
   );
 
-  // Verify a Supabase access token and upsert the app-local user record.
-  // Frontend calls this after the OAuth flow completes; the token comes from
-  // the active Supabase session and is verified server-side.
+  // Verify the bearer token and synchronize its app-local profile. The access
+  // token is never accepted from the JSON body.
   app.post(
     "/api/auth/supabase",
     asyncHandler(async (req, res) => {
-      const { accessToken } = req.body as { accessToken?: string };
-      if (!accessToken) return res.status(400).json({ error: "accessToken required" });
-
-      const supabaseUrl = process.env.SUPABASE_URL;
-      const supabaseKey = process.env.SUPABASE_ANON_KEY;
-      if (!supabaseUrl || !supabaseKey) {
-        return res.status(503).json({ error: "Supabase auth is not configured on the server" });
-      }
-
-      const verifier = createClient(supabaseUrl, supabaseKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      });
-      const { data, error } = await verifier.auth.getUser(accessToken);
-      if (error || !data?.user) {
-        return res.status(401).json({ error: error?.message ?? "Invalid Supabase session" });
-      }
-      const sUser = data.user;
-      const provider = (sUser.app_metadata?.provider as string | undefined) ?? "google";
-      const appProvider = provider === "twitter" ? "x" : provider === "google" ? "google" : provider;
-      if (appProvider !== "x" && appProvider !== "google") {
-        return res.status(400).json({ error: `Unsupported provider: ${provider}` });
-      }
-
-      // Try to find an existing user by (provider, authId). Also handle the
-      // case where Supabase returns provider="twitter" but a previous version
-      // wrote our app-local row with provider="x" (or vice versa) so we don't
-      // create a duplicate user on each sign-in.
-      let existing = await storage.getUserByAuth(appProvider, sUser.id);
-      if (!existing && appProvider === "x") {
-        existing = await storage.getUserByAuth("twitter", sUser.id);
-      }
-      if (existing) return res.json({ user: existing });
-
-      // Otherwise create one. Pull display name / handle / avatar from provider
-      // metadata, fall back to sensible defaults.
-      const meta = (sUser.user_metadata ?? {}) as Record<string, unknown>;
-      const displayName =
-        (meta.full_name as string | undefined) ||
-        (meta.name as string | undefined) ||
-        (meta.user_name as string | undefined) ||
-        (sUser.email ? sUser.email.split("@")[0] : null) ||
-        "user";
-      const rawHandle =
-        (meta.user_name as string | undefined) ||
-        (meta.preferred_username as string | undefined) ||
-        (sUser.email ? sUser.email.split("@")[0] : null) ||
-        sUser.id.slice(0, 8);
-      // Lowercase, strip everything that isn't a-z/0-9/_ and cap length.
-      // Never let the slug fall to empty — always have something to anchor on.
-      const baseUsername =
-        rawHandle.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) ||
-        `user${sUser.id.replace(/-/g, "").slice(0, 8)}`;
-
-      // Ensure unique username — append a short suffix if taken. After a few
-      // collisions, fall back to a slug that includes the auth id so we always
-      // converge on a writable handle.
-      let username = baseUsername;
-      for (let i = 0; i < 5; i++) {
-        const taken = await storage.getUserByUsername(username);
-        if (!taken) break;
-        username = `${baseUsername}${Math.floor(Math.random() * 10000)}`;
-      }
-      const stillTaken = await storage.getUserByUsername(username);
-      if (stillTaken) {
-        username = `${baseUsername}-${sUser.id.replace(/-/g, "").slice(0, 6)}`.slice(0, 30);
-      }
-
-      const avatarUrl =
-        (meta.avatar_url as string | undefined) ||
-        (meta.picture as string | undefined) ||
-        null;
-
-      const created = await storage.createUser({
-        username,
-        displayName,
-        avatarUrl,
-        bio: null,
-        authProvider: appProvider,
-        authId: sUser.id,
-      });
-      return res.json({ user: created });
+      const user = await auth.synchronizeActor(req);
+      return res.json({ user });
     })
+  );
+
+  // Extension sessions use the same Supabase refresh token rotation as the
+  // website, proxied through the API so the extension needs no broad host
+  // permission for Supabase itself.
+  app.post(
+    "/api/auth/refresh",
+    asyncHandler(async (req, res) => {
+      const refreshToken = typeof req.body?.refreshToken === "string" ? req.body.refreshToken : "";
+      const session = await auth.refreshSession(refreshToken);
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(session);
+    }),
   );
 
   // ---- USERS -------------------------------------------------------------
@@ -243,7 +330,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     asyncHandler(async (req, res) => {
       const raw = String(req.params.username || "");
       const username = raw.toLowerCase();
-      const viewerUserId = (req.query.viewerUserId as string) || undefined;
+      const viewer = await auth.optionalActor(req);
+      const viewerUserId = viewer?.id;
       const user = await storage.getUserByUsername(username);
       if (!user) return res.status(404).json({ error: "User not found" });
       const [followers, following] = await Promise.all([
@@ -258,7 +346,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(
     "/api/users/:id",
     asyncHandler(async (req, res) => {
-      const viewerUserId = (req.query.viewerUserId as string) || undefined;
+      const viewer = await auth.optionalActor(req);
+      const viewerUserId = viewer?.id;
       const user = await storage.getUser(String(req.params.id));
       if (!user) return res.status(404).json({ error: "User not found" });
       const [followers, following] = await Promise.all([
@@ -273,9 +362,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post(
     "/api/users/:id/follow",
     asyncHandler(async (req, res) => {
-      const followerId = (req.body?.followerId as string) || "";
-      if (!followerId) return res.status(400).json({ error: "followerId required" });
-      await storage.follow(followerId, String(req.params.id));
+      const actor = await auth.requireActor(req);
+      const targetId = String(req.params.id);
+      if (targetId === actor.id) return res.status(400).json({ error: "You cannot follow yourself" });
+      if (!(await storage.getUser(targetId))) return res.status(404).json({ error: "User not found" });
+      await storage.follow(actor.id, targetId);
       return res.json({ ok: true });
     })
   );
@@ -283,9 +374,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete(
     "/api/users/:id/follow",
     asyncHandler(async (req, res) => {
-      const followerId = (req.body?.followerId as string) || (req.query.followerId as string) || "";
-      if (!followerId) return res.status(400).json({ error: "followerId required" });
-      await storage.unfollow(followerId, String(req.params.id));
+      const actor = await auth.requireActor(req);
+      await storage.unfollow(actor.id, String(req.params.id));
       return res.json({ ok: true });
     })
   );
@@ -293,9 +383,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(
     "/api/users/:id/is-following",
     asyncHandler(async (req, res) => {
-      const followerId = (req.query.followerId as string) || "";
-      if (!followerId) return res.json({ following: false });
-      const following = await storage.isFollowing(followerId, String(req.params.id));
+      const actor = await auth.requireActor(req);
+      const following = await storage.isFollowing(actor.id, String(req.params.id));
       return res.json({ following });
     })
   );
@@ -304,9 +393,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(
     "/api/feed",
     asyncHandler(async (req, res) => {
-      const followerOf = (req.query.followerOf as string) || undefined;
-      const viewerUserId = (req.query.userId as string) || undefined;
-      const limit = Math.min(100, Number(req.query.limit ?? 60));
+      const viewer = await auth.optionalActor(req);
+      const followingRequested = req.query.followerOf !== undefined;
+      if (followingRequested && !viewer) {
+        throw new ApiAuthError(401, "Sign in required");
+      }
+      const followerOf = followingRequested ? viewer!.id : undefined;
+      const viewerUserId = viewer?.id;
+      const limit = boundedIntegerQuery(req.query.limit, 60, 100);
       const shuffle = req.query.shuffle === "1" || req.query.shuffle === "true";
       const annotations = await storage.listAnnotations({ followerOf, limit, viewerUserId });
       if (shuffle) {
@@ -330,15 +424,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   );
 
   // ---- BOOKMARKS ---------------------------------------------------------
-  // Bookmarks are scoped per-user. The Express API uses unauthenticated
-  // request bodies to identify the actor (mirrors the existing follow API),
-  // so we accept userId in the body / query.
+  // Bookmarks are scoped exclusively by the verified bearer identity.
   app.get(
     "/api/bookmarks",
     asyncHandler(async (req, res) => {
-      const userId = (req.query.userId as string) || "";
-      if (!userId) return res.json([]);
-      const list = await storage.listBookmarkedAnnotations(userId);
+      const actor = await auth.requireActor(req);
+      const list = await storage.listBookmarkedAnnotations(actor.id);
       return res.json(list);
     })
   );
@@ -346,9 +437,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get(
     "/api/bookmarks/ids",
     asyncHandler(async (req, res) => {
-      const userId = (req.query.userId as string) || "";
-      if (!userId) return res.json({ ids: [] });
-      const ids = await storage.listBookmarkIdsForUser(userId);
+      const actor = await auth.requireActor(req);
+      const ids = await storage.listBookmarkIdsForUser(actor.id);
       return res.json({ ids });
     })
   );
@@ -356,9 +446,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post(
     "/api/annotations/:id/bookmark",
     asyncHandler(async (req, res) => {
-      const userId = (req.body?.userId as string) || "";
-      if (!userId) return res.status(400).json({ error: "userId required" });
-      await storage.bookmark(userId, String(req.params.id));
+      const actor = await auth.requireActor(req);
+      const id = String(req.params.id);
+      const annotation = await storage.getAnnotation(id);
+      if (!annotation || annotation.isPublic !== 1) return res.status(404).json({ error: "Annotation not found" });
+      await storage.bookmark(actor.id, id);
       return res.json({ ok: true, bookmarked: true });
     })
   );
@@ -366,9 +458,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.delete(
     "/api/annotations/:id/bookmark",
     asyncHandler(async (req, res) => {
-      const userId = (req.body?.userId as string) || (req.query.userId as string) || "";
-      if (!userId) return res.status(400).json({ error: "userId required" });
-      await storage.unbookmark(userId, String(req.params.id));
+      const actor = await auth.requireActor(req);
+      await storage.unbookmark(actor.id, String(req.params.id));
       return res.json({ ok: true, bookmarked: false });
     })
   );
@@ -379,181 +470,99 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post(
     "/api/annotations/:id/view",
     asyncHandler(async (req, res) => {
-      const next = await storage.incrementViewCount(String(req.params.id));
+      const id = String(req.params.id);
+      const annotation = await storage.getAnnotation(id);
+      if (!annotation || annotation.isPublic !== 1) return res.status(404).json({ error: "Annotation not found" });
+      const next = await storage.incrementViewCount(id);
       return res.json({ viewCount: next });
     })
   );
 
-  // ---- AUDIO UPLOAD ------------------------------------------------------
-  // Accepts a base64-encoded audio commentary recording. Returns a URL the
-  // browser can render in <audio src=...>. Today this is a `data:` URL so the
-  // recording is durably attached to the annotation row without needing
-  // additional infrastructure. When SUPABASE_SERVICE_ROLE_KEY is configured
-  // and a `commentary-audio` bucket exists, we upload there and return the
-  // public URL instead.
+  // ---- DIRECT MEDIA UPLOADS ----------------------------------------------
+  // The API signs a user-scoped object path, then verifies the completed WebM
+  // directly from Storage before publishing its URL. Large blobs never travel
+  // through Vercel JSON and client-reported duration/resolution is not trusted.
   app.post(
-    "/api/upload/audio",
+    "/api/uploads/sign",
     asyncHandler(async (req, res) => {
-      const { userId, base64, mime, durationMs } = (req.body || {}) as {
-        userId?: string;
-        base64?: string;
-        mime?: string;
-        durationMs?: number;
-      };
-      if (!userId) return res.status(401).json({ error: "Sign in to upload audio" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ error: "User not found" });
-      if (!base64 || typeof base64 !== "string") {
-        return res.status(400).json({ error: "audio is required" });
-      }
-      // Reject anything over ~1.4MB raw (≈ 1.9MB base64) to keep DB rows sane.
-      const approxBytes = Math.floor((base64.length * 3) / 4);
-      if (approxBytes > 1_400_000) {
-        return res.status(413).json({ error: "Audio too large; keep recordings under 90 seconds" });
-      }
-      const safeMime = typeof mime === "string" && /^audio\//.test(mime) ? mime : "audio/webm";
-      // Hard cap mirrors the clip cap: commentary recordings beyond 90s are
-      // out of spec.
-      if (typeof durationMs === "number" && durationMs > 95_000) {
-        return res.status(400).json({ error: "Audio commentary cannot exceed 90 seconds" });
-      }
-
-      const url = `data:${safeMime};base64,${base64}`;
-      return res.status(201).json({ url, bytes: approxBytes, mime: safeMime });
-    })
+      const actor = await auth.requireActor(req);
+      const upload = await mediaStorage.createSignedMediaUpload({
+        userId: actor.id,
+        kind: req.body?.kind,
+        mime: req.body?.mime,
+        sizeBytes: req.body?.sizeBytes,
+      });
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(201).json(upload);
+    }),
   );
 
-  // ---- CLIP MEDIA UPLOAD -------------------------------------------------
-  // The Chrome extension captures the active tab's video stream for the user-
-  // selected ≤90s range, then POSTs the resulting blob (base64) here. We
-  // upload it to the public `clip-media` Supabase Storage bucket using the
-  // service role key (server-only), then update the annotation row's
-  // clip_media_url + clip_status='ready' so the feed renders the native
-  // <video> asset instead of the processing facade.
-  //
-  // When SUPABASE_SERVICE_ROLE_KEY is missing we fall back to storing the
-  // clip inline as a data: URL. That is bandwidth-heavy in the feed but keeps
-  // the published-clip path working in environments without storage configured.
   app.post(
-    "/api/annotations/:id/clip-video",
+    "/api/uploads/finalize",
     asyncHandler(async (req, res) => {
-      const annotationId = String(req.params.id);
-      const { userId, base64, mime, durationMs, thumbnailBase64, thumbnailMime } = (req.body || {}) as {
-        userId?: string;
-        base64?: string;
-        mime?: string;
-        durationMs?: number;
-        thumbnailBase64?: string;
-        thumbnailMime?: string;
-      };
-      if (!userId) return res.status(401).json({ error: "Sign in to upload a clip" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ error: "User not found" });
-      const annotation = await storage.getAnnotation(annotationId);
-      if (!annotation) return res.status(404).json({ error: "Annotation not found" });
-      if (annotation.userId !== userId) {
-        return res.status(403).json({ error: "You can only attach clips to your own annotations" });
+      const actor = await auth.requireActor(req);
+      const intent = await mediaStorage.inspectMediaUpload(actor.id, req.body?.uploadId);
+      if (intent.kind === "clip-video" || intent.kind === "clip-audio") {
+        const annotationId = typeof req.body?.annotationId === "string" ? req.body.annotationId : "";
+        const annotationForClip = await storage.getAnnotation(annotationId);
+        if (!annotationForClip) return res.status(404).json({ error: "Annotation not found" });
+        if (annotationForClip.userId !== actor.id) {
+          return res.status(403).json({ error: "You can only attach media to your own annotation" });
+        }
+        const expectedKind = annotationForClip.sourceType === "youtube" ? "clip-video" : "clip-audio";
+        if (intent.kind !== expectedKind) {
+          return res.status(400).json({ error: `This source requires ${expectedKind}` });
+        }
       }
-      if (!base64 || typeof base64 !== "string") {
-        return res.status(400).json({ error: "clip data is required" });
-      }
-      if (typeof durationMs === "number" && durationMs > 95_000) {
-        return res.status(400).json({ error: "Clip cannot exceed 90 seconds" });
-      }
-      const approxBytes = Math.floor((base64.length * 3) / 4);
-      // 24MB raw — generous bound for ≤90s 480p WebM/MP4. Larger uploads are
-      // out of spec and likely indicate a misconfigured recording resolution.
-      if (approxBytes > 24_000_000) {
-        return res.status(413).json({
-          error: "Clip too large; keep recordings under 90 seconds and ≤480p",
-        });
-      }
-      const safeMime =
-        typeof mime === "string" && /^(video|audio)\/(mp4|webm|x-matroska|mpeg)$/i.test(mime)
-          ? mime
-          : "video/webm";
-      const ext = safeMime.includes("mp4")
-        ? "mp4"
-        : safeMime.includes("mpeg")
-        ? "mp3"
-        : safeMime.startsWith("audio/")
-        ? "webm"
-        : "webm";
+      const media = await mediaStorage.finalizeMediaUpload({
+        userId: actor.id,
+        uploadId: req.body?.uploadId,
+      });
 
-      const supabaseUrl = process.env.SUPABASE_URL;
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      let clipUrl: string;
-      let storageBackend: "supabase" | "data-url" = "data-url";
-      if (supabaseUrl && serviceKey) {
-        const admin = createClient(supabaseUrl, serviceKey, {
-          auth: { persistSession: false, autoRefreshToken: false },
-        });
-        const objectPath = `${userId}/${annotationId}.${ext}`;
-        const buffer = Buffer.from(base64, "base64");
-        const { error: upErr } = await admin.storage
-          .from("clip-media")
-          .upload(objectPath, buffer, {
-            contentType: safeMime,
-            upsert: true,
-            cacheControl: "31536000",
+      if (media.kind === "clip-video" || media.kind === "clip-audio") {
+        const annotationId = typeof req.body?.annotationId === "string" ? req.body.annotationId : "";
+        // Attach the verified intent first. If this step fails, the annotation
+        // remains private/processing instead of exposing an untracked URL.
+        await mediaStorage.attachMediaUpload(actor.id, media.uploadId, annotationId);
+        // Supabase attachment and publication are one row-locked transaction.
+        // Test/development storage has no RPC, so retain its in-memory update.
+        if (storageBackend !== "supabase") {
+          await storage.updateAnnotation(annotationId, {
+            clipMediaUrl: media.url,
+            clipStatus: "ready",
+            isPublic: 1,
           });
-        if (upErr) {
-          // Surface the storage error rather than silently corrupting state.
-          // The extension treats this as a clip-upload failure and shows a
-          // toast; the annotation is still published with clip_status='failed'.
-          console.error("[clip-video] supabase upload failed", upErr);
-          await storage.updateAnnotation(annotationId, { clipStatus: "failed" });
-          return res.status(502).json({ error: `Clip upload failed: ${upErr.message}` });
         }
-        const { data: pub } = admin.storage.from("clip-media").getPublicUrl(objectPath);
-        clipUrl = pub.publicUrl;
-        storageBackend = "supabase";
-
-        // Optional thumbnail (poster frame extracted from the first captured
-        // frame). Keeps the feed thumbnail aligned with the actual clipped
-        // moment instead of the YouTube hqdefault.
-        if (thumbnailBase64 && typeof thumbnailBase64 === "string") {
-          const thumbExt = thumbnailMime?.includes("png") ? "png" : "jpg";
-          const thumbContentType = thumbnailMime?.startsWith("image/") ? thumbnailMime : "image/jpeg";
-          const thumbPath = `${userId}/${annotationId}-poster.${thumbExt}`;
-          const { error: tErr } = await admin.storage
-            .from("clip-media")
-            .upload(thumbPath, Buffer.from(thumbnailBase64, "base64"), {
-              contentType: thumbContentType,
-              upsert: true,
-              cacheControl: "31536000",
-            });
-          if (!tErr) {
-            const { data: tPub } = admin.storage.from("clip-media").getPublicUrl(thumbPath);
-            await storage.updateAnnotation(annotationId, { clipThumbnailUrl: tPub.publicUrl });
-          }
-        }
-      } else {
-        clipUrl = `data:${safeMime};base64,${base64}`;
       }
+      return res.status(201).json(media);
+    }),
+  );
 
-      await storage.updateAnnotation(annotationId, {
-        clipMediaUrl: clipUrl,
-        clipStatus: "ready",
-      });
-
-      return res.status(201).json({
-        ok: true,
-        url: clipUrl,
-        bytes: approxBytes,
-        mime: safeMime,
-        backend: storageBackend,
-      });
-    })
+  app.post(
+    "/api/annotations/:id/clip-failed",
+    asyncHandler(async (req, res) => {
+      const actor = await auth.requireActor(req);
+      const annotation = await storage.getAnnotation(String(req.params.id));
+      if (!annotation) return res.status(404).json({ error: "Annotation not found" });
+      if (annotation.userId !== actor.id) {
+        return res.status(403).json({ error: "You can only update your own annotation" });
+      }
+      await storage.updateAnnotation(annotation.id, { clipStatus: "failed", isPublic: 0 });
+      return res.json({ ok: true });
+    }),
   );
 
   // ---- ANNOTATIONS / CLIPS ----------------------------------------------
   app.get(
     "/api/annotations/:id",
     asyncHandler(async (req, res) => {
-      const viewerUserId = (req.query.userId as string) || undefined;
+      const viewer = await auth.optionalActor(req);
+      const viewerUserId = viewer?.id;
       const ann = await storage.getAnnotationWithUser(String(req.params.id), viewerUserId);
       if (!ann) return res.status(404).json({ error: "Annotation not found" });
+      if (ann.isPublic !== 1 && ann.userId !== viewerUserId) {
+        return res.status(404).json({ error: "Annotation not found" });
+      }
       return res.json(ann);
     })
   );
@@ -561,16 +570,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post(
     "/api/clips",
     asyncHandler(async (req, res) => {
-      const userId = (req.body?.userId as string) || "";
-      if (!userId) return res.status(401).json({ error: "Sign in to publish a clip" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ error: "User not found" });
+      const actor = await auth.requireActor(req);
 
-      const parsed = insertAnnotationSchema.safeParse(req.body);
+      if (req.body?.commentaryAudioUrl) {
+        return res.status(400).json({ error: "Use a verified commentaryAudioUploadId instead of a media URL" });
+      }
+      const commentaryUploadId = typeof req.body?.commentaryAudioUploadId === "string"
+        ? req.body.commentaryAudioUploadId
+        : null;
+      let commentaryAudioUrl: string | null = null;
+      if (commentaryUploadId) {
+        const upload = await mediaStorage.readyMediaUpload(actor.id, commentaryUploadId, "commentary-audio");
+        commentaryAudioUrl = upload.public_url;
+      }
+      const parsed = insertAnnotationSchema.safeParse({
+        ...req.body,
+        // Open Graph images are supplied by arbitrary source pages. A page
+        // with a malformed or insecure image URL must not block publishing;
+        // simply omit that optional decoration.
+        sourceImage: safeOptionalHttpsUrl(req.body?.sourceImage),
+        // This field is never accepted from the caller. The verified Storage
+        // URL is attached after request validation below.
+        commentaryAudioUrl: null,
+      });
       if (!parsed.success) {
         return res.status(400).json({ error: parsed.error.flatten() });
       }
-      const data = parsed.data;
+      const data = { ...parsed.data, commentaryAudioUrl };
 
       // Server-side enforcement of source URL + 90s clip cap (defense-in-depth).
       try {
@@ -594,62 +620,65 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         throw err;
       }
 
-      // For YouTube/podcast clips, log the FFmpeg/yt-dlp commands we'd run.
-      let processingPlan: string[] = [];
-      try {
-        if (data.sourceType === "youtube" && data.clipStartSec != null && data.clipEndSec != null) {
-          processingPlan = buildYouTubeClipCommands({
-            kind: "youtube",
-            sourceUrl: data.sourceUrl,
-            startSec: data.clipStartSec,
-            endSec: data.clipEndSec,
-          });
-        } else if (data.sourceType === "podcast" && data.clipStartSec != null && data.clipEndSec != null) {
-          processingPlan = buildPodcastClipCommands({
-            kind: "podcast",
-            sourceUrl: data.sourceUrl,
-            startSec: data.clipStartSec,
-            endSec: data.clipEndSec,
-          });
-        }
-      } catch (err) {
-        if (err instanceof ClipValidationError) {
-          return res.status(400).json({ error: err.message, field: err.field });
+      const annotation = await storage.createAnnotation({ ...data, userId: actor.id });
+      if (commentaryUploadId) {
+        try {
+          await mediaStorage.attachMediaUpload(actor.id, commentaryUploadId, annotation.id);
+        } catch (error) {
+          await storage.deleteAnnotation(annotation.id);
+          throw error;
         }
       }
-
-      const annotation = await storage.createAnnotation({ ...data, userId });
-      return res.status(201).json({ annotation, processingPlan, max: MAX_CLIP_SECONDS, targetHeight: TARGET_VIDEO_HEIGHT });
+      return res.status(201).json({ annotation, max: MAX_CLIP_SECONDS, targetHeight: TARGET_VIDEO_HEIGHT });
     })
   );
 
-  // Owner-only delete. The Express API mirrors the bookmark/follow pattern:
-  // the actor's userId comes in via body or query string. Ownership is checked
-  // server-side; comments / claims / bookmarks cascade away via FK.
+  // Owner-only delete. Actor identity always comes from the bearer token;
+  // comments, claims, bookmarks, and votes cascade via foreign keys.
   app.delete(
     "/api/annotations/:id",
     asyncHandler(async (req, res) => {
       const id = String(req.params.id);
-      const userId =
-        (req.body?.userId as string) || (req.query.userId as string) || "";
-      if (!userId) return res.status(401).json({ error: "Sign in to delete a clip" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ error: "User not found" });
+      const actor = await auth.requireActor(req);
       const ann = await storage.getAnnotation(id);
       if (!ann) return res.status(404).json({ error: "Annotation not found" });
-      if (ann.userId !== userId) {
+      if (ann.userId !== actor.id) {
         return res.status(403).json({ error: "You can only delete your own annotations" });
+      }
+      if (storageBackend === "supabase") {
+        await mediaStorage.deleteAnnotationMedia(actor.id, id);
       }
       await storage.deleteAnnotation(id);
       return res.json({ ok: true, deleted: id });
     })
   );
 
+  // Vercel Cron sends CRON_SECRET as a bearer token. This server-only task
+  // clears abandoned upload intents and objects after a 24-hour grace period.
+  app.get(
+    "/api/maintenance/media",
+    asyncHandler(async (req, res) => {
+      const expected = process.env.CRON_SECRET;
+      const token = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+      if (!expected) return res.status(503).json({ error: "Media maintenance is not configured" });
+      const expectedBytes = Buffer.from(expected);
+      const tokenBytes = Buffer.from(token);
+      if (!token || tokenBytes.length !== expectedBytes.length || !timingSafeEqual(tokenBytes, expectedBytes)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const result = await mediaStorage.cleanupExpiredMediaUploads();
+      return res.json({ ok: true, ...result });
+    }),
+  );
+
   // ---- COMMENTS ----------------------------------------------------------
   app.get(
     "/api/annotations/:id/comments",
     asyncHandler(async (req, res) => {
-      const list = await storage.listComments(String(req.params.id));
+      const id = String(req.params.id);
+      const annotation = await storage.getAnnotation(id);
+      if (!annotation || annotation.isPublic !== 1) return res.status(404).json({ error: "Annotation not found" });
+      const list = await storage.listComments(id);
       return res.json(list);
     })
   );
@@ -658,12 +687,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/api/annotations/:id/comments",
     asyncHandler(async (req, res) => {
       const annotationId = String(req.params.id);
+      const actor = await auth.requireActor(req);
       const parentIdRaw = req.body?.parentId;
       const parentId =
         typeof parentIdRaw === "string" && parentIdRaw.length > 0 ? parentIdRaw : null;
       const parsed = insertCommentSchema.safeParse({
         annotationId,
-        userId: req.body?.userId,
+        userId: actor.id,
         body: req.body?.body,
         parentId,
       });
@@ -671,9 +701,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: parsed.error.flatten() });
       }
       const ann = await storage.getAnnotation(annotationId);
-      if (!ann) return res.status(404).json({ error: "Annotation not found" });
-      const user = await storage.getUser(parsed.data.userId);
-      if (!user) return res.status(401).json({ error: "User not found" });
+      if (!ann || ann.isPublic !== 1) return res.status(404).json({ error: "Annotation not found" });
       // Validate parent comment belongs to this annotation if provided.
       if (parsed.data.parentId) {
         const parent = await storage.getComment(parsed.data.parentId);
@@ -682,22 +710,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
       const comment = await storage.createComment(parsed.data);
-      return res.status(201).json({ ...comment, user });
+      return res.status(201).json({ ...comment, user: actor });
     })
   );
 
   // ---- VOTES -------------------------------------------------------------
-  // Mirrors the bookmark/follow API shape: actor's userId comes via the body
-  // (or query string for DELETE). Votes are unique per (user, annotation),
-  // and the same user re-voting in the same direction toggles to clear,
-  // matching common Reddit/HN conventions.
+  // Mirrors the bookmark/follow API shape. The actor always comes from the
+  // verified bearer token. Votes are unique per (user, annotation), and the
+  // same user re-voting in the same direction toggles to clear, matching
+  // common Reddit/HN conventions.
   app.get(
     "/api/annotations/:id/votes",
     asyncHandler(async (req, res) => {
       const id = String(req.params.id);
-      const userId = (req.query.userId as string) || "";
+      const annotation = await storage.getAnnotation(id);
+      if (!annotation || annotation.isPublic !== 1) return res.status(404).json({ error: "Annotation not found" });
+      const actor = await auth.optionalActor(req);
       const summary = await storage.getVoteSummary(id);
-      const viewerVote = userId ? await storage.getViewerVote(userId, id) : null;
+      const viewerVote = actor ? await storage.getViewerVote(actor.id, id) : null;
       return res.json({ ...summary, viewerVote });
     })
   );
@@ -706,22 +736,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/api/annotations/:id/vote",
     asyncHandler(async (req, res) => {
       const id = String(req.params.id);
-      const userId = (req.body?.userId as string) || "";
+      const actor = await auth.requireActor(req);
       const value = Number(req.body?.value);
-      if (!userId) return res.status(401).json({ error: "Sign in to vote" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ error: "User not found" });
       const ann = await storage.getAnnotation(id);
-      if (!ann) return res.status(404).json({ error: "Annotation not found" });
+      if (!ann || ann.isPublic !== 1) return res.status(404).json({ error: "Annotation not found" });
       if (value !== 1 && value !== -1) {
         return res.status(400).json({ error: "value must be 1 or -1" });
       }
       // Toggle off if the user re-votes in the same direction.
-      const current = await storage.getViewerVote(userId, id);
+      const current = await storage.getViewerVote(actor.id, id);
       const result =
         current === value
-          ? await storage.clearVote(userId, id)
-          : await storage.setVote(userId, id, value as VoteValue);
+          ? await storage.clearVote(actor.id, id)
+          : await storage.setVote(actor.id, id, value as VoteValue);
       return res.json(result);
     })
   );
@@ -730,10 +757,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/api/annotations/:id/vote",
     asyncHandler(async (req, res) => {
       const id = String(req.params.id);
-      const userId =
-        (req.body?.userId as string) || (req.query.userId as string) || "";
-      if (!userId) return res.status(401).json({ error: "Sign in to vote" });
-      const result = await storage.clearVote(userId, id);
+      const actor = await auth.requireActor(req);
+      const result = await storage.clearVote(actor.id, id);
       return res.json(result);
     })
   );
@@ -742,7 +767,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.post(
     "/api/annotations/:id/claims",
     asyncHandler(async (req, res) => {
-      return createClaim(String(req.params.id), req.body, res);
+      const actor = await auth.optionalActor(req);
+      return createClaim(storage, String(req.params.id), req.body, actor?.id ?? null, claimEmailDispatcher, moderation, res);
     })
   );
 
@@ -751,8 +777,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     asyncHandler(async (req, res) => {
       const annotationId = (req.body?.annotationId as string) || "";
       if (!annotationId) return res.status(400).json({ error: "annotationId required" });
-      return createClaim(annotationId, req.body, res);
+      const actor = await auth.optionalActor(req);
+      return createClaim(storage, annotationId, req.body, actor?.id ?? null, claimEmailDispatcher, moderation, res);
     })
+  );
+
+  // Moderator access requires both a verified OAuth session and an auth
+  // subject explicitly allowlisted in MODERATOR_AUTH_IDS. Claimant contact
+  // data is never exposed through public endpoints.
+  app.get(
+    "/api/admin/claims",
+    asyncHandler(async (req, res) => {
+      const actor = await auth.requireActor(req);
+      if (!moderation.isModerator(actor)) throw new ClaimModerationError(403, "Moderator access required");
+      const claims = await moderation.listClaims(boundedIntegerQuery(req.query.limit, 100, 200));
+      res.setHeader("Cache-Control", "no-store");
+      return res.json({ claims });
+    }),
+  );
+
+  app.patch(
+    "/api/admin/claims/:id",
+    asyncHandler(async (req, res) => {
+      const actor = await auth.requireActor(req);
+      if (!moderation.isModerator(actor)) throw new ClaimModerationError(403, "Moderator access required");
+      const status = req.body?.status as ModerationStatus;
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+      if (!["reviewing", "resolved", "rejected"].includes(status) || !note || note.length > 4000) {
+        return res.status(400).json({ error: "A valid status and moderation note are required" });
+      }
+      const claim = await moderation.moderate(String(req.params.id), status, note, actor);
+      return res.json({ claim });
+    }),
   );
 
   // ---- SUPPORT (contact form) -------------------------------------------
@@ -799,7 +855,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         });
       }
 
-      const toEmail = process.env.SUPPORT_TO_EMAIL || "support@annotatedextensions.com";
+      const toEmail = process.env.SUPPORT_TO_EMAIL || "support@annotatedextension.com";
       const fromEmail =
         process.env.SUPPORT_FROM_EMAIL || "Annotated Support <onboarding@resend.dev>";
 
@@ -850,8 +906,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }),
         });
         if (!resendRes.ok) {
-          const detail = await resendRes.text().catch(() => "");
-          console.error("[support] resend error", resendRes.status, detail);
+          await resendRes.body?.cancel().catch(() => {});
+          console.error("[support] resend error", { status: resendRes.status });
           return res.status(502).json({
             ok: false,
             error: "We couldn't deliver your message. Please try again shortly.",
@@ -859,7 +915,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
         return res.json({ ok: true });
       } catch (err) {
-        console.error("[support] resend network error", err);
+        console.error("[support] resend network error", { name: err instanceof Error ? err.name : "Error" });
         return res.status(502).json({
           ok: false,
           error: "We couldn't deliver your message. Please try again shortly.",
@@ -874,7 +930,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/api/annotations/:id/og",
     asyncHandler(async (req, res) => {
       const ann = await storage.getAnnotationWithUser(String(req.params.id));
-      if (!ann) return res.status(404).json({ error: "Annotation not found" });
+      if (!ann || ann.isPublic !== 1) return res.status(404).json({ error: "Annotation not found" });
       const title = ann.sourceTitle || "Annotated clip";
       const description =
         ann.commentaryText?.slice(0, 200) ||
@@ -894,7 +950,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (err instanceof ClipValidationError) {
       return res.status(400).json({ error: err.message, field: err.field });
     }
-    console.error(err);
+    if (err instanceof ApiAuthError) {
+      return res.status(err.statusCode).json({ error: err.publicMessage });
+    }
+    if (err instanceof MediaStorageError || err instanceof MediaValidationError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    if (err instanceof StorageUnavailableError) {
+      return res.status(503).json({ error: "Service temporarily unavailable" });
+    }
+    if (err instanceof ClaimModerationError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error(JSON.stringify({
+      event: "api_request_failed",
+      errorName: err instanceof Error ? err.name : "Error",
+    }));
     return res.status(500).json({ error: "Internal server error" });
   });
 

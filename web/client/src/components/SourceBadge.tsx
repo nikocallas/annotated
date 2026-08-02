@@ -18,7 +18,7 @@ export function SourceBadge({ type }: { type: string }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-[hsl(var(--primary)/0.12)] text-primary" data-testid="badge-source-type">
+    <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-[hsl(var(--primary)/0.12)] text-primary-readable" data-testid="badge-source-type">
       <FileText className="w-3 h-3" />
       Article
     </span>

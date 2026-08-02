@@ -6,7 +6,6 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { apiRequest } from "./queryClient";
 import { supabase, supabaseConfigured, getRedirectUrl } from "./supabase";
 import type { User } from "@shared/schema";
 
@@ -20,7 +19,13 @@ interface AuthValue {
 const AuthContext = createContext<AuthValue | null>(null);
 
 async function exchangeSupabaseSession(accessToken: string): Promise<User | null> {
-  const res = await apiRequest("POST", "/api/auth/supabase", { accessToken });
+  // Supabase invokes auth-state callbacks while holding its client lock. Use
+  // the session token already supplied by that callback instead of asking the
+  // client for the same session again, which can stall OAuth completion.
+  const res = await fetch("/api/auth/supabase", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
   if (!res.ok) return null;
   const data = (await res.json()) as { user: User };
   return data.user;
@@ -68,11 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginWithProvider = useCallback(async (provider: "x" | "google") => {
     if (!supabase) {
-      // Fallback: demo auth for local dev when Supabase env vars aren't set.
-      const res = await apiRequest("POST", "/api/auth/demo", { provider });
-      const data = (await res.json()) as { user: User };
-      setUser(data.user);
-      return;
+      throw new Error("OAuth is not configured for this deployment");
     }
     // For X (OAuth 2.0) we request users.read so Supabase can read the user
     // profile. X/Twitter OAuth 2.0 does not expose email — that's why Supabase

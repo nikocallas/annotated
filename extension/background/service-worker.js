@@ -6,6 +6,8 @@
 //   3. Bridge audio recording requests from the side panel to an offscreen
 //      document (MediaRecorder won't run inside a service worker)
 
+import { capturePlan, detectSourceType, isValidAuthHandoff } from "../shared/clip-utils.mjs";
+
 const OFFSCREEN_DOC_PATH = "offscreen/offscreen.html";
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -16,10 +18,9 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // ---------- External sign-in handoff ---------------------------------------
 // The Annotated website's /auth/callback page posts a message to the
-// extension once OAuth completes. We persist the user record to
-// chrome.storage.local and notify any open side panel so it can render the
-// signed-in UI without a manual refresh. externally_connectable in the
-// manifest restricts senders to annotatedextension.com.
+// extension once OAuth completes. We persist the Supabase session bundle in
+// extension-owned storage and notify any open side panel. externally_connectable
+// restricts senders to the production Annotated origins.
 function isAllowedAuthOrigin(url) {
   if (!url) return false;
   try {
@@ -33,13 +34,15 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
     sendResponse({ ok: false, error: "origin_not_allowed" });
     return false;
   }
-  if (message?.type === "ANNOTATED_AUTH_SUCCESS" && message.user && typeof message.user === "object") {
+  const auth = message?.auth;
+  if (isValidAuthHandoff(message)) {
     (async () => {
       try {
-        await chrome.storage.local.set({ annotatedUser: message.user });
+        await chrome.storage.local.set({ annotatedAuth: auth });
+        await chrome.storage.local.remove("annotatedUser");
         // Notify any open side panel — onMessage listeners ignore unknown types.
         chrome.runtime
-          .sendMessage({ type: "ANNOTATED_USER_UPDATED", user: message.user })
+          .sendMessage({ type: "ANNOTATED_AUTH_UPDATED", auth })
           .catch(() => {});
         sendResponse({ ok: true });
       } catch (err) {
@@ -55,7 +58,10 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
     sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
     return false;
   }
-  sendResponse({ ok: false, error: "unknown_message" });
+  sendResponse({
+    ok: false,
+    error: message?.type === "ANNOTATED_AUTH_SUCCESS" ? "invalid_auth_payload" : "unknown_message",
+  });
   return false;
 });
 
@@ -85,30 +91,13 @@ async function ensureContentScript(tabId) {
   }
 }
 
-function detectSourceTypeFromUrl(url) {
-  if (!url) return "unknown";
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, "");
-    if (host.includes("youtube.com") || host === "youtu.be") return "youtube";
-    if (host === "x.com" || host === "twitter.com") return "x";
-    if (
-      host.includes("podcasts.apple.com") ||
-      host === "overcast.fm" ||
-      host === "pca.st" ||
-      host.includes("spotify.com")
-    ) return "podcast";
-    return "article";
-  } catch { return "unknown"; }
-}
-
 async function buildFallbackMeta(tab) {
   if (!tab) return null;
   const url = tab.url ?? "";
   return {
     url,
     title: tab.title ?? "",
-    sourceType: detectSourceTypeFromUrl(url),
+    sourceType: detectSourceType(url, { xAsArticle: false }),
     publication: hostnameFor(url),
     fallback: true,
   };
@@ -153,6 +142,8 @@ async function ensureOffscreenDoc(reasons = ["USER_MEDIA"], justification = "Rec
 async function closeOffscreenDocIfIdle() {
   try {
     if (!(await hasOffscreenDoc())) return;
+    const state = await callOffscreen("OFFSCREEN_PING");
+    if (state?.recording || state?.capturing) return;
     await chrome.offscreen.closeDocument();
   } catch {}
 }
@@ -161,10 +152,10 @@ async function closeOffscreenDocIfIdle() {
 
 const pendingOffscreenReplies = new Map();
 
-function callOffscreen(type, extra = {}) {
+function callOffscreen(type, extra = {}, onReady = null) {
   return new Promise((resolve) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    pendingOffscreenReplies.set(id, resolve);
+    pendingOffscreenReplies.set(id, { resolve, onReady });
     chrome.runtime.sendMessage({ target: "offscreen", type, id, ...extra }).catch(() => {
       // sendMessage rejects when no listener is yet registered — the offscreen
       // page may still be initializing. Retry once after a short delay.
@@ -185,13 +176,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Replies coming back from the offscreen document.
   if (message?.type === "OFFSCREEN_REPLY") {
-    const resolver = pendingOffscreenReplies.get(message.id);
-    if (resolver) {
+    const pending = pendingOffscreenReplies.get(message.id);
+    if (pending) {
       pendingOffscreenReplies.delete(message.id);
-      resolver(message.payload);
+      pending.resolve(message.payload);
     }
     return false;
   }
+  if (message?.type === "OFFSCREEN_CAPTURE_READY") {
+    const pending = pendingOffscreenReplies.get(message.id);
+    if (pending?.onReady) Promise.resolve(pending.onReady()).catch(() => {});
+    return false;
+  }
+  // The offscreen recorder emits this only during a bounded source capture.
+  // Receiving it resets Chrome's MV3 service-worker idle timer so a 61–90s
+  // capture does not lose the in-memory reply bridge halfway through.
+  if (message?.type === "OFFSCREEN_CAPTURE_PROGRESS") return false;
   if (message?.type === "OFFSCREEN_READY") return false;
 
   // Content-script ↦ side panel forwarding.
@@ -375,6 +375,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const active = tabs[0];
       const ok = active?.id != null ? await ensureContentScript(active.id) : false;
       sendResponse({ ok });
+    })();
+    return true;
+  }
+
+  if (message?.type === "CAPTURE_ACTIVE_TAB_CLIP") {
+    (async () => {
+      let active = null;
+      try {
+        const startSec = Math.max(0, Number(message.startSec) || 0);
+        const kind = message.kind === "audio" ? "audio" : "video";
+        const sourceType = kind === "audio" ? "podcast" : "youtube";
+        const requestedEnd = startSec + Math.max(0, Number(message.durationMs) || 0) / 1000;
+        const plan = capturePlan(sourceType, startSec, requestedEnd);
+        const durationMs = plan.durationMs;
+        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        active = tabs[0];
+        if (!active?.id) return sendResponse({ error: "no_active_tab" });
+        if (!(await ensureContentScript(active.id))) {
+          return sendResponse({ error: "source_tab_cannot_be_captured" });
+        }
+        await chrome.tabs.sendMessage(active.id, { type: "PAUSE_MEDIA" }).catch(() => {});
+        const seek = await chrome.tabs
+          .sendMessage(active.id, { type: "SET_MEDIA_TIME", time: startSec, play: false })
+          .catch((error) => ({ ok: false, error: error?.message || "seek_failed" }));
+        if (seek?.ok === false) return sendResponse({ error: seek.error || "seek_failed" });
+
+        await ensureOffscreenDoc(["USER_MEDIA"], "Capture a user-selected 90-second-or-shorter source clip.");
+        const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: active.id });
+        const result = await callOffscreen(
+          "OFFSCREEN_CAPTURE_TAB",
+          { streamId, kind, durationMs },
+          () => chrome.tabs.sendMessage(active.id, { type: "PLAY_MEDIA" }),
+        );
+        await chrome.tabs.sendMessage(active.id, { type: "PAUSE_MEDIA" }).catch(() => {});
+        await closeOffscreenDocIfIdle();
+        sendResponse(result);
+      } catch (err) {
+        if (active?.id) await chrome.tabs.sendMessage(active.id, { type: "PAUSE_MEDIA" }).catch(() => {});
+        await closeOffscreenDocIfIdle();
+        sendResponse({ error: err?.message || String(err) });
+      }
     })();
     return true;
   }

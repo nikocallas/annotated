@@ -43,7 +43,7 @@ export function DeleteAnnotationButton({
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Sign in required");
-      await apiRequest("DELETE", `/api/annotations/${annotationId}`, { userId: user.id });
+      await apiRequest("DELETE", `/api/annotations/${annotationId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feed"] });

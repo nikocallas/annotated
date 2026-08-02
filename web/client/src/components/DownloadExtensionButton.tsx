@@ -68,7 +68,7 @@ export function DownloadExtensionButton({
     <a
       href={EXTENSION_INSTALL_HREF}
       {...linkProps}
-      className={`inline-flex items-center justify-center rounded-md font-semibold transition-shadow shadow-sm hover:shadow-md ${sizeClasses} ${variantClasses} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center rounded-md font-semibold transition-shadow shadow-sm hover:shadow-md ${sizeClasses} ${variantClasses} ${className}`}
       style={style}
       data-testid="button-download-extension"
       aria-label="Get the Chrome extension"

@@ -36,7 +36,7 @@ export function Logo({ size = 28 }: { size?: number }) {
   return (
     <a
       href="/"
-      className="inline-flex items-center gap-2 hover-elevate rounded-md px-2 py-1 -ml-2"
+      className="inline-flex min-h-11 items-center gap-2 hover-elevate rounded-md px-2 py-1 -ml-2"
       data-testid="link-home"
       aria-label="Annotated home"
     >
