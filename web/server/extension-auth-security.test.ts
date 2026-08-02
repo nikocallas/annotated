@@ -67,3 +67,15 @@ test("callback sends only to the pinned ID and keeps a real retry path", () => {
   assert.doesNotMatch(callback, /reopen the side panel.*picked up/i);
   assert.match(login, /isAnnotatedExtensionId\(extensionId\)/);
 });
+
+test("website auth synchronization does not re-enter Supabase session locking", () => {
+  const authContext = readFileSync(
+    resolve(repoRoot, "web/client/src/lib/auth-context.tsx"),
+    "utf8",
+  );
+
+  assert.match(authContext, /exchangeSupabaseSession\(accessToken: string\)/);
+  assert.match(authContext, /Authorization: `Bearer \$\{accessToken\}`/);
+  assert.equal(authContext.match(/exchangeSupabaseSession\(token\)/g)?.length, 2);
+  assert.doesNotMatch(authContext, /async function exchangeSupabaseSession\(\)[\s\S]*getSession\(\)/);
+});
