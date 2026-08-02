@@ -389,6 +389,11 @@
         if (msg.play) {
           const p = m.play?.();
           if (p && typeof p.catch === "function") p.catch(() => {});
+        } else {
+          // Range edits are positioning gestures, not playback gestures.
+          // Freeze on the exact selected second so the page cannot drift
+          // forward while the user refines the opposite boundary.
+          try { m.pause?.(); } catch {}
         }
         sendResponse({ ok: true, currentTime: m.currentTime });
       } catch (err) {
