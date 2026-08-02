@@ -10,11 +10,17 @@ import { capturePlan, detectSourceType, isValidAuthHandoff } from "../shared/cli
 
 const OFFSCREEN_DOC_PATH = "offscreen/offscreen.html";
 
-chrome.runtime.onInstalled.addListener(() => {
+function configureActionBehavior() {
+  // Use an explicit action.onClicked handler below. Chrome's convenience
+  // behavior opens the panel without consistently treating that click as the
+  // extension invocation required by tabCapture.getMediaStreamId().
   chrome.sidePanel
-    .setPanelBehavior({ openPanelOnActionClick: true })
+    .setPanelBehavior({ openPanelOnActionClick: false })
     .catch((err) => console.warn("[Annotated] sidePanel error", err));
-});
+}
+
+configureActionBehavior();
+chrome.runtime.onInstalled.addListener(configureActionBehavior);
 
 // ---------- External sign-in handoff ---------------------------------------
 // The Annotated website's /auth/callback page posts a message to the
@@ -470,7 +476,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // ---------- Tab lifecycle ----------------------------------------------------
 
 chrome.action.onClicked.addListener((tab) => {
-  if (tab?.id != null) ensureContentScript(tab.id);
+  if (tab?.id == null) return;
+  // sidePanel.open is deliberately called synchronously from the toolbar
+  // gesture; content-script injection can proceed independently afterward.
+  chrome.sidePanel
+    .open({ tabId: tab.id })
+    .catch((err) => console.warn("[Annotated] could not open side panel", err));
+  ensureContentScript(tab.id);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

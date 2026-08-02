@@ -115,3 +115,13 @@ test("side panel requests source access only from explicit clipping actions", ()
   assert.match(script, /chrome\.permissions\.request/);
   assert.match(script, /ensureActiveSiteAccess/);
 });
+
+test("toolbar invocation explicitly opens the side panel for tab capture", () => {
+  const worker = readFileSync(
+    resolve(repoRoot, "extension/background/service-worker.js"),
+    "utf8",
+  );
+  assert.match(worker, /openPanelOnActionClick: false/);
+  assert.match(worker, /chrome\.action\.onClicked\.addListener/);
+  assert.match(worker, /chrome\.sidePanel\s*\.open\(\{ tabId: tab\.id \}\)/);
+});
