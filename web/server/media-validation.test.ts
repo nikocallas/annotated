@@ -17,6 +17,10 @@ function element(elementId: number, payload: Buffer): Buffer {
   return Buffer.concat([id(elementId), size(payload.length), payload]);
 }
 
+function unknownSizeElement(elementId: number, payload: Buffer): Buffer {
+  return Buffer.concat([id(elementId), Buffer.from([0xff]), payload]);
+}
+
 function uint(value: number): Buffer {
   if (value <= 0xff) return Buffer.from([value]);
   if (value <= 0xffff) {
@@ -65,6 +69,38 @@ test("accepts a verified 61-second 240p WebM clip", () => {
     audio: true,
   }), "clip-video");
   assert.equal(result.durationSeconds, 61);
+  assert.equal(result.width, 426);
+  assert.equal(result.height, 240);
+});
+
+test("accepts MediaRecorder WebM with consecutive unknown-sized clusters", () => {
+  const header = element(0x1a45dfa3, element(0x4282, Buffer.from("webm")));
+  const info = element(0x1549a966, element(0x2ad7b1, uint(1_000_000)));
+  const tracks = element(0x1654ae6b, element(0xae, Buffer.concat([
+    element(0x83, uint(1)),
+    element(0xe0, Buffer.concat([
+      element(0xb0, uint(426)),
+      element(0xba, uint(240)),
+    ])),
+  ])));
+  const clusters = Array.from({ length: 16 }, (_, index) => unknownSizeElement(
+    0x1f43b675,
+    Buffer.concat([
+      element(0xe7, uint(index * 2_000)),
+      element(0xa3, Buffer.from([0x81, 0x00, 0x00, 0x80, 0x00])),
+    ]),
+  ));
+  const media = Buffer.concat([
+    header,
+    id(0x18538067),
+    Buffer.from([0xff]),
+    info,
+    tracks,
+    ...clusters,
+  ]);
+
+  const result = validateUploadedMedia(media, "clip-video");
+  assert.equal(result.durationSeconds, 30);
   assert.equal(result.width, 426);
   assert.equal(result.height, 240);
 });

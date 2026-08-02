@@ -78,7 +78,13 @@ export function inspectWebM(buffer: Buffer): VerifiedMedia {
   let hasAudio = false;
   let visited = 0;
 
-  function walk(start: number, end: number, depth: number, clusterTimecode = 0) {
+  function walk(
+    start: number,
+    end: number,
+    depth: number,
+    clusterTimecode = 0,
+    stopAtSiblingId: number | null = null,
+  ): number {
     if (depth > 12) throw new MediaValidationError("WebM metadata nesting is invalid");
     let offset = start;
     let activeClusterTimecode = clusterTimecode;
@@ -86,11 +92,15 @@ export function inspectWebM(buffer: Buffer): VerifiedMedia {
       if (++visited > 250_000) throw new MediaValidationError("WebM metadata is too complex");
       const id = readVint(buffer, offset, true);
       if (!id) break;
+      // MediaRecorder writes a streamable Segment containing consecutive
+      // unknown-sized Clusters. A following Cluster closes the previous one;
+      // it is a sibling, not another nested master element.
+      if (stopAtSiblingId !== null && id.value === stopAtSiblingId) return offset;
       const size = readVint(buffer, offset + id.length, false);
       if (!size) break;
       const dataStart = offset + id.length + size.length;
       const declaredEnd = size.unknown ? end : dataStart + size.value;
-      const dataEnd = Math.min(declaredEnd, end, buffer.length);
+      let dataEnd = Math.min(declaredEnd, end, buffer.length);
       if (dataEnd < dataStart) throw new MediaValidationError("WebM element size is invalid");
 
       switch (id.value) {
@@ -141,10 +151,18 @@ export function inspectWebM(buffer: Buffer): VerifiedMedia {
 
       if (MASTER_IDS.has(id.value) && dataEnd > dataStart) {
         const nestedClusterTimecode = id.value === 0x1f43b675 ? 0 : activeClusterTimecode;
-        walk(dataStart, dataEnd, depth + 1, nestedClusterTimecode);
+        const childEnd = walk(
+          dataStart,
+          dataEnd,
+          depth + 1,
+          nestedClusterTimecode,
+          id.value === 0x1f43b675 && size.unknown ? 0x1f43b675 : null,
+        );
+        if (size.unknown && childEnd < dataEnd) dataEnd = childEnd;
       }
       offset = dataEnd > offset ? dataEnd : offset + 1;
     }
+    return offset;
   }
 
   walk(0, buffer.length, 0);
