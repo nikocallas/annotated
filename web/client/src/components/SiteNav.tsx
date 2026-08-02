@@ -8,7 +8,7 @@ type Current = "home" | "feed" | null;
 export function SiteNav({ current = null }: { current?: Current }) {
   const items: { href: string; label: string; key: Current; Icon: typeof Home }[] = [
     { href: "/", label: "Home", key: "home", Icon: Home },
-    { href: "/feed", label: "Feed", key: "feed", Icon: Compass },
+    { href: "/feed", label: "Explore", key: "feed", Icon: Compass },
   ];
   return (
     <nav className="hidden md:flex items-center gap-1" aria-label="Primary">

@@ -98,7 +98,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
 
   return (
     <Card
-      className="overflow-hidden border-card-border bg-card hover-elevate"
+      className="annotation-sheet overflow-hidden border-card-border bg-card hover-elevate"
       data-testid={`card-annotation-${a.id}`}
     >
       <div className="p-5 flex flex-col gap-4">
@@ -122,7 +122,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
           </div>
 
           {/* Source attribution */}
-          <div className="text-sm">
+          <div className="source-provenance text-sm">
             <div className="text-muted-foreground text-xs mb-1">From {a.sourcePublication ?? hostname(a.sourceUrl)}</div>
             <Link
               href={`/a/${a.id}`}
@@ -142,9 +142,12 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
 
           {/* Commentary */}
           {a.commentaryText && (
-            <p className="text-sm leading-relaxed text-foreground/90" data-testid={`text-commentary-${a.id}`}>
-              {a.commentaryText}
-            </p>
+            <div className="annotation-note">
+              <span>Why this matters</span>
+              <p className="text-sm leading-relaxed text-foreground/90" data-testid={`text-commentary-${a.id}`}>
+                {a.commentaryText}
+              </p>
+            </div>
           )}
 
           {/* Footer */}

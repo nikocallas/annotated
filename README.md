@@ -79,7 +79,7 @@ The extension opens the production sign-in page with its runtime ID. The website
 
 ## Chrome extension
 
-Load `extension/` unpacked for development in Chrome 116 or newer. The manifest's public Web Store key preserves the published extension ID for realistic OAuth/CORS testing. The package requests only `sidePanel`, `activeTab`, `scripting`, `tabs`, `storage`, `offscreen`, and `tabCapture`; host access is limited to the two Annotated production origins and the exact Annotated Supabase host needed for signed direct uploads. External OAuth messages remain limited to the Annotated origins. Permission justifications and the release checklist are in the readiness document.
+Load `extension/` unpacked for development in Chrome 116 or newer. The manifest's public Web Store key preserves the published extension ID for realistic OAuth/CORS testing. The package requests only `sidePanel`, `activeTab`, `scripting`, `tabs`, `storage`, `offscreen`, and `tabCapture`; permanent host access is limited to the two Annotated production origins and the exact Annotated Supabase host needed for signed direct uploads. Source-page access is requested per site only when the user imports a selection or controls/captures media. External OAuth messages remain limited to the Annotated origins. Permission justifications and the release checklist are in the readiness document.
 
 ```bash
 cd web
@@ -87,10 +87,10 @@ npm run validate:extension
 npm run build:extension:cws
 ```
 
-The Web Store artifact is `annotated-chrome-web-store.zip`, with `manifest.json` at its root. Version `1.8.0` includes the hardened session handoff and real constrained-media workflow. Building or previewing does not publish a Web Store update.
+The Web Store artifact is `annotated-chrome-web-store.zip`, with `manifest.json` at its root. Version `1.8.1` adds canonical production routing, explicit per-site clipping access, an exact in-panel range editor, and the hardened session/media workflow. Building or previewing does not publish a Web Store update.
 
 ## Deployment safety
 
 Vercel's root directory is `web/`. `npm run build` emits the static client, API function, per-annotation metadata function, and downloadable extension archive. `/a/:id` is rendered through the metadata function so crawlers receive a unique title, description, image, and canonical production URL before the React app hydrates.
 
-Do not merge, deploy to production, apply production migrations, or publish version `1.8.0` without explicit owner approval. Branch previews and branch-scoped database testing are the required proof path first.
+Production merges and Vercel Git deployments are owner-authorized for this repository. Do not publish version `1.8.1` to the Chrome Web Store without a separate explicit approval after the physical-source matrix and publisher-dashboard review pass.

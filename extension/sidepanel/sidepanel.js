@@ -12,7 +12,10 @@ import {
   nextPublishStatus,
 } from "../shared/clip-utils.mjs";
 
-const API_BASE = "https://annotatedextension.com";
+// Use the canonical www origin directly. Vercel redirects the apex domain to
+// www; following that cross-origin redirect from a chrome-extension:// fetch
+// changes the request Origin to `null`, which the API correctly rejects.
+const API_BASE = "https://www.annotatedextension.com";
 const SUPPORT_EMAIL = "support@annotatedextension.com";
 const PUBLISH_RESET_MS = 10000;
 const FAIR_USE_COPY = "I confirm this annotation uses only the selected clip/text for commentary, criticism, research, or another fair-use purpose.";
@@ -101,6 +104,27 @@ function fmt(sec) {
 function hostname(url) { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } }
 function avatarFallback(name) { return (name || "?").slice(0, 2).toUpperCase(); }
 function isExtension() { return typeof chrome !== "undefined" && !!chrome.runtime?.id; }
+
+function sourcePermissionPattern(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return `${parsed.protocol}//${parsed.hostname}/*`;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureActiveSiteAccess(url = state.pageMeta?.url) {
+  if (!isExtension() || !chrome.permissions?.request) return true;
+  const pattern = sourcePermissionPattern(url);
+  if (!pattern) return false;
+  // Optional host grants keep install-time access narrow while making a
+  // user's explicit clipping action reliable after cross-origin navigation.
+  const granted = await chrome.permissions.request({ origins: [pattern] });
+  if (granted) await sendBg({ type: "INJECT_ACTIVE_TAB" }).catch(() => null);
+  return granted;
+}
 
 async function api(path, options = {}) {
   const { __retried = false, headers = {}, ...fetchOptions } = options;
@@ -575,6 +599,10 @@ function applySelectionToClipText(text, { force = false } = {}) {
 async function importSelectionFromActiveTab() {
   const status = document.querySelector("[data-clip-text-status]");
   if (status) status.textContent = "Reading selection…";
+  if (!(await ensureActiveSiteAccess())) {
+    if (status) status.textContent = "Allow access to this site to import the highlighted passage.";
+    return;
+  }
   const resp = await sendBg({ type: "REQUEST_SELECTION" });
   const text = (resp?.selection?.text || "").trim();
   if (!text) {
@@ -672,9 +700,9 @@ function renderArticleClip() {
   return buildClipTextField({ rows: 6 });
 }
 
-// Build the Start/End time card UI for video/podcast clips. The user scrubs
-// the page's native player; the side panel just shows their current Start
-// and End values and lets them snap to the page's currentTime.
+// Build an exact, in-panel range editor for video/podcast clips. It combines
+// a visual dual-handle timeline with precise one-second nudges and page-player
+// in/out capture, so the user does not have to bounce between two scrubbers.
 function renderRangeClip(kind) {
   const wrap = document.createElement("div");
   wrap.className = "clip-flex clip-time-cards";
@@ -684,6 +712,19 @@ function renderRangeClip(kind) {
   if (state.clipRange.start == null || state.clipRange.end == null) {
     seedClipRangeFromMeta();
   }
+  const anchor = Number.isFinite(meta.currentTime) ? meta.currentTime : state.clipRange.start;
+  let timelineMin = Math.max(0, Math.floor((anchor || 0) - 15));
+  let timelineMax = timelineMin + 120;
+  if (duration != null && timelineMax > duration) {
+    timelineMax = duration;
+    timelineMin = Math.max(0, timelineMax - 120);
+  }
+  timelineMin = Math.min(timelineMin, Math.max(0, Math.floor(state.clipRange.start)));
+  timelineMax = Math.max(timelineMin + 30, timelineMax, Math.ceil(state.clipRange.end));
+  if (duration != null) timelineMax = Math.min(duration, timelineMax);
+  const waveform = Array.from({ length: 48 }, (_, index) =>
+    `<i style="--bar:${22 + Math.round(Math.abs(Math.sin(index * 0.71)) * 74)}%"></i>`,
+  ).join("");
 
   wrap.innerHTML = `
     <div class="clip-range-meta">
@@ -692,10 +733,42 @@ function renderRangeClip(kind) {
     </div>
 
     <p class="muted small clip-howto">
-      Scrub the ${kind === "podcast" ? "podcast" : "video"} on the page to the moment you want, then tap
-      <strong>Use current time</strong> for the start and the end.
+      Drag either handle to scrub the ${kind === "podcast" ? "podcast" : "video"}. Use Set in / Set out
+      to capture the page playhead, then nudge either edge by one second.
     </p>
 
+    <div class="clip-timeline" data-clip-timeline style="--range-start:0%;--range-end:10%;--playhead:0%">
+      <div class="clip-waveform" aria-hidden="true">${waveform}</div>
+      <div class="clip-timeline-muted before" aria-hidden="true"></div>
+      <div class="clip-timeline-muted after" aria-hidden="true"></div>
+      <div class="clip-timeline-selection" aria-hidden="true"></div>
+      <div class="clip-playhead" aria-hidden="true"></div>
+      <input
+        type="range"
+        class="clip-range-input clip-range-input-start"
+        min="${timelineMin}"
+        max="${timelineMax}"
+        step="1"
+        value="${Math.max(0, Math.floor(state.clipRange.start))}"
+        data-range-handle="start"
+        aria-label="Clip start time"
+      />
+      <input
+        type="range"
+        class="clip-range-input clip-range-input-end"
+        min="${timelineMin}"
+        max="${timelineMax}"
+        step="1"
+        value="${Math.max(1, Math.floor(state.clipRange.end))}"
+        data-range-handle="end"
+        aria-label="Clip end time"
+      />
+    </div>
+    <div class="clip-timeline-scale mono" aria-hidden="true">
+      <span data-timeline-min>${fmt(timelineMin)}</span><span data-timeline-max>${fmt(timelineMax)}</span>
+    </div>
+
+    <div class="time-card-grid">
     <div class="time-card" data-time-card="start">
       <div class="time-card-row">
         <span class="time-card-label">Start</span>
@@ -705,7 +778,7 @@ function renderRangeClip(kind) {
         <button type="button" class="step-btn" data-step="start" data-dir="-1" aria-label="Decrease start by 1 second">−1s</button>
         <button type="button" class="step-btn" data-step="start" data-dir="1" aria-label="Increase start by 1 second">+1s</button>
         <button type="button" class="time-card-set" data-set-current="start">
-          Use current time
+          Set in
         </button>
       </div>
     </div>
@@ -719,9 +792,10 @@ function renderRangeClip(kind) {
         <button type="button" class="step-btn" data-step="end" data-dir="-1" aria-label="Decrease end by 1 second">−1s</button>
         <button type="button" class="step-btn" data-step="end" data-dir="1" aria-label="Increase end by 1 second">+1s</button>
         <button type="button" class="time-card-set" data-set-current="end">
-          Use current time
+          Set out
         </button>
       </div>
+    </div>
     </div>
 
     <div class="clip-summary">
@@ -741,6 +815,11 @@ function renderRangeClip(kind) {
   const lengthDisplay = $("[data-clip-length]", wrap);
   const durDisplay = $("[data-duration-display]", wrap);
   const nowPlaying = $("[data-now-playing]", wrap);
+  const timeline = $("[data-clip-timeline]", wrap);
+  const startHandle = $("[data-range-handle='start']", wrap);
+  const endHandle = $("[data-range-handle='end']", wrap);
+  const timelineMinLabel = $("[data-timeline-min]", wrap);
+  const timelineMaxLabel = $("[data-timeline-max]", wrap);
 
   function fmtNow() {
     const m = state.pageMeta || {};
@@ -775,9 +854,30 @@ function renderRangeClip(kind) {
     const s = Math.max(0, Math.floor(state.clipRange.start));
     const e = Math.max(s + 1, Math.floor(state.clipRange.end));
     const dur = e - s;
+    if (s < timelineMin || e > timelineMax) {
+      timelineMin = Math.max(0, s - 15);
+      timelineMax = Math.max(timelineMin + 120, e + 15);
+      if (duration != null && timelineMax > duration) {
+        timelineMax = duration;
+        timelineMin = Math.max(0, Math.min(s, timelineMax - 120));
+      }
+    }
+    startHandle.min = endHandle.min = String(timelineMin);
+    startHandle.max = endHandle.max = String(timelineMax);
+    timelineMinLabel.textContent = fmt(timelineMin);
+    timelineMaxLabel.textContent = fmt(timelineMax);
     startDisplay.textContent = fmt(s);
     endDisplay.textContent = fmt(e);
     lengthDisplay.textContent = `${fmt(dur)} / ${fmt(MAX_CLIP_SECONDS)} max`;
+    startHandle.value = String(s);
+    endHandle.value = String(e);
+    const timelineSpan = Math.max(1, timelineMax - timelineMin);
+    timeline.style.setProperty("--range-start", `${((s - timelineMin) / timelineSpan) * 100}%`);
+    timeline.style.setProperty("--range-end", `${((e - timelineMin) / timelineSpan) * 100}%`);
+    const playhead = Number.isFinite(state.pageMeta?.currentTime)
+      ? Math.max(timelineMin, Math.min(timelineMax, state.pageMeta.currentTime))
+      : s;
+    timeline.style.setProperty("--playhead", `${((playhead - timelineMin) / timelineSpan) * 100}%`);
     if (dur > MAX_CLIP_SECONDS) {
       durDisplay.classList.add("over");
       durDisplay.textContent = `${dur - MAX_CLIP_SECONDS}s over the ${MAX_CLIP_SECONDS}s limit`;
@@ -789,11 +889,41 @@ function renderRangeClip(kind) {
     patchPreviewCard();
   }
 
+  $$('[data-range-handle]', wrap).forEach((input) => {
+    input.addEventListener("input", () => {
+      const which = input.dataset.rangeHandle;
+      const value = Math.max(0, Math.floor(Number(input.value) || 0));
+      if (which === "start") {
+        state.clipRange.start = value;
+        if (state.clipRange.start >= state.clipRange.end) {
+          state.clipRange.end = state.clipRange.start + 1;
+        }
+      } else {
+        state.clipRange.end = value;
+        if (state.clipRange.end <= state.clipRange.start) {
+          state.clipRange.start = Math.max(0, state.clipRange.end - 1);
+        }
+      }
+      clampRange();
+      state.clipRange.userTouched = true;
+      update();
+    });
+    input.addEventListener("change", async () => {
+      const which = input.dataset.rangeHandle;
+      const time = which === "start" ? state.clipRange.start : state.clipRange.end;
+      if (!(await ensureActiveSiteAccess())) {
+        toast("Allow access to this site to control its player", "error");
+        return;
+      }
+      await sendBg({ type: "SEEK_ACTIVE_TAB", time, play: false });
+    });
+  });
+
   // +/- 1s nudges. Each click adjusts the boundary by exactly one second,
   // clamps to 0/duration and the 90s cap, then seeks the page player so the
   // user previews the new position on the page itself.
   $$("[data-step]", wrap).forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const which = btn.dataset.step;
       const dir = Number(btn.dataset.dir);
       if (which === "start") {
@@ -805,6 +935,10 @@ function renderRangeClip(kind) {
       state.clipRange.userTouched = true;
       update();
       const t = which === "start" ? state.clipRange.start : state.clipRange.end;
+      if (!(await ensureActiveSiteAccess())) {
+        toast("Allow access to this site to control its player", "error");
+        return;
+      }
       sendBg({ type: "SEEK_ACTIVE_TAB", time: t, play: false });
     });
   });
@@ -819,6 +953,10 @@ function renderRangeClip(kind) {
     btn.addEventListener("click", async () => {
       btn.disabled = true;
       try {
+        if (!(await ensureActiveSiteAccess())) {
+          toast("Allow access to this site to read the player time", "error");
+          return;
+        }
         const which = btn.dataset.setCurrent;
         let cur = null;
         try {
@@ -864,7 +1002,11 @@ function renderRangeClip(kind) {
     });
   });
 
-  $("[data-preview-clip]", wrap).addEventListener("click", () => {
+  $("[data-preview-clip]", wrap).addEventListener("click", async () => {
+    if (!(await ensureActiveSiteAccess())) {
+      toast("Allow access to this site to preview the clip", "error");
+      return;
+    }
     sendBg({ type: "SEEK_ACTIVE_TAB", time: state.clipRange.start, play: true });
   });
 
@@ -877,12 +1019,28 @@ function patchRangeInputs() {
   const endDisplay = document.querySelector("[data-clip-end-display]");
   const lengthDisplay = document.querySelector("[data-clip-length]");
   const nowPlaying = document.querySelector("[data-now-playing]");
+  const timeline = document.querySelector("[data-clip-timeline]");
+  const startHandle = document.querySelector("[data-range-handle='start']");
+  const endHandle = document.querySelector("[data-range-handle='end']");
   if (!startDisplay || !endDisplay || !lengthDisplay) return;
   const s = Math.max(0, Math.floor(state.clipRange.start));
   const e = Math.max(s + 1, Math.floor(state.clipRange.end));
   startDisplay.textContent = fmt(s);
   endDisplay.textContent = fmt(e);
   lengthDisplay.textContent = `${fmt(e - s)} / ${fmt(MAX_CLIP_SECONDS)} max`;
+  if (startHandle) startHandle.value = String(s);
+  if (endHandle) endHandle.value = String(e);
+  if (timeline && startHandle) {
+    const min = Math.max(0, Number(startHandle.min) || 0);
+    const max = Math.max(1, Number(startHandle.max) || 1);
+    const span = Math.max(1, max - min);
+    timeline.style.setProperty("--range-start", `${((s - min) / span) * 100}%`);
+    timeline.style.setProperty("--range-end", `${((e - min) / span) * 100}%`);
+    if (Number.isFinite(state.pageMeta?.currentTime)) {
+      const playhead = Math.max(min, Math.min(max, state.pageMeta.currentTime));
+      timeline.style.setProperty("--playhead", `${((playhead - min) / span) * 100}%`);
+    }
+  }
   if (nowPlaying) {
     const m = state.pageMeta || {};
     if (m.currentTime != null) {
@@ -1329,6 +1487,13 @@ async function onPublish(node, publishBtn, errorEl) {
     );
   }
 
+  if (
+    (payload.sourceType === "youtube" || payload.sourceType === "podcast") &&
+    !(await ensureActiveSiteAccess(meta.url || payload.sourceUrl))
+  ) {
+    return showError(errorEl, "Allow Annotated to read this site so it can seek and capture the selected clip.");
+  }
+
   state.publish.status = nextPublishStatus(state.publish.status, "start");
   publishBtn.disabled = true;
   publishBtn.textContent = "Publishing…";
@@ -1375,7 +1540,16 @@ async function onPublish(node, publishBtn, errorEl) {
       api(`/api/annotations/${createdAnnotationId}/clip-failed`, { method: "POST" }).catch(() => {});
     }
     state.publish.status = nextPublishStatus(state.publish.status, "failure");
-    showError(errorEl, err.message);
+    const rawMessage = err instanceof Error ? err.message : String(err);
+    const needsToolbarInvocation =
+      rawMessage.includes("Extension has not been invoked") ||
+      rawMessage.includes("source_tab_cannot_be_captured");
+    showError(
+      errorEl,
+      needsToolbarInvocation
+        ? "Chrome needs a fresh clipping gesture on this tab. Click the Annotated toolbar icon once, then retry Publish. Your range and commentary are preserved."
+        : rawMessage,
+    );
     publishBtn.disabled = false;
     publishBtn.textContent = "Publish annotation";
   }

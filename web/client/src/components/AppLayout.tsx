@@ -15,7 +15,7 @@ type NavItem = { href: string; label: string; icon: typeof Compass; external?: b
 // site, including the landing and legal pages (via SiteNav).
 const SITE_NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home, external: true },
-  { href: "/", label: "Feed", icon: Compass },
+  { href: "/", label: "Explore", icon: Compass },
 ];
 
 export function AppLayout({
@@ -142,7 +142,7 @@ export function AppLayout({
           className="mx-auto max-w-6xl px-6 pb-6 text-xs text-muted-foreground"
           data-testid="text-footer-copyright"
         >
-          © 2026 Laymen, Inc.
+          © 2026 Annotated · Built by Niko Callas
         </div>
       </footer>
     </div>
