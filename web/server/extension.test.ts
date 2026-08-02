@@ -82,7 +82,35 @@ test("side panel discloses data use and policy links before authentication", () 
 
 test("side panel cannot redirect authenticated API traffic with a URL override", () => {
   const script = readFileSync(resolve(repoRoot, "extension/sidepanel/sidepanel.js"), "utf8");
-  assert.match(script, /const API_BASE = "https:\/\/annotatedextension\.com"/);
+  assert.match(script, /const API_BASE = "https:\/\/www\.annotatedextension\.com"/);
   assert.doesNotMatch(script, /state\.apiBase/);
   assert.doesNotMatch(script, /params\.get\(["']api["']\)/);
+});
+
+test("side panel exposes an exact, accessible media range editor", () => {
+  const script = readFileSync(resolve(repoRoot, "extension/sidepanel/sidepanel.js"), "utf8");
+  const css = readFileSync(resolve(repoRoot, "extension/sidepanel/sidepanel.css"), "utf8");
+  assert.match(script, /data-range-handle="start"/);
+  assert.match(script, /data-range-handle="end"/);
+  assert.match(script, /aria-label="Clip start time"/);
+  assert.match(script, /aria-label="Clip end time"/);
+  assert.match(script, /step="1"/);
+  assert.match(script, /Set in/);
+  assert.match(script, /Set out/);
+  assert.match(script, /MAX_CLIP_SECONDS/);
+  assert.match(css, /\.clip-timeline-selection/);
+  assert.match(css, /\.clip-playhead/);
+});
+
+test("side panel requests source access only from explicit clipping actions", () => {
+  const manifest = JSON.parse(
+    readFileSync(resolve(repoRoot, "extension/manifest.json"), "utf8"),
+  );
+  const script = readFileSync(resolve(repoRoot, "extension/sidepanel/sidepanel.js"), "utf8");
+  assert.deepEqual(
+    [...manifest.optional_host_permissions].sort(),
+    ["http://*/*", "https://*/*"],
+  );
+  assert.match(script, /chrome\.permissions\.request/);
+  assert.match(script, /ensureActiveSiteAccess/);
 });

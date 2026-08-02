@@ -1,4 +1,4 @@
-# Chrome Web Store 1.8.0 listing draft
+# Chrome Web Store 1.8.1 listing draft
 
 This is owner-review copy for the existing item `eaealcbiidjigfndjchchbnjdjicbajb`. It does not authorize an upload or publication.
 
@@ -47,6 +47,7 @@ Claims: https://www.annotatedextension.com/claims/how-it-works
 |---|---|
 | `sidePanel` | Provides Annotated's primary clipping and commentary interface beside the source page. |
 | `activeTab` | Grants temporary access only after the user invokes Annotated, so it can read the active source and capture the selected item. |
+| Optional website access | Requested only for the current source site when the user imports highlighted text or controls/captures media. This keeps access reliable across navigation without granting permanent all-sites access at install time. |
 | `scripting` | Injects the packaged content script into the user-invoked active tab to read source metadata, selected text, and media timing and to control play/pause/seek during a chosen capture. |
 | `tabs` | Identifies the active source tab, reacts when it navigates, opens sign-in/result pages, and keeps the side panel synchronized with the current source. |
 | `storage` | Stores the user's Annotated OAuth session and minimal extension state locally in Chrome. |
@@ -55,7 +56,7 @@ Claims: https://www.annotatedextension.com/claims/how-it-works
 | `annotatedextension.com`, `www.annotatedextension.com` | Calls the Annotated API and permits the production OAuth callback page to hand the verified session to the published extension. |
 | `cpqmjujhcwpavrsjadjz.supabase.co` | Uploads the encoded WebM Blob directly to the exact Annotated Storage project using a short-lived, owner-scoped signed URL; avoids proxying large media through the API. |
 
-No permission allows unattended background browsing or broad all-sites access. `activeTab` and the toolbar/side-panel user gesture scope page access to the selected tab. API and refresh requests are fixed to the Annotated production origin; the packaged side panel does not accept a query or runtime endpoint override.
+No permission allows unattended background browsing or permanent broad all-sites access. `activeTab` and per-site optional grants keep page access tied to the selected tab and an explicit clipping action. API and refresh requests are fixed to the canonical Annotated production origin; the packaged side panel does not accept a query or runtime endpoint override.
 
 ## Privacy disclosure review
 
@@ -71,7 +72,7 @@ Select the dashboard categories that accurately reflect the shipped behavior:
 
 Observed public-listing gap on 2026-08-01: the live 1.7.3 Store page declares only **Personally identifiable information**, **User activity**, and **Website content**. Before submitting 1.8.0, add **Authentication information**, **Web browsing activity**, **Form data**, and **User-generated content** (or the dashboard's exact current equivalents). Chrome's official user-data guidance treats login credentials/tokens, domains and URLs, form entries, and user-created material as separate sensitive data types; the dashboard, privacy policy, listing, and actual behavior must agree.
 
-The 1.8.0 signed-out side panel now provides a pre-authentication disclosure explaining active-tab metadata/selection access, local OAuth-session storage, publication of chosen source excerpts/media/commentary, and claim contact details, with direct Privacy and Terms links.
+The 1.8.1 signed-out side panel provides a pre-authentication disclosure explaining active-tab metadata/selection access, local OAuth-session storage, publication of chosen source excerpts/media/commentary, and claim contact details, with direct Privacy and Terms links. Clipping access is requested per site from an explicit user action rather than granted globally at install time.
 
 Confirm the existing declarations remain true:
 
@@ -83,8 +84,8 @@ Confirm the existing declarations remain true:
 
 ## Listing asset review
 
-- Replace any screenshot that depicts placeholder clipping with the 1.8.0 side-panel capture states.
+- Replace any screenshot that depicts placeholder clipping with the 1.8.1 side-panel exact-range capture states.
 - Include one article selection, one 240p YouTube capture, one podcast capture, and one public detail page showing both **Original source** and **File a claim**.
 - Ensure screenshots contain no private tokens, email addresses, browser profile data, third-party account menus, or unlicensed full-length media.
 - Remove the current “early version” / “workflows may continue to improve” language before resubmission.
-- Verify version 1.8.0, Chrome 116 minimum, support/privacy URLs, category, language, trader details, and the new exact Storage host warning in the draft dashboard before publishing.
+- Verify version 1.8.1, Chrome 116 minimum, support/privacy URLs, category, language, trader details, and the new exact Storage host warning in the draft dashboard before publishing.

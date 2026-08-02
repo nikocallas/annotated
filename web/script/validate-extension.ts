@@ -14,6 +14,7 @@ const manifest = JSON.parse(readFileSync(resolve(extensionDir, "manifest.json"),
   key?: string;
   permissions: string[];
   host_permissions: string[];
+  optional_host_permissions?: string[];
   externally_connectable?: { matches?: string[] };
 };
 
@@ -46,6 +47,11 @@ assert.deepEqual(
     "https://cpqmjujhcwpavrsjadjz.supabase.co/*",
   ].sort(),
   "host access must stay limited to the Annotated API/site and its exact media-storage origin",
+);
+assert.deepEqual(
+  [...(manifest.optional_host_permissions ?? [])].sort(),
+  ["http://*/*", "https://*/*"].sort(),
+  "source-page access must remain optional and user granted",
 );
 assert.deepEqual(
   [...(manifest.externally_connectable?.matches ?? [])].sort(),
@@ -97,6 +103,10 @@ assert.match(sidepanelSource, /event\.key === "Escape"/, "claim dialog must clos
 assert.match(sidepanelSource, /previouslyFocused/, "claim dialog must restore focus");
 assert.match(sidepanelSource, /data-open-detail/, "feed cards need a keyboard-operable detail control");
 assert.match(sidepanelSource, /kind === "error" \? "alert" : "status"/, "toast messages need live-region roles");
+assert.match(sidepanelSource, /data-range-handle="start"/, "media editor needs a start handle");
+assert.match(sidepanelSource, /data-range-handle="end"/, "media editor needs an end handle");
+assert.match(sidepanelSource, /step="1"/, "media boundaries must support one-second precision");
+assert.match(sidepanelCss, /\.clip-timeline-selection/, "media editor needs a visible selected range");
 assert.match(sidepanelCss, /prefers-reduced-motion:\s*reduce/, "side panel must respect reduced motion");
 assert.match(sidepanelCss, /:focus-visible/, "side panel must preserve a visible keyboard focus indicator");
 assert.match(sidepanelCss, /min-height:\s*44px/, "side panel controls need 44px touch targets");

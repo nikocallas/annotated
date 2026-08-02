@@ -277,7 +277,7 @@ These are the smallest external actions still required. Main Supabase, Vercel co
 - [x] Public Web Store key pins unpacked QA builds to published ID `eaealcbiidjigfndjchchbnjdjicbajb`; OAuth handoff and API CORS therefore exercise the same origin used after release.
 - [x] Minimum Chrome version is 116, matching offscreen consumption of a service-worker `tabCapture` stream ID; bounded offscreen progress messages protect 61–90s captures from the 30s worker idle window.
 - [x] No remote executable code or remote stylesheet; no eval; package contains no maps, docs, env files, build directories, or secrets.
-- [x] Host permissions limited to the two Annotated production origins plus the exact `cpqmjujhcwpavrsjadjz.supabase.co` media-storage origin required for signed direct uploads; OAuth messaging remains restricted to the Annotated origins, and authenticated API/refresh traffic has no runtime origin override.
+- [x] Permanent host permissions limited to the two Annotated production origins plus the exact `cpqmjujhcwpavrsjadjz.supabase.co` media-storage origin required for signed direct uploads; source sites are optional, per-site grants requested only from a clipping action. OAuth messaging remains restricted to the Annotated origins, and authenticated API/refresh traffic has no runtime origin override.
 - [x] `sidePanel`: primary product surface.
 - [x] `activeTab` + `scripting`: user-invoked source metadata, selection, and media control on the active page only.
 - [x] `tabs`: active-tab discovery/navigation events and opening sign-in/result/settings tabs.

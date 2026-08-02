@@ -1,25 +1,25 @@
-/* annotated — extension sidebar palette mirrors annotatedextension.com.
-   Warm neutrals + orange accent (oklch 74% 0.18 52 ≈ hsl(28 95% 60%)).
-   Inter is the only typeface, including the wordmark. */
+/* Annotated — archival paper, deep ink, signal orange, and ultramarine.
+   The extension and social site share one compact, source-first system. */
 
 :root {
-  --bg: #f7f6f2;            /* hsl(45 25% 96%) */
-  --surface: #f9f8f5;        /* hsl(48 26% 97%) */
-  --surface-2: #fbfbf9;
+  --bg: #f6f1e7;
+  --surface: #fffdf8;
+  --surface-2: #faf6ee;
   --surface-hover: rgba(0, 0, 0, 0.04);
-  --border: #d4d1ca;         /* hsl(42 12% 82%) */
-  --text: #28251d;           /* hsl(40 18% 13%) */
-  --muted: #66635d;
-  --primary: #f59e3d;        /* warm orange ≈ oklch(74% .18 52) */
-  --primary-hover: #e8862a;
-  --primary-foreground: #2a1f0f;
-  --primary-readable: #8b3f0d;
+  --border: #d9d1c4;
+  --text: #171512;
+  --muted: #68625a;
+  --primary: #ff6a1a;
+  --primary-hover: #ef5608;
+  --primary-foreground: #171512;
+  --primary-readable: #a13c00;
+  --secondary: #4b57d9;
   --video-readable: #8e3b1c;
   --podcast-readable: #823548;
-  --primary-soft: rgba(245, 158, 61, 0.14);
-  --primary-ring: rgba(245, 158, 61, 0.45);
-  --gradient-primary: linear-gradient(180deg, #ffaf52, #e87f1c);
-  --shadow-primary: 0 8px 24px -8px rgba(245, 158, 61, 0.55);
+  --primary-soft: rgba(255, 106, 26, 0.13);
+  --primary-ring: rgba(75, 87, 217, 0.42);
+  --gradient-primary: linear-gradient(145deg, #ff7b28, #f0520b);
+  --shadow-primary: 0 8px 24px -10px rgba(255, 106, 26, 0.62);
   --destructive: #c0392b;
   --destructive-readable: #c0392b;
   --warning: #964219;
@@ -39,6 +39,7 @@ html.dark {
   --primary-hover: #ffb058;
   --primary-foreground: #2a1f0f;
   --primary-readable: #ffb058;
+  --secondary: #7e89ff;
   --video-readable: #ff9b6a;
   --podcast-readable: #ef91a5;
   --primary-soft: rgba(245, 158, 61, 0.18);
@@ -405,7 +406,7 @@ html.dark .badge.x { background: rgba(255,255,255,0.10); }
   border: 1px dashed var(--border); border-radius: var(--radius);
 }
 
-/* ---- Clip time cards (replaces the old dual-handle slider) -------------- */
+/* ---- Exact clip timeline ------------------------------------------------ */
 .clip-range-meta {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 11px; color: var(--muted);
@@ -415,6 +416,105 @@ html.dark .badge.x { background: rgba(255,255,255,0.10); }
 
 .clip-howto { margin: 0; line-height: 1.5; }
 .clip-howto strong { color: var(--text); font-weight: 600; }
+
+.clip-timeline {
+  position: relative;
+  height: 88px;
+  overflow: hidden;
+  background: #171512;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, var(--border));
+  border-radius: 8px;
+  isolation: isolate;
+}
+.clip-waveform {
+  position: absolute;
+  inset: 12px 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.68;
+}
+.clip-waveform i {
+  flex: 1;
+  height: var(--bar);
+  min-width: 1px;
+  background: #ff7b28;
+  border-radius: 1px;
+}
+.clip-timeline-selection {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  bottom: 5px;
+  left: var(--range-start);
+  right: calc(100% - var(--range-end));
+  border: 2px solid var(--primary);
+  border-radius: 5px;
+  box-shadow: 0 0 0 999px rgba(10, 9, 8, 0.56);
+  pointer-events: none;
+}
+.clip-playhead {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: var(--playhead);
+  width: 1px;
+  background: #fff;
+  opacity: 0.82;
+  pointer-events: none;
+}
+.clip-playhead::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  background: #fff;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.clip-range-input {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  pointer-events: none;
+}
+.clip-range-input::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.clip-range-input::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 88px;
+  margin-top: 0;
+  background: transparent;
+  border: 0;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+.clip-range-input-start::-webkit-slider-thumb { border-left: 5px solid var(--primary); }
+.clip-range-input-end::-webkit-slider-thumb { border-right: 5px solid var(--primary); }
+.clip-range-input:focus-visible { outline: none; }
+.clip-range-input:focus-visible::-webkit-slider-thumb { filter: drop-shadow(0 0 3px #fff); }
+.clip-timeline-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.time-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
 
 .time-card {
   display: flex; flex-direction: column; gap: 8px;
@@ -435,10 +535,10 @@ html.dark .badge.x { background: rgba(255,255,255,0.10); }
   color: var(--text);
 }
 .time-card-actions {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 6px;
 }
 .time-card-set {
-  margin-left: auto;
+  grid-column: 1 / -1;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--gradient-primary); color: var(--primary-foreground);
   border: 1px solid transparent; border-radius: 8px;
@@ -475,6 +575,10 @@ html.dark .badge.x { background: rgba(255,255,255,0.10); }
 .clip-summary .preview-clip-btn { margin-left: auto; }
 
 .now-playing { margin-top: 2px; }
+
+@media (max-width: 330px) {
+  .time-card-grid { grid-template-columns: 1fr; }
+}
 
 /* ---- Feed-style preview card ------------------------------------------- */
 .preview-card {

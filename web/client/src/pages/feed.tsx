@@ -26,6 +26,8 @@ import {
   Sparkles,
   Users,
   Bookmark as BookmarkIcon,
+  Search,
+  Quote,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
@@ -90,6 +92,7 @@ export default function FeedPage() {
   const [sort, setSort] = useState<SortKey>(readInitialSort);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [tab, setTab] = useState<FeedTab>("latest");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -118,6 +121,27 @@ export default function FeedPage() {
         {/* Center feed */}
         <div className="min-w-0">
           <h1 className="sr-only">Annotated public feed</h1>
+          <section className="feed-intro" aria-labelledby="feed-heading">
+            <div>
+              <div className="feed-eyebrow">
+                <Quote className="h-3.5 w-3.5" aria-hidden />
+                The context layer of the internet
+              </div>
+              <h2 id="feed-heading">What’s worth carrying forward</h2>
+              <p>Exact moments, primary sources, and the perspective that makes them matter.</p>
+            </div>
+            <label className="feed-search">
+              <Search className="h-4 w-4" aria-hidden />
+              <span className="sr-only">Search the feed</span>
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search sources or people"
+                data-testid="input-feed-search"
+              />
+            </label>
+          </section>
           {!tabLocked && (
             <TopFilters
               filter={filter}
@@ -130,7 +154,7 @@ export default function FeedPage() {
             {tabLocked ? (
               <LockedTabPrompt tab={tab} />
             ) : (
-              <FeedList tab={tab} sort={sort} filter={filter} />
+              <FeedList tab={tab} sort={sort} filter={filter} query={query} />
             )}
           </div>
         </div>
@@ -284,10 +308,12 @@ function FeedList({
   tab,
   sort,
   filter,
+  query,
 }: {
   tab: FeedTab;
   sort: SortKey;
   filter: FilterKey;
+  query: string;
 }) {
   const { user } = useAuth();
 
@@ -374,7 +400,24 @@ function FeedList({
     }
   }, [sort, all]);
 
-  const filtered = applyTypeFilter(sourceRows, filter);
+  const filtered = useMemo(() => {
+    const typed = applyTypeFilter(sourceRows, filter);
+    const needle = query.trim().toLocaleLowerCase();
+    if (!needle) return typed;
+    return typed.filter((annotation) =>
+      [
+        annotation.sourceTitle,
+        annotation.sourcePublication,
+        annotation.sourceAuthor,
+        annotation.clipText,
+        annotation.commentaryText,
+        annotation.user.displayName,
+        annotation.user.username,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase().includes(needle)),
+    );
+  }, [sourceRows, filter, query]);
 
   if (isLoading) {
     return (
@@ -392,7 +435,9 @@ function FeedList({
         className="rounded-lg border border-card-border bg-card p-6 text-sm text-muted-foreground"
         data-testid={`feed-empty-${sort}`}
       >
-        Nothing here yet — try a different filter.
+        {query.trim()
+          ? `No annotations match “${query.trim()}”. Try a source, creator, or phrase.`
+          : "Nothing here yet — try a different filter."}
       </div>
     );
   }
@@ -502,7 +547,7 @@ function PeopleWorthFollowing() {
           id="rail-people-heading"
           className="text-[11px] font-semibold tracking-wider uppercase text-muted-foreground"
         >
-          Suggested follows
+          People worth following
         </h3>
       </div>
       {isLoading ? (
@@ -566,7 +611,7 @@ function MostViewedClip() {
     >
       <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground mb-3">
         <Eye className="w-3 h-3" />
-        <span id="rail-most-viewed-heading">Most viewed clip</span>
+        <span id="rail-most-viewed-heading">Live signal</span>
       </div>
       <Link
         href={`/a/${a.id}`}
@@ -590,7 +635,7 @@ function MostViewedClip() {
         </div>
       </Link>
       <div className="text-[10px] text-muted-foreground mt-2">
-        Top viewed clip across the entire platform.
+        The moment drawing the most attention across Annotated right now.
       </div>
     </section>
   );

@@ -112,11 +112,11 @@ export function ClipPreview({
   if (a.sourceType === "article" && a.clipText) {
     return (
       <blockquote
-        className="border-l-2 border-primary pl-4 py-1 italic text-foreground/90 leading-relaxed"
-        style={{ fontFamily: "var(--font-sans)", fontSize: compact ? "1.05rem" : "1.18rem" }}
+        className="source-quote border-l-2 border-primary pl-4 py-1 text-foreground/90 leading-relaxed"
+        style={{ fontFamily: "var(--font-serif)", fontSize: compact ? "1.12rem" : "1.25rem" }}
         data-testid={`clip-text-${a.id}`}
       >
-        "{a.clipText}"
+        “{a.clipText}”
       </blockquote>
     );
   }

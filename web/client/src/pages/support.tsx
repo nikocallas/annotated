@@ -287,7 +287,7 @@ export default function SupportPage() {
           className="mx-auto max-w-3xl px-6 pb-6 text-xs text-muted-foreground"
           data-testid="text-footer-copyright"
         >
-          © 2026 Laymen, Inc.
+          © 2026 Annotated · Built by Niko Callas
         </div>
       </footer>
     </div>

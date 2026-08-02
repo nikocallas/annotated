@@ -15,7 +15,7 @@ test("public UI retains core WCAG-oriented semantics and contrast tokens", () =>
   const document = read("client/index.html");
 
   assert.match(css, /--primary-readable:/, "foreground accents must not reuse the low-contrast fill orange");
-  assert.match(css, /--muted-foreground:\s*40 6% 40%/, "light muted copy must retain AA contrast");
+  assert.match(css, /--muted-foreground:\s*35 7% 38%/, "light muted copy must retain AA contrast");
   assert.match(css, /prefers-reduced-motion:\s*reduce/, "public UI must respect reduced motion");
   assert.match(css, /:focus-visible/, "public UI must preserve visible keyboard focus");
   assert.match(css, /min-height:\s*2\.75rem/, "controls must retain 44px touch targets");
