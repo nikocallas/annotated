@@ -125,3 +125,15 @@ test("toolbar invocation explicitly opens the side panel for tab capture", () =>
   assert.match(worker, /chrome\.action\.onClicked\.addListener/);
   assert.match(worker, /chrome\.sidePanel\s*\.open\(\{ tabId: tab\.id \}\)/);
 });
+
+test("content script recognizes native, metadata, and direct-file podcast audio", () => {
+  const contentScript = readFileSync(
+    resolve(repoRoot, "extension/content/content-script.js"),
+    "utf8",
+  );
+  assert.match(contentScript, /const activeMedia = getActiveMedia\(\)/);
+  assert.match(contentScript, /function isAudioMedia\(media\)/);
+  assert.match(contentScript, /meta\[property="og:audio"\]/);
+  assert.match(contentScript, /twitter:player:stream:content_type/);
+  assert.match(contentScript, /media\.videoWidth === 0 && media\.videoHeight === 0/);
+});
