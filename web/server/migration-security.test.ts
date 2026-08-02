@@ -14,6 +14,17 @@ test("security migrations force RLS and remove direct client mutations", () => {
   assert.match(sql, /revoke all on public\.users[\s\S]*from anon, authenticated/);
   assert.doesNotMatch(sql, /disable row level security/);
   assert.match(sql, /grant execute on function public\.increment_annotation_view\(text\) to service_role/);
+  for (const [table, policy] of [
+    ["users", "users_insert_self"],
+    ["follows", "follows_insert"],
+    ["annotations", "annotations_insert"],
+    ["comments", "comments_insert"],
+    ["claims", "claims_insert_any"],
+    ["bookmarks", "bookmarks_insert"],
+    ["votes", "votes_insert"],
+  ]) {
+    assert.match(sql, new RegExp(`drop policy if exists ${policy} on public\\.${table}`));
+  }
 });
 
 test("media, rate-limit, and claim-audit data are server-owned", () => {

@@ -1,6 +1,6 @@
 # Annotated resubmission readiness
 
-Status: **active release-candidate hardening; no-go for production today**
+Status: **main database hardened; exact release-candidate production deployment pending owner approval**
 
 Branch: `resubmission-hardening`
 
@@ -13,7 +13,7 @@ Target Vercel project/team: `prj_wBKfZTInfsIqijLmTcOiYAOmrqdk` / `team_E5lJkCrPv
 Target Supabase project: `cpqmjujhcwpavrsjadjz` only
 Last updated: 2026-08-01
 
-This document is the running evidence record for the polish/resubmission release. “Implemented” means code and local automated evidence exist. “Proven” is reserved for behavior observed in a production-like preview or on a real Chrome device. No production deployment, production migration, merge, or Chrome Web Store update is authorized by this document.
+This document is the running evidence record for the polish/resubmission release. “Implemented” means code and local automated evidence exist. “Proven” is reserved for behavior observed in a production-like preview or on a real Chrome device. The owner authorized the exact main Supabase migration on 2026-08-01; no Vercel production deployment, merge, or Chrome Web Store update is authorized by this document.
 
 ## Authoritative Lovable checklist
 
@@ -34,7 +34,7 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 | Podcast 90-second audio segment | Tab audio capture, audio-only WebM encode, direct upload, trusted no-video/duration validation | A generated 61.016s audio-only artifact passes through deployed signing, upload, inspection, and publication; real podcast capture pending. |
 | Public landing page | `/a/:id` returns crawler-visible per-annotation metadata and hydrates the React detail page | Connected deployed crawler request returns unique title/description/canonical/OG/Twitter tags; third-party validator pending. |
 
-## Baseline snapshot before new migrations
+## Main Supabase baseline and migration record
 
 - The reviewed branch began at `ce52d0d`. Production was not changed.
 - Production Supabase had recently been resumed. A read-only check on 2026-08-01 showed the project `ACTIVE_HEALTHY`, `/api/feed` recovered with HTTP 200 and 55 durable annotations, and the retained users/most-viewed/detail APIs responding. The current production build still returned 404 for `/api/health` and `/api/ready`; those routes exist only in this branch until approved deployment. Its legacy `/api/users` response also still exposes internal `authId`, which the release candidate redacts.
@@ -42,9 +42,11 @@ The requirements page describes Annotated as a Chrome sidebar that clips/highlig
 - Existing migration history was preserved verbatim as `0001` through `0010`. `0001` explicitly disabled RLS on users, follows, annotations, comments, and claims. Later migrations added bookmarks, views, claim fields, votes/threads, thumbnail fields, and the original `clip-media` bucket.
 - The original code initialized the serverless module through request/startup demo seeding, accepted caller identity fields, used a public-key persistence path, returned clipping command plans, accepted base64/data-URL media, trusted client media claims, and had no CI.
 - Production data assumptions: seeded IDs are referenced by marketing/demo content; user/annotation rows must be preserved; annotation/media URLs may include legacy demo assets; there is no safe authorization to rewrite or delete production content during hardening.
-- The live target's exact policy/bucket export has not been mutated. Before applying the additive migrations, capture a Supabase dashboard/CLI schema-only backup and row counts for all core tables, `storage.buckets`, and `storage.objects` in project `cpqmjujhcwpavrsjadjz`.
-- A hosted read-only inventory confirms migrations `0011`–`0014` are not yet present: `media_uploads`, `rate_limit_buckets`, and `claim_events` are absent. Storage currently has only the public `clip-media` bucket, with zero objects; `commentary-audio` does not exist. This is evidence about current state, not authorization to migrate it.
-- Supabase Auth currently enables Google, X OAuth 2.0, and the backend email provider. Current production Google and X web callbacks, authenticated profile identity, and logout pass in real Chrome, but this does not prove release-candidate preview/extension handoff or token refresh. Email must be disabled before release to match the Google/X-only contract.
+- Before mutation, a schema-only export, exact hosted migration history, core row counts, policies, grants, and Storage bucket inventory were captured for project `cpqmjujhcwpavrsjadjz`. The live history contained 13 earlier timestamped migrations and dashboard-authored legacy policy names, so `0011` was made convergent by explicitly dropping those names; a regression test locks this production-drift case.
+- After the owner's explicit instruction to use the established main Annotated project, the four reviewed migrations were applied as new timestamped hosted entries corresponding exactly to `0011`–`0014`. Postflight shows 10 forced-RLS tables, 21 intended policies, zero legacy policies, zero direct `anon`/`authenticated` product-table mutation grants, both controlled media buckets, and all service-only RPCs. Anonymous REST and service-only RPC probes return 401; rate-limit, claim audit/moderation, and simultaneous atomic media-attachment probes pass, and all disposable probe data was removed.
+- Existing data was preserved: postflight counts were six users, 55 annotations, five follows, seven comments, one retained claim, and zero bookmarks/votes/new hardening rows before disposable probes. No unrelated Supabase project was contacted or modified.
+- The security migration intentionally makes the legacy Vercel server fail closed because that deployed build still reads product data with the anonymous key. Until the reviewed server is deployed, `/api/feed`, `/api/users`, and `/api/feed/most-viewed` return 500. The safe recovery is to deploy the reviewed service-role server, not restore anonymous table access.
+- Supabase Auth now enables Google and X OAuth 2.0 only. Email, phone, and anonymous sign-ups are disabled on the exact main project; a direct email signup returns 400 `Email signups are disabled`. Current production Google and X web callbacks, authenticated profile identity, and logout passed in real Chrome before the database migration, but the release-candidate production callback/extension handoff and token refresh still require post-deploy proof.
 
 ## Before/after findings
 
@@ -100,26 +102,26 @@ Orphan/replacement controls:
 - invalid finalization deletes the object and records failure;
 - daily authenticated Vercel Cron removes pending/ready/failed/orphaned uploads older than 24 hours.
 
-## Additive migrations and rollback
+## Applied additive migrations and rollback
 
-Migrations are not applied by the build and have not been applied to production in this branch.
+Migrations are not applied by the build. After schema/history preflight and an exact dry run, the owner authorized applying these four migrations to main project `cpqmjujhcwpavrsjadjz` on 2026-08-01. The CLI applied only the four reviewed timestamped files; hosted and local histories now agree on 17 entries.
 
 1. `0011_security_hardening.sql` enables/forces RLS, revokes direct privileges, adds the auth lookup/indexes, and creates the atomic view RPC.
 2. `0012_media_uploads.sql` converges bucket MIME/size limits and adds server-owned media upload intents/audit metadata.
 3. `0013_rate_limits_claim_audit.sql` adds stable-key rate buckets, atomic consume RPC, claim event trigger/table, and moderator RPC.
 4. `0014_atomic_media_attachment.sql` adds the partial uniqueness invariant and row-locked attachment/publication RPC.
 
-Preflight on a branch/test database:
+Completed main-project preflight and postflight:
 
 - schema-only backup plus row counts and duplicate `(auth_provider, auth_id)` check;
 - inventory bucket settings and object counts;
 - apply in order; verify policies/grants with `pg_policies` and `information_schema.role_table_grants`;
-- use the anon key to prove SELECT/write denial; use two real users to prove API 401/403 behavior;
-- sign/finalize one video, podcast, and commentary object; exercise cleanup on disposable orphan data.
+- use the anon key to prove SELECT/write/RPC denial and the service role to prove the controlled server paths;
+- exercise distributed rate limiting, claim receipt/moderation/event history, and two simultaneous media attachments; confirm one attached winner, one orphan, cross-annotation reuse rejection, and complete disposable-data cleanup.
 
-Rollback order if preview validation fails:
+Rollback order if production validation fails:
 
-- stop preview traffic first;
+- stop production traffic first;
 - `0014`: revoke/drop `attach_media_upload` and its partial unique index only after stopping attachment traffic and confirming no duplicate attached `(annotation_id, kind)` rows;
 - `0013`: revoke/drop `moderate_claim`, trigger/function, `claim_events`, `consume_rate_limit`, and `rate_limit_buckets` after exporting audit rows;
 - `0012`: stop uploads, export `media_uploads`, remove only disposable preview objects, then drop its policies/table; restore prior bucket settings from the captured inventory;
@@ -163,7 +165,7 @@ Isolated production-mode integration evidence against a clean local Supabase sta
 - stale-media maintenance removes both the disposable Storage object and upload-intent row (`scanned: 1`, `removed: 1`, `failures: 0`);
 - confirmed account deletion removes the app user, media row, Storage object, and GoTrue identity; a lowercase confirmation attempt returns 400 first.
 
-No production migration or write was used for this evidence.
+The local integration evidence in the preceding list did not use production. The separately recorded main-project migration/postflight above used only disposable writes for functional verification and removed every probe row afterward.
 
 Migration `0014` now also has live PostgreSQL proof on the preserved, fully migrated Annotated local database. Only Annotated's PostgreSQL container was started; no hosted project was contacted and all 12 unrelated Laymen containers stayed running. The reviewed migration created the partial unique index and service-role-only `attach_media_upload` RPC. Transactional probes proved first attachment, same-kind replacement, atomic annotation publication/URL update, superseded-upload orphaning, cross-annotation single-use rejection, and full rollback cleanup. Two simultaneous database sessions then targeted the same annotation with different ready uploads: both calls completed, but row locking serialized them to exactly one attached winner, one retryable orphan, and an annotation URL matching the winner. All disposable rows were deleted, and the Annotated container was stopped with its data volume preserved.
 
@@ -207,67 +209,68 @@ Isolated Chrome runtime evidence (Chrome for Testing 151.0.7922.71, fresh tempor
 
 Signed-out disclosure evidence for the current candidate: the locally served side panel renders the expected Annotated identity and a nonblank accessible tree with Google/X controls followed by a `role="note"` disclosure. It states active-tab URL/title/metadata/selection access, Chrome-local provider-session storage, user-chosen publication, and claim contact-data submission before authentication. Privacy and Terms resolve to the canonical production URLs, the framework-overlay count is zero, console warning/error output is empty, and the theme control changes the root to dark mode and its accessible label to “Switch to light mode.” The two deterministic package builders produce byte-identical 1.8.0 ZIPs at SHA-256 `aa716a80c260e01db72e3febfc26d51a78dc8d9b1b79dc04884bccb5a25a0350`.
 
-Current external-browser diagnostics find Google Chrome 150 running, the ChatGPT browser bridge installed and enabled in Profile 2, and its native-host manifest correct. After explicit owner permission, a Profile 2 window opened and the browser binding connected successfully. Current production Google sign-in completed the provider redirect, Annotated callback exchange, authenticated feed/profile identity, and logout with no console warnings/errors. After the owner signed into X, a newly initiated X flow also completed redirect, callback, authenticated Niko Callas identity, and logout; Annotated emitted no warning/error, and the sole console warning originated inside YouTube's embedded Google Publisher Tag library. Browser security correctly blocks automated access to `chrome://extensions`; the owner must therefore load the pinned-ID unpacked 1.8.0 candidate manually before the physical source/microphone matrix can proceed. The Chrome Web Store developer dashboard additionally requires Google account re-verification before its private draft fields can be reviewed; no credential or re-authentication control was touched.
+Current external-browser diagnostics find Google Chrome 150 running, the ChatGPT browser bridge installed and enabled in Profile 2, and its native-host manifest correct. After explicit owner permission, a Profile 2 window opened and the browser binding connected successfully. Current production Google sign-in completed the provider redirect, Annotated callback exchange, authenticated feed/profile identity, and logout with no console warnings/errors. After the owner signed into X, a newly initiated X flow also completed redirect, callback, authenticated Niko Callas identity, and logout; Annotated emitted no warning/error, and the sole console warning originated inside YouTube's embedded Google Publisher Tag library. Browser security correctly blocks automated access to `chrome://extensions`; the owner must therefore choose **Load unpacked** and select the repository's `extension/` directory, not the 1.8.0 ZIP, before the physical source/microphone matrix can proceed. The owner removed Store version 1.7.3. The Chrome Web Store developer account is `niko@laymen.com`, and the publisher is **Niko Callas** (not Laymen, Inc.); no credential or re-authentication control was touched.
 
 Independent public crawler evidence on 2026-08-01: LinkPreview.io fetched the current production domain, scored its generic card 94/100, verified a 1200×630 social image, and rendered X, Facebook, LinkedIn, Slack, Discord, and Google previews. A direct `facebookexternalhit` request to `/a/seed-ann-niko-01` confirmed that the current production deployment still returns the generic root title, description, canonical URL, and image for that annotation path. The release candidate already returns unique per-annotation metadata in connected crawler tests, but its Vercel preview is authentication-protected. A protected share/bypass credential was deliberately not sent to a third-party validator, so gate 16 correctly remains open until the candidate has an approved public deployment.
 
 Accessibility browser evidence for the exact candidate source at `772c7144136fec5c41a4ceab08c4ca173bcffa99`: axe 4.12 reports zero WCAG 2.0/2.1 A/AA violations on landing, feed, login, support, privacy, terms, signed-out extension, signed-in clip view, and the claim dialog in light and dark themes. Keyboard traces show visible 2px focus, 44px primary targets, and no hidden recorder controls in the tab order. The claim dialog receives initial focus, wraps Tab and Shift+Tab, closes with Escape, and restores focus to the File a claim button. Public routes at 390×844 and the side panel at 378px show no document-level horizontal overflow; the only intentionally offscreen support elements are the non-focusable bot honeypot. The website viewport permits zoom and both surfaces honor reduced-motion preferences.
 
-The Annotated Supabase organization is on the Free plan and exposes only the `main` branch. A preview branch was unavailable (HTTP 402), and a disposable third free project in the exact Annotated organization was rejected by Supabase's active-project limit. Nothing was created or changed in either attempt, and no unrelated project was paused or modified.
+The Annotated Supabase organization is on the Free plan and exposes only the `main` branch. The owner removed the expendable second free project but explicitly preferred the already-established main project because it contains Annotated Auth and has no current users. The hardened migration was therefore applied to exact project `cpqmjujhcwpavrsjadjz`; no new project was needed, and the unrelated Laymen project remained untouched.
 
 ## Acceptance gates
 
 | # | Gate | Current result |
 |---:|---|---|
 | 1 | Preview survives cold starts/temporary DB failure | Pass: connected Vercel stays live, fails ready/feed closed within bounds, then recovers on the same deployment |
-| 2 | Core feed/detail APIs return durable data | Pass: connected migrated Supabase preview returns 55 durable annotations plus feed/detail/users/most-viewed |
+| 2 | Core feed/detail APIs return durable data | Candidate pass: connected migrated runtime returns all 55 durable annotations plus feed/detail/users/most-viewed. Current production is temporarily fail-closed until the reviewed server deployment replaces the anonymous-key legacy build. |
 | 3 | Anonymous mutations return 401 | Pass in integration suite and connected deployed API |
 | 4 | Spoofed actor IDs have no authority | Pass in integration suite and connected two-actor journey |
 | 5 | Cross-user mutation/deletion returns 403 | Pass in integration suite and connected two-actor journey |
-| 6 | Direct anonymous Supabase writes denied | Pass through the encrypted external Supabase route: 401 and zero inserted rows |
-| 7 | Google and X work on site and extension | Partial: current production Google and X web callbacks, authenticated profile identity, and logout pass in real Chrome; release-candidate preview callbacks, explicit refresh, and real extension handoff remain pending |
+| 6 | Direct anonymous Supabase writes denied | Pass on the exact main project after migration: anonymous reads/writes and a service-only RPC return 401; functional service probes clean up to zero disposable rows. |
+| 7 | Google and X work on site and extension | Partial: pre-migration production Google and X web callbacks, authenticated profile identity, and logout pass in real Chrome; release-candidate production callbacks, explicit refresh, and real extension handoff remain pending |
 | 8 | Real 61s YouTube → verified 240p | Generated 61.016s/240p artifact passes the connected deployed pipeline; real YouTube device capture pending |
 | 9 | >90s rejected before publication | Pass in extension/API tests |
 | 10 | Real podcast → bounded audio artifact | Generated 61.016s audio-only artifact passes the connected deployed pipeline; real podcast device capture pending |
 | 11 | Article publishes exact selection + metadata | Exact passage/metadata passes through connected Vercel/Supabase; browser selection action pending |
 | 12 | Text and recorded audio commentary work | Connected deployed text plus verified WebM commentary pass; physical microphone publish pending |
 | 13 | Source link and File a claim on every page | Pass on retained production detail in desktop/mobile browser and hardened article/video/podcast details backed by the migrated database |
-| 14 | Claim submitted, recorded, notified, reviewed | Partial: rendered submission, durable record, notification-attempt audit, scoped moderator listing, and status/event review pass; real Resend delivery pending |
+| 14 | Claim submitted, recorded, notified, reviewed | Partial: rendered submission, durable record, notification-attempt audit, scoped moderator listing, and status/event review pass. Both existing Niko Auth subjects are configured as encrypted production moderators; real Resend delivery remains pending. |
 | 15 | Retained social behavior works | Pass through connected Vercel/Supabase with two verified actors; provider-browser UI remains part of gate 7 |
-| 16 | Per-annotation canonical/OG works in validators | Candidate crawler HTML passes. Independent validation proves only the current production root card (94/100); current production annotation paths still return generic root metadata, and the protected candidate preview cannot be safely exposed to the validator. |
+| 16 | Per-annotation canonical/OG works in validators | Candidate crawler HTML passes. Independent validation proves only the legacy production root card (94/100); final public validation must follow the approved production deployment. |
 | 17 | Typecheck/tests/build/CI/package pass | Pass: full local release CI has 47 tests and byte-identical packages; exact code-commit push/PR workflows and immutable Vercel preview pass |
 | 18 | Zero high/critical dependency findings | Pass; npm audit is zero total |
 | 19 | No service-role/secret leakage | Pass: source, built bundle, packages, PR diff, and full repository history scans are clean; CI now fetches full history and repeats the guard |
-| 20 | Vercel smoke test has no new runtime errors | Pass on connected critical API/media/social/outage journey; fixed deployment has no HTTP 500/504 logs |
-| 21 | Minimal versioned CWS package ready | 1.8.0 validates and loads with exact public ID/hosts; clean worker suspend/restart, synthetic-mic recording, and rendered pre-auth data disclosure pass; real-device and owner-dashboard listing review pending |
+| 20 | Vercel smoke test has no new runtime errors | Candidate pass on the connected critical API/media/social/outage journey. Production environment now contains every required encrypted setting, but its legacy build returns 500 after the hardened DB migration; deployment and post-deploy logs/readiness remain pending. |
+| 21 | Minimal versioned CWS package ready | 1.8.0 validates and loads with exact public ID/hosts; clean worker suspend/restart, synthetic-mic recording, and rendered pre-auth data disclosure pass. Chrome must load the unpacked `extension/` directory—not the ZIP; real-device and owner-dashboard review remain pending. |
 | 22 | Lovable checklist line-by-line | Matrix above plus final accessibility browser evidence; provider/manual rows remain open |
 
 ## Remaining risks and owner/provider actions
 
-These are the smallest external actions required; they do not authorize production mutation.
+These are the smallest external actions still required. Main Supabase and production environment-variable work are complete; the items below do not authorize a Vercel deployment or Chrome Web Store mutation.
 
-1. Enable a durable Supabase preview branch (Pro plan) or temporarily free one allowed project slot in the exact Annotated organization; then capture the preflight export and apply `0011`–`0014` only there. Short-lived connected-tunnel proof covers serverless, outage/recovery, RLS, social, media, and crawler behavior; the preserved local database now also proves `0014` replacement/single-use behavior under simultaneous calls. The durable hosted branch is still required for the final provider-connected rehearsal.
-2. Remove or rotate the existing production-like encrypted secrets in Vercel Preview before connecting a branch. Then configure a complete matched Preview set: server/publishable branch Supabase values, branch-safe Resend credentials, singular support inbox, owner `MODERATOR_AUTH_IDS`, `CRON_SECRET`, `RATE_LIMIT_SALT`, and the exact preview OAuth/CORS origin.
-3. Disable Supabase email sign-in, retain only Google and X OAuth 2.0, and add the exact approved preview callback allowlist. X must return the identity data Supabase requires; if the provider account cannot expose email, document that provider limitation rather than claiming success.
-4. Verify the Resend sender/domain and inbox access, then retain filer/poster/support delivery evidence.
-5. In Profile 2, load the pinned-ID unpacked extension 1.8.0 manually from `extension/`, grant microphone/tab capture through normal browser prompts, and run the physical-source matrix. Installed Store version 1.7.3 was detected read-only; it was not replaced. Re-verify the Google account when opening the Chrome Web Store developer dashboard, then review its private draft fields. Add the missing Authentication information, Web browsing activity, Form data, and User-generated content declarations (using the dashboard's current exact labels) and remove the public listing's “early version” language. Do not submit the draft yet.
-6. Approve production migration/deployment only after every acceptance row is proven. Approve the separate Chrome Web Store upload only after production is stable.
+1. Approve deployment of the exact reviewed branch head to Vercel Production. This is now the urgent safe recovery step because the hardened database correctly denies the legacy anonymous-key server. Do not restore anonymous grants.
+2. Immediately after deployment, prove `/api/health`, every `/api/ready` component, feed/users/most-viewed/detail, Google and X web callback/refresh/logout, one retained social mutation path, claim submission/moderation, and Vercel logs. Then run a public per-annotation OG/canonical validator and verify real Resend delivery to the owner-controlled inbox.
+3. In Profile 2, open `chrome://extensions`, turn on Developer mode, choose **Load unpacked**, and select the repository's `extension/` directory. The ZIP is only for Chrome Web Store upload and cannot be selected by **Load unpacked**. Confirm version 1.8.0 and ID `eaealcbiidjigfndjchchbnjdjicbajb`, then grant microphone/tab capture through normal browser prompts and run the physical-source matrix. Store version 1.7.3 has already been removed.
+4. In the Chrome Web Store developer account `niko@laymen.com`, open the item published by **Niko Callas** and review its private draft fields. Add the current equivalents of Authentication information, Web browsing activity, Form data, and User-generated content; review microphone/tab-media processing; and remove the public listing's “early version” language. Do not upload, save, submit, or publish until separately approved.
+5. Approve the Chrome Web Store 1.8.0 upload and submission only after the production deployment is stable and the real-device/provider rows are recorded.
 
 ## Final production deployment checklist
 
 - [ ] Draft PR reviewed; CI green; no unexpected generated/untracked files.
 - [ ] Preview URL and commit SHA recorded; Vercel logs clean for critical journey.
-- [ ] Database/schema/bucket backup and rollback owner assigned.
+- [x] Database/schema/bucket preflight, migration history, core counts, and postflight captured for exact main project `cpqmjujhcwpavrsjadjz`; rollback sequence documented.
 - [x] `0011`–`0014` proven in branch/test DB; anon and two-user authorization probes pass. `0014` additionally survives simultaneous same-annotation attachment calls with one winner and one orphan.
-- [ ] Preview `/api/health` 200 and `/api/ready` 200 with every named check `ok`.
-- [ ] Google/X site + extension OAuth, refresh, logout, and account deletion pass. Current production Google and X web callbacks/identity/logout pass; release-candidate preview/extension and explicit refresh proof remain open.
+- [ ] Production `/api/health` 200 and `/api/ready` 200 with every named check `ok` after the exact candidate deployment.
+- [ ] Google/X site + extension OAuth, refresh, logout, and account deletion pass. Pre-migration production Google and X web callbacks/identity/logout pass; release-candidate production/extension and explicit refresh proof remain open.
 - [ ] Real YouTube/podcast/article/commentary artifacts pass trusted validation.
 - [ ] Claim emails and moderator audit/status path pass.
 - [ ] OG/canonical preview validators pass on a real annotation.
 - [ ] Support, privacy, terms, retention, deletion, and singular support domain reviewed.
 - [x] Keyboard, contrast, zoom/reflow, reduced-motion, and claim-modal accessibility audit passes on the exact release candidate.
-- [ ] Explicit owner approval obtained for production migration/deploy.
-- [ ] Apply migrations, deploy exact reviewed SHA, smoke test, then observe Vercel logs/readiness before declaring stable.
+- [x] Explicit owner approval obtained and migrations `0011`–`0014` applied to exact main Supabase project.
+- [ ] Explicit owner approval obtained for the separate Vercel Production deployment.
+- [x] Every required production environment variable is present; `MODERATOR_AUTH_IDS`, `CRON_SECRET`, and `RATE_LIMIT_SALT` were added as sensitive values.
+- [ ] Deploy exact reviewed SHA, smoke test, then observe Vercel logs/readiness before declaring stable.
 
 ## Chrome Web Store release checklist
 
@@ -282,14 +285,14 @@ These are the smallest external actions required; they do not authorize producti
 - [x] `storage`: extension-owned OAuth session and minimal preference state.
 - [x] `offscreen`: microphone recording and tab-stream MediaRecorder DOM context required by MV3 service workers.
 - [x] `tabCapture`: user-selected source playback artifact; no background or unattended capture.
-- [ ] Real-device install/update test, permission-prompt screenshots, and 90-second stability run.
+- [ ] Real-device unpacked-folder install, permission-prompt screenshots, and 90-second stability run. Store version 1.7.3 is removed; Chrome must load the repository `extension/` directory rather than the ZIP.
 - [x] Signed-out extension UI discloses active-tab context, local OAuth state, chosen publication, and claim contact data before authentication, with canonical Privacy/Terms links.
 - [ ] Web Store dashboard privacy disclosure updated for OAuth tokens, browsing activity/URLs, active-tab content, form data, user content, microphone/tab media, and Supabase/Vercel/Resend processing.
 - [x] Ready-to-paste 1.8.0 description, single-purpose statement, permission justifications, and disclosure review drafted in `docs/chrome-web-store-listing.md`.
-- [ ] Listing screenshots/demo/privacy URL/support URL reviewed in the owner dashboard; remove the live listing's “early version” language.
+- [ ] Listing screenshots/demo/privacy URL/support URL reviewed in the `niko@laymen.com` owner dashboard for publisher **Niko Callas**; remove the live listing's “early version” language.
 - [x] Download and CWS builders strip platform metadata and produce the same 1.8.0 bytes with a root manifest; current candidate SHA-256 `aa716a80c260e01db72e3febfc26d51a78dc8d9b1b79dc04884bccb5a25a0350`.
-- [ ] Production endpoint/migrations stable and explicit owner approval obtained before upload/publish.
+- [ ] Hardened production endpoint stable after deployment; main migrations are applied. Separate explicit owner approval is still required before upload/publish.
 
 ## Go/no-go
 
-**Current recommendation: NO-GO for production resubmission.** The release candidate materially closes the known architecture/security gaps and now passes local CI, exact-commit hosted CI, connected durable serverless/data/social/media/crawler tests, rendered feed/detail/claim/moderation tests, database outage/recovery, the live `0014` atomic-attachment race probe, and current production Google/X web callbacks and logout in real Chrome. The remaining acceptance work is external: a durable provider-connected preview, candidate Google/X refresh and extension handoff, manual unpacked-extension loading followed by physical Chrome media/selection/microphone journeys, real Resend delivery, a public candidate for per-annotation third-party crawler validation, owner-dashboard privacy/listing review, and explicit approval for production migration/deployment. The branch should remain active until those rows are proven or an exact external limitation is documented.
+**Current recommendation: NO-GO for Chrome Web Store resubmission; GO for the exact reviewed Vercel Production deployment as soon as the owner explicitly approves it.** The main database is backed up, migrated, hardened, and functionally probed; Auth is Google/X-only; and all required production settings are encrypted in Vercel. The legacy production server is now intentionally fail-closed and returns 500 because it still uses anonymous database access, so delaying the reviewed server deployment prolongs downtime and restoring anonymous grants would reverse the security work. After deployment, the remaining acceptance work is production smoke/OAuth/Resend/crawler proof, manual unpacked-extension loading from the `extension/` directory, physical Chrome media/selection/microphone journeys, and the Niko Callas publisher-dashboard privacy/listing review. The branch should remain active until those rows pass and the separate Store upload/submission is approved.

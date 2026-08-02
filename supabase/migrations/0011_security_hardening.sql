@@ -36,6 +36,34 @@ alter table public.claims force row level security;
 alter table public.bookmarks force row level security;
 alter table public.votes force row level security;
 
+-- The hosted project received an earlier dashboard-authored RLS pass whose
+-- policy names differ from this reviewed migration. Remove those legacy names
+-- first so upgrading the live schema converges on exactly the policy set below
+-- instead of retaining duplicate write paths.
+drop policy if exists users_select_all on public.users;
+drop policy if exists users_insert_self on public.users;
+drop policy if exists follows_select on public.follows;
+drop policy if exists follows_insert on public.follows;
+drop policy if exists follows_delete on public.follows;
+drop policy if exists annotations_select on public.annotations;
+drop policy if exists annotations_insert on public.annotations;
+drop policy if exists annotations_update on public.annotations;
+drop policy if exists annotations_delete on public.annotations;
+drop policy if exists comments_select on public.comments;
+drop policy if exists comments_insert on public.comments;
+drop policy if exists comments_update on public.comments;
+drop policy if exists comments_delete on public.comments;
+drop policy if exists claims_select_own on public.claims;
+drop policy if exists claims_insert_any on public.claims;
+drop policy if exists bookmarks_select on public.bookmarks;
+drop policy if exists bookmarks_insert on public.bookmarks;
+drop policy if exists bookmarks_update on public.bookmarks;
+drop policy if exists bookmarks_delete on public.bookmarks;
+drop policy if exists votes_select on public.votes;
+drop policy if exists votes_insert on public.votes;
+drop policy if exists votes_update on public.votes;
+drop policy if exists votes_delete on public.votes;
+
 -- Re-applying the migration should converge on exactly these policies.
 drop policy if exists users_public_read on public.users;
 drop policy if exists users_update_self on public.users;
