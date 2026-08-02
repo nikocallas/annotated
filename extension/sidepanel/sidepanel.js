@@ -871,6 +871,8 @@ function renderRangeClip(kind) {
     lengthDisplay.textContent = `${fmt(dur)} / ${fmt(MAX_CLIP_SECONDS)} max`;
     startHandle.value = String(s);
     endHandle.value = String(e);
+    startHandle.setAttribute("aria-valuetext", fmt(s));
+    endHandle.setAttribute("aria-valuetext", fmt(e));
     const timelineSpan = Math.max(1, timelineMax - timelineMin);
     timeline.style.setProperty("--range-start", `${((s - timelineMin) / timelineSpan) * 100}%`);
     timeline.style.setProperty("--range-end", `${((e - timelineMin) / timelineSpan) * 100}%`);
@@ -1030,6 +1032,8 @@ function patchRangeInputs() {
   lengthDisplay.textContent = `${fmt(e - s)} / ${fmt(MAX_CLIP_SECONDS)} max`;
   if (startHandle) startHandle.value = String(s);
   if (endHandle) endHandle.value = String(e);
+  if (startHandle) startHandle.setAttribute("aria-valuetext", fmt(s));
+  if (endHandle) endHandle.setAttribute("aria-valuetext", fmt(e));
   if (timeline && startHandle) {
     const min = Math.max(0, Number(startHandle.min) || 0);
     const max = Math.max(1, Number(startHandle.max) || 1);

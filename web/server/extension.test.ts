@@ -94,6 +94,7 @@ test("side panel exposes an exact, accessible media range editor", () => {
   assert.match(script, /data-range-handle="end"/);
   assert.match(script, /aria-label="Clip start time"/);
   assert.match(script, /aria-label="Clip end time"/);
+  assert.match(script, /aria-valuetext/);
   assert.match(script, /step="1"/);
   assert.match(script, /Set in/);
   assert.match(script, /Set out/);
