@@ -60,7 +60,11 @@ permissions, authentication, database schema, or published annotation data.
 - Manifest host scope, optional source-site access, pinned extension ID, package contents, and lack of remote executable code are enforced by `validate:extension`.
 - Store and website packages normalize file order, modes, UTC timestamps, and entry order and reproduce SHA-256 `7890d251cc8eebe94af45a2bf690035d438df11a89d865ce6a33720b8664586b`.
 - The repository and history secret-pattern scan is enforced by `security:scan`.
-- Production `/api/health`, `/api/ready`, feed, demo media, key public pages, and the three retained physical annotations must return healthy responses after deployment.
+- GitHub CI and the Vercel Production build pass for merge commit `a5900d736a541c321b10d0df70f219b779f49688`.
+- Production `/api/health` and `/api/ready` return HTTP 200; database, media storage, OAuth, notifications, moderation, and maintenance all report `ok`.
+- Production landing, demo, feed, product imagery, and the retained article, YouTube, and podcast annotations return HTTP 200. The demo returns `video/mp4` and supports HTTP range requests with 206 responses.
+- Post-deployment Chrome automation found zero WCAG 2.0/2.1 A/AA axe violations on the landing page at desktop and mobile viewports, zero horizontal overflow, and no unloaded product images. The demo reports a 52.966667-second duration.
+- The deployed production functions emitted no error/fatal runtime logs during the smoke window; the only recent error clusters belong to the intentionally environment-less protected preview deployment.
 - No Chrome Web Store upload or publication is authorized by this website deployment.
 
 ## Remaining owner actions before Store resubmission
@@ -74,6 +78,6 @@ permissions, authentication, database schema, or published annotation data.
 
 ## Recommendation
 
-Website production deployment: **GO after the production smoke gates pass.** Local CI is green.
+Website production deployment: **GO.** Local CI, GitHub CI, Vercel build, public-route smoke tests, production readiness checks, responsive Chrome QA, and production runtime-log review are green.
 
 Chrome Web Store resubmission: **HOLD only for the six owner/dashboard acceptance actions above.**
