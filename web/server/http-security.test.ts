@@ -103,5 +103,6 @@ test("production CSP permits the YouTube iframe API used by clipped video embeds
 
   assert(csp, "Content-Security-Policy header must be configured");
   assert.match(csp, /script-src 'self' https:\/\/www\.youtube\.com(?:;|\s)/);
+  assert.match(csp, /script-src[^;]*https:\/\/open\.spotify\.com(?:;|\s)/);
   assert.match(csp, /frame-src [^;]*https:\/\/www\.youtube\.com/);
 });
