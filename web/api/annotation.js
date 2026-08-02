@@ -51,33 +51,33 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>Annotated - Clip. Annotate.</title>
-    <meta name="description" content="Clip 90-second highlights from any video, podcast, or article. Annotate. Share. Always linked back to the source." />
+    <title>Annotated \u2014 Clip the exact moment. Add the missing context.</title>
+    <meta name="description" content="Turn the best part of any article, video, or podcast into a source-linked post built for conversation." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Annotated" />
     <meta property="og:url" content="https://www.annotatedextension.com/" />
-    <meta property="og:title" content="Annotated - Clip. Annotate." />
-    <meta property="og:description" content="Clip and annotate the best moments on the web." />
+    <meta property="og:title" content="Annotated \u2014 Clip the exact moment. Add the missing context." />
+    <meta property="og:description" content="Source-linked conversations for articles, video, and podcasts." />
     <meta property="og:image" content="https://www.annotatedextension.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Annotated \u2014 Clip. Annotate." />
+    <meta property="og:image:alt" content="Annotated \u2014 source-linked conversations for the open web" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Annotated - Clip. Annotate." />
-    <meta name="twitter:description" content="Clip and annotate the best moments on the web." />
+    <meta name="twitter:title" content="Annotated \u2014 Clip the exact moment. Add the missing context." />
+    <meta name="twitter:description" content="Source-linked conversations for articles, video, and podcasts." />
     <meta name="twitter:image" content="https://www.annotatedextension.com/og-image.png" />
-    <meta name="twitter:image:alt" content="Annotated \u2014 Clip. Annotate." />
+    <meta name="twitter:image:alt" content="Annotated \u2014 source-linked conversations for the open web" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-3c6-MmsR.js"></script>
+    <script type="module" crossorigin src="/assets/index-C-oI9tGJ.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
-    <link rel="modulepreload" crossorigin href="/assets/icons-7JLjE_OT.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-nCZCtx5s.css">
+    <link rel="modulepreload" crossorigin href="/assets/icons-B-ZMbKQ8.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CRIZITcK.css">
   </head>
   <body>
     <div id="root"></div>
@@ -90,33 +90,33 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>Annotated - Clip. Annotate.</title>
-    <meta name="description" content="Clip 90-second highlights from any video, podcast, or article. Annotate. Share. Always linked back to the source." />
+    <title>Annotated \u2014 Clip the exact moment. Add the missing context.</title>
+    <meta name="description" content="Turn the best part of any article, video, or podcast into a source-linked post built for conversation." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Annotated" />
     <meta property="og:url" content="https://www.annotatedextension.com/" />
-    <meta property="og:title" content="Annotated - Clip. Annotate." />
-    <meta property="og:description" content="Clip and annotate the best moments on the web." />
+    <meta property="og:title" content="Annotated \u2014 Clip the exact moment. Add the missing context." />
+    <meta property="og:description" content="Source-linked conversations for articles, video, and podcasts." />
     <meta property="og:image" content="https://www.annotatedextension.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Annotated \u2014 Clip. Annotate." />
+    <meta property="og:image:alt" content="Annotated \u2014 source-linked conversations for the open web" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Annotated - Clip. Annotate." />
-    <meta name="twitter:description" content="Clip and annotate the best moments on the web." />
+    <meta name="twitter:title" content="Annotated \u2014 Clip the exact moment. Add the missing context." />
+    <meta name="twitter:description" content="Source-linked conversations for articles, video, and podcasts." />
     <meta name="twitter:image" content="https://www.annotatedextension.com/og-image.png" />
-    <meta name="twitter:image:alt" content="Annotated \u2014 Clip. Annotate." />
+    <meta name="twitter:image:alt" content="Annotated \u2014 source-linked conversations for the open web" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-3c6-MmsR.js"></script>
+    <script type="module" crossorigin src="/assets/index-C-oI9tGJ.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
-    <link rel="modulepreload" crossorigin href="/assets/icons-7JLjE_OT.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-nCZCtx5s.css">
+    <link rel="modulepreload" crossorigin href="/assets/icons-B-ZMbKQ8.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CRIZITcK.css">
   </head>
   <body>
     <div id="root"></div>

@@ -52,7 +52,7 @@ if (path === "/privacy" || path === "/privacy/") {
   path === "/demo-video" ||
   path === "/demo-video/"
 ) {
-  document.title = "Demo Video — Annotated";
+  document.title = "Product Demo — Annotated";
   root.render(<DemoVideoPage />);
 } else if (path === "/auth/callback" || path === "/auth/callback/") {
   document.title = "Signing in — Annotated";
@@ -69,7 +69,7 @@ if (path === "/privacy" || path === "/privacy/") {
   root.render(<App />);
 } else if ((path === "/" || path === "") && !window.location.hash) {
   // Bare / → landing page. The app feed is at /feed (path) or /#/ (hash).
-  document.title = "Annotated - Clip. Annotate.";
+  document.title = "Annotated — Clip the exact moment. Add the missing context.";
   root.render(<LandingPage />);
 } else {
   if (!window.location.hash) {
