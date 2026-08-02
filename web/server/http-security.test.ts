@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import express from "express";
 import { configureHttpSecurity } from "./http-security";
@@ -85,4 +86,22 @@ test("request logs omit query values and oversized JSON is rejected", async () =
   } finally {
     await server.close();
   }
+});
+
+test("production CSP permits the YouTube iframe API used by clipped video embeds", () => {
+  const vercelConfig = JSON.parse(
+    readFileSync(new URL("../vercel.json", import.meta.url), "utf8"),
+  ) as {
+    headers?: Array<{
+      headers?: Array<{ key?: string; value?: string }>;
+    }>;
+  };
+  const csp = vercelConfig.headers
+    ?.flatMap((rule) => rule.headers ?? [])
+    .find((header) => header.key === "Content-Security-Policy")
+    ?.value;
+
+  assert(csp, "Content-Security-Policy header must be configured");
+  assert.match(csp, /script-src 'self' https:\/\/www\.youtube\.com(?:;|\s)/);
+  assert.match(csp, /frame-src [^;]*https:\/\/www\.youtube\.com/);
 });
