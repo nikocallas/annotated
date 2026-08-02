@@ -73,11 +73,11 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
       href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-C-oI9tGJ.js"></script>
+    <script type="module" crossorigin src="/assets/index-CLSBHpko.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-B-ZMbKQ8.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CRIZITcK.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-_IKmzDXB.css">
   </head>
   <body>
     <div id="root"></div>
@@ -112,11 +112,11 @@ ${h.stack}`)}else{var y;l=(y=o?.stack)!==null&&y!==void 0?y:""}let m=this.url.to
       href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="/assets/index-C-oI9tGJ.js"></script>
+    <script type="module" crossorigin src="/assets/index-CLSBHpko.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-B-ZMbKQ8.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CRIZITcK.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-_IKmzDXB.css">
   </head>
   <body>
     <div id="root"></div>

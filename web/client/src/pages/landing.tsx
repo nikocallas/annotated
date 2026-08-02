@@ -58,6 +58,45 @@ function ProductFrame({
   );
 }
 
+function HeroProductFrame() {
+  return (
+    <figure className="landing-product-window">
+      <div className="landing-browser-bar" aria-hidden="true">
+        <span /><span /><span />
+        <div>annotatedextension.com/feed</div>
+      </div>
+      <div className="landing-product-screen">
+        <picture className="landing-product-feed-media">
+          <source media="(max-width: 520px)" srcSet="/product/annotated-feed-mobile.png" />
+          <img
+            className="landing-product-feed"
+            src="/product/annotated-feed.png"
+            alt="The live Annotated feed showing source-linked podcast and video posts"
+            loading="eager"
+            decoding="async"
+          />
+        </picture>
+        <div className="landing-product-panel">
+          <div className="landing-panel-label">
+            <QuoteMark size={20} />
+            Exact-range clipping
+          </div>
+          <img
+            src="/product/annotated-extension-panel.png"
+            alt="The real Annotated Chrome side panel with exact start and end controls"
+            loading="eager"
+            decoding="async"
+          />
+        </div>
+      </div>
+    </figure>
+  );
+}
+
+const MARQUEE_ITEMS = Array.from({ length: 3 }, (_, index) => (
+  <span key={index}>The context layer of the internet.</span>
+));
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -106,34 +145,24 @@ export default function LandingPage() {
         </section>
 
         <section className="landing-product-stage" aria-label="Annotated product preview">
-          <ProductFrame
-            src="/product/annotated-feed.png"
-            alt="The live Annotated feed showing source-linked podcast and video posts"
-            className="landing-feed-frame"
-          />
-          <figure className="landing-panel-frame">
-            <div className="landing-panel-label">
-              <QuoteMark size={20} />
-              Exact-range clipping
-            </div>
-            <img
-              src="/product/annotated-extension-panel.png"
-              alt="The real Annotated Chrome side panel with exact start and end controls"
-              loading="eager"
-              decoding="async"
-            />
-          </figure>
+          <HeroProductFrame />
         </section>
 
-        <section className="landing-marquee" aria-label="Product principle">
-          <span>The context layer of the internet.</span>
-          <span aria-hidden="true">The context layer of the internet.</span>
+        <section className="landing-marquee" aria-label="The context layer of the internet">
+          <div className="landing-marquee-track" aria-hidden="true">
+            <div className="landing-marquee-group">
+              {MARQUEE_ITEMS}
+            </div>
+            <div className="landing-marquee-group">
+              {MARQUEE_ITEMS}
+            </div>
+          </div>
         </section>
 
         <section className="landing-system" id="how-it-works" aria-labelledby="system-title">
           <header className="landing-section-heading">
             <span>One gesture. Three kinds of media.</span>
-            <h2 id="system-title">Ideas travel farther when their evidence travels with them.</h2>
+            <h2 id="system-title" className="sr-only">Ideas travel farther when their evidence travels with them.</h2>
           </header>
           <div className="landing-steps">
             {STEPS.map(({ icon: Icon, title, body }, index) => (
@@ -147,27 +176,26 @@ export default function LandingPage() {
         </section>
 
         <section className="landing-feature landing-feature-clip" aria-labelledby="clip-title">
-          <div className="landing-feature-copy">
-            <span>Precision, not timestamps in a caption</span>
-            <h2 id="clip-title">Scrub to the line that made you stop.</h2>
+          <header className="landing-feature-heading">
+            <div className="landing-feature-copy">
+              <span>Precision, not timestamps in a caption</span>
+              <h2 id="clip-title">Scrub to the line that made you stop.</h2>
+            </div>
             <p>
               Set the clip’s exact in and out points before you publish. Annotated keeps the
               result short, playable, and connected to the original creator.
             </p>
-            <ul>
-              <li>Drag the range or enter exact times</li>
-              <li>Nudge either edge one second at a time</li>
-              <li>Preview the bounded clip before publishing</li>
-            </ul>
-          </div>
-          <figure className="landing-context-frame">
-            <img
-              src="/product/annotated-extension-youtube-context.png"
-              alt="Annotated running beside a YouTube video with a selected 66-second clip range"
-              loading="eager"
-              decoding="async"
-            />
-          </figure>
+          </header>
+          <ProductFrame
+            src="/product/annotated-extension-youtube-context.png"
+            alt="Annotated running beside a YouTube video with a selected 66-second clip range"
+            className="landing-context-frame"
+          />
+          <ul className="landing-feature-points">
+            <li>Drag the range or enter exact times</li>
+            <li>Nudge either edge one second at a time</li>
+            <li>Preview the bounded clip before publishing</li>
+          </ul>
         </section>
 
         <section className="landing-demo-band" aria-labelledby="demo-title">
