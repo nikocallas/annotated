@@ -79,7 +79,14 @@ export function isValidAuthHandoff(message) {
     typeof auth.user === "object" &&
     typeof auth.user.id === "string" &&
     typeof auth.accessToken === "string" && auth.accessToken.length > 20 &&
-    typeof auth.refreshToken === "string" && auth.refreshToken.length > 20 &&
+    // Supabase refresh tokens are opaque. Current projects can issue compact
+    // 12-character tokens, so their length must not be treated like a JWT.
+    // Keep a small lower bound and reject whitespace/oversized values while
+    // leaving the token format to Supabase.
+    typeof auth.refreshToken === "string" &&
+    auth.refreshToken.length >= 8 &&
+    auth.refreshToken.length <= 4096 &&
+    !/\s/.test(auth.refreshToken) &&
     Number.isInteger(auth.expiresAt) && auth.expiresAt > 0
   );
 }

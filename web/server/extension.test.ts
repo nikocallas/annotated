@@ -38,17 +38,31 @@ test("extension capture plans reject over-limit requests and constrain real medi
   assert.throws(() => capturePlan("youtube", 0, 91), /90-second/);
 });
 
-test("extension accepts only full OAuth handoffs and deterministic publish transitions", () => {
+test("extension accepts compact opaque Supabase refresh tokens and full OAuth handoffs", () => {
   assert.equal(isValidAuthHandoff({ type: "ANNOTATED_AUTH_SUCCESS", user: { id: "spoof" } }), false);
   assert.equal(isValidAuthHandoff({
     type: "ANNOTATED_AUTH_SUCCESS",
     auth: {
       user: { id: "user" },
       accessToken: "a".repeat(21),
-      refreshToken: "r".repeat(21),
+      refreshToken: "r".repeat(12),
       expiresAt: 2_000_000_000,
     },
   }), true);
+  for (const refreshToken of ["r".repeat(7), "refresh token", "r".repeat(4097)]) {
+    assert.equal(isValidAuthHandoff({
+      type: "ANNOTATED_AUTH_SUCCESS",
+      auth: {
+        user: { id: "user" },
+        accessToken: "a".repeat(21),
+        refreshToken,
+        expiresAt: 2_000_000_000,
+      },
+    }), false);
+  }
+});
+
+test("extension preserves deterministic publish transitions", () => {
   assert.equal(nextPublishStatus("idle", "start"), "publishing");
   assert.equal(nextPublishStatus("publishing", "success"), "published");
   assert.equal(nextPublishStatus("published", "reset"), "idle");

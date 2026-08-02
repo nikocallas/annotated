@@ -58,7 +58,10 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
     sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
     return false;
   }
-  sendResponse({ ok: false, error: "unknown_message" });
+  sendResponse({
+    ok: false,
+    error: message?.type === "ANNOTATED_AUTH_SUCCESS" ? "invalid_auth_payload" : "unknown_message",
+  });
   return false;
 });
 
