@@ -1,100 +1,120 @@
-import { Logo } from "@/components/Logo";
+import { Logo, QuoteMark } from "@/components/Logo";
 import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { SiteNav } from "@/components/SiteNav";
-import { User as UserIcon } from "lucide-react";
+import { ArrowRight, Check, Clock3, FileText, Mic2, Play, ShieldCheck, User as UserIcon, Video } from "lucide-react";
+
+const CHAPTERS = [
+  { time: "0:00", icon: Play, title: "Why Annotated", body: "Turn exact moments into source-linked posts." },
+  { time: "0:04", icon: Video, title: "Clip video", body: "Scrub to a precise start and end point." },
+  { time: "0:12", icon: FileText, title: "Annotate articles", body: "Keep the selected passage and publication attached." },
+  { time: "0:21", icon: Mic2, title: "Clip podcasts", body: "Preserve the audio moment, not just its transcript." },
+  { time: "0:29", icon: ArrowRight, title: "Publish to the feed", body: "Share a playable post with its source intact." },
+  { time: "0:40", icon: ShieldCheck, title: "Keep provenance", body: "Show credits, exact range, and the original link." },
+];
 
 export default function DemoVideoPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 h-14 flex items-center gap-4 sm:gap-6">
+    <div className="min-h-screen flex flex-col bg-background text-foreground demo-page">
+      <header className="landing-header">
+        <div className="landing-header-inner">
           <Logo />
-          <SiteNav />
-          <div className="ml-auto flex items-center gap-3">
+          <nav className="landing-nav" aria-label="Primary">
+            <a href="/">Home</a>
+            <a href="/feed">Feed</a>
+            <a href="/demo" aria-current="page">Demo</a>
+          </nav>
+          <div className="landing-header-actions">
             <ThemeToggle />
-            <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
-            <a
-              href="/login"
-              className="md:hidden min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
-              data-testid="link-signin-header-mobile"
-            >
-              <UserIcon className="w-4 h-4" />
-              Sign in
+            <a href="/login" className="landing-sign-in" data-testid="link-signin-header" aria-label="Sign in">
+              <UserIcon aria-hidden /><span>Sign in</span>
             </a>
+            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" label="Get the extension" />
           </div>
         </div>
       </header>
 
       <main className="flex-1">
-        <section className="mx-auto max-w-5xl px-6 py-12 md:py-16 space-y-8">
-          <header className="space-y-3">
-            <h1
-              className="text-4xl md:text-5xl font-bold leading-[1.05]"
-              style={{ fontFamily: "var(--font-sans)" }}
-              data-testid="text-demo-video-title"
-            >
-              Demo Video
-            </h1>
-            <p className="text-muted-foreground max-w-2xl">
-              A short walkthrough of Annotated &mdash; clip a moment from a video, article, or
-              podcast, attach your commentary, and share it.
+        <section className="demo-hero">
+          <div className="demo-hero-copy">
+            <span>Product walkthrough</span>
+            <h1 data-testid="text-demo-video-title">See the moment become the post.</h1>
+            <p>
+              A 53-second tour of real article, video, podcast, and feed surfaces—captured from
+              the working Annotated product.
             </p>
-          </header>
+            <div className="demo-facts" aria-label="Demo facts">
+              <span><Clock3 aria-hidden /> 53 seconds</span>
+              <span><Check aria-hidden /> No prototype screens</span>
+            </div>
+          </div>
+          <QuoteMark size={56} />
+        </section>
 
-          <div className="rounded-lg overflow-hidden border border-border bg-black">
+        <section className="demo-player-section" aria-label="Annotated demo video">
+          <div className="demo-player-shell">
             <video
-              className="w-full h-auto block"
+              className="demo-player"
               controls
+              playsInline
               preload="metadata"
               poster="/media/annotated-demo-poster.jpg"
               data-testid="video-demo"
             >
               <source src="/media/annotated-demo.mp4" type="video/mp4" />
+              <track kind="chapters" src="/media/annotated-demo-chapters.vtt" srcLang="en" label="Chapters" default />
               Your browser doesn&rsquo;t support embedded video. You can{" "}
-              <a href="/media/annotated-demo.mp4" className="underline">
-                download the demo
-              </a>{" "}
-              instead.
+              <a href="/media/annotated-demo.mp4">download the demo</a> instead.
             </video>
           </div>
+          <div className="demo-chapters">
+            {CHAPTERS.map(({ time, icon: Icon, title, body }) => (
+              <article key={time}>
+                <div><Icon aria-hidden /><time>{time}</time></div>
+                <h2>{title}</h2>
+                <p>{body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-          <div className="text-sm text-muted-foreground space-y-3 max-w-2xl">
-            <p>
-              Want to try it yourself? Install the Chrome extension and open the side panel on any
-              page with a video, article, or podcast.
-            </p>
-            <div className="flex flex-wrap gap-3 pt-2">
-              <DownloadExtensionButton />
-              <a
-                href="/feed"
-                className="inline-flex min-h-11 items-center text-sm font-medium text-muted-foreground hover:text-foreground"
-              >
-                Browse the feed &rarr;
-              </a>
-            </div>
+        <section className="demo-proof" aria-labelledby="demo-proof-title">
+          <header>
+            <span>What the demo proves</span>
+            <h2 id="demo-proof-title">One workflow, three kinds of source material.</h2>
+          </header>
+          <div>
+            <figure>
+              <img src="/product/annotated-extension-article-context.png" alt="Annotated clipping an article passage" loading="eager" />
+              <figcaption><FileText aria-hidden /> Article passage</figcaption>
+            </figure>
+            <figure>
+              <img src="/product/annotated-extension-youtube-context.png" alt="Annotated setting an exact YouTube clip range" loading="eager" />
+              <figcaption><Video aria-hidden /> Exact video range</figcaption>
+            </figure>
+            <figure>
+              <img src="/product/annotated-extension-podcast-context.png" alt="Annotated setting an exact podcast clip range" loading="eager" />
+              <figcaption><Mic2 aria-hidden /> Bounded podcast audio</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section className="demo-cta">
+          <h2>Try the workflow on something worth sharing.</h2>
+          <p>Install Annotated, open Chrome’s side panel, and clip the moment—not the whole tab.</p>
+          <div className="landing-actions">
+            <DownloadExtensionButton size="lg" label="Get the extension" />
+            <a href="/feed" className="landing-secondary-button">Explore the feed</a>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-border mt-12">
-        <div className="mx-auto max-w-5xl px-6 py-8 text-sm text-muted-foreground flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-          <Logo />
-          <DownloadExtensionButton size="sm" />
-          <div className="flex gap-4 flex-wrap">
-            <a href="/" className="inline-flex min-h-11 items-center hover:text-foreground">Home</a>
-            <a href="/demo" className="inline-flex min-h-11 items-center hover:text-foreground">Demo Video</a>
-            <a href="/support" className="inline-flex min-h-11 items-center hover:text-foreground">Support</a>
-            <a href="/privacy" className="inline-flex min-h-11 items-center hover:text-foreground">Privacy</a>
-            <a href="/tos" className="inline-flex min-h-11 items-center hover:text-foreground">Terms</a>
-          </div>
-        </div>
-        <div
-          className="mx-auto max-w-5xl px-6 pb-6 text-xs text-muted-foreground"
-          data-testid="text-footer-copyright"
-        >
-          © 2026 Annotated · Built by Niko Callas
-        </div>
+      <footer className="landing-footer">
+        <div><Logo /><p>Source-linked conversations for the open web.</p></div>
+        <nav aria-label="Footer">
+          <a href="/">Home</a><a href="/feed">Feed</a><a href="/support">Support</a>
+          <a href="/privacy">Privacy</a><a href="/tos">Terms</a>
+        </nav>
+        <small data-testid="text-footer-copyright">© 2026 Annotated · Built by Niko Callas</small>
       </footer>
     </div>
   );

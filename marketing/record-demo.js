@@ -1,96 +1,88 @@
-// Records each animated HTML scene at 1280x720, plus a real recording of
-// www.annotatedextension.com (landing + feed scroll), then concatenates into
-// a single MP4 via ffmpeg-static. Output: marketing/annotated-demo.mp4.
-import { chromium } from "playwright";
+// Render a product-accurate, caption-led Annotated demo from local HTML scenes.
+// The scenes use real Chrome-extension and production feed/detail captures.
+// Run from the repository root with: npm --prefix web run demo:render
 import { spawnSync } from "node:child_process";
-import { readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import ffmpegPath from "ffmpeg-static";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const requireFromWeb = createRequire(join(here, "../web/package.json"));
+const { chromium } = requireFromWeb("playwright");
 const scenesDir = join(here, "scenes");
-const recDir = join(here, "recordings");
-const fileUrl = (rel) => "file://" + resolve(scenesDir, rel);
+const recordingsDir = join(here, "recordings");
+const fileUrl = (name) => `file://${resolve(scenesDir, name)}`;
 
-const SCENES = [
-  { name: "01-intro",   url: fileUrl("scene-intro.html"),   ms: 3000 },
-  { name: "02-youtube", url: fileUrl("scene-youtube.html"), ms: 7500 },
-  { name: "03-nyt",     url: fileUrl("scene-nyt.html"),     ms: 7000 },
-  { name: "04-podcast", url: fileUrl("scene-podcast.html"), ms: 7500 },
-  { name: "05-feed",    url: "https://www.annotatedextension.com/", ms: 11000, action: "tourAnnotations" },
-  { name: "06-outro",   url: fileUrl("scene-outro.html"),   ms: 4000 },
+const scenes = [
+  { name: "01-intro", file: "scene-intro.html", ms: 4000 },
+  { name: "02-youtube", file: "scene-youtube.html", ms: 8000 },
+  { name: "03-article", file: "scene-nyt.html", ms: 8000 },
+  { name: "04-podcast", file: "scene-podcast.html", ms: 8000 },
+  { name: "05-feed", file: "scene-feed.html", ms: 9500 },
+  { name: "06-detail", file: "scene-detail.html", ms: 8000 },
+  { name: "07-outro", file: "scene-outro.html", ms: 4500 },
 ];
 
-// Clean recordings dir
-try { rmSync(recDir, { recursive: true, force: true }); } catch {}
-try { renameSync(recDir, recDir); } catch {}
-import("node:fs").then((fs) => fs.mkdirSync(recDir, { recursive: true }));
+rmSync(recordingsDir, { recursive: true, force: true });
+mkdirSync(recordingsDir, { recursive: true });
 
-const browser = await chromium.launch();
-const finals = [];
+const macChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
+  (existsSync(macChrome) ? macChrome : undefined);
+const browser = await chromium.launch({ headless: true, executablePath });
+const rendered = [];
 
-for (const scene of SCENES) {
-  const ctx = await browser.newContext({
+for (const scene of scenes) {
+  const context = await browser.newContext({
     viewport: { width: 1280, height: 720 },
     deviceScaleFactor: 1,
-    recordVideo: { dir: recDir, size: { width: 1280, height: 720 } },
+    colorScheme: "light",
+    reducedMotion: "no-preference",
+    recordVideo: { dir: recordingsDir, size: { width: 1280, height: 720 } },
   });
-  const page = await ctx.newPage();
-
-  if (scene.action === "tourAnnotations") {
-    // Tour real annotation detail pages so the recording shows actual product
-    // output — a YouTube clip playing in-range, then a Spotify clip — instead
-    // of the landing-page hero.
-    await page.goto("https://www.annotatedextension.com/#/a/seed-ann-niko-45", {
-      waitUntil: "domcontentloaded", timeout: 30000,
-    });
-    await page.waitForTimeout(5500);
-    // Hash-route to the next annotation without a full reload — preserves the
-    // recording's smoothness and stays inside the SPA.
-    await page.evaluate(() => {
-      window.location.hash = "#/a/seed-ann-niko-35";
-    });
-    await page.waitForTimeout(5400);
-  } else {
-    await page.goto(scene.url, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(scene.ms);
-  }
-
+  const page = await context.newPage();
+  await page.goto(fileUrl(scene.file), { waitUntil: "load" });
+  await page.waitForTimeout(scene.ms);
   const video = page.video();
   await page.close();
-  await ctx.close();
-  const rawPath = await video.path();
-  const renamed = join(recDir, `${scene.name}.webm`);
-  renameSync(rawPath, renamed);
-  finals.push(renamed);
-  console.log(`✓ ${scene.name}`);
+  await context.close();
+  const output = join(recordingsDir, `${scene.name}.webm`);
+  renameSync(await video.path(), output);
+  rendered.push(output);
+  console.log(`rendered ${scene.name}`);
 }
 
 await browser.close();
 
-// ── Concatenate via ffmpeg ──────────────────────────────────────────────────
-// Each WebM input is decoded and re-encoded to a uniform 1280x720 30fps H.264
-// stream so the concat is glitch-free even if Playwright's per-scene framerate
-// varied. -movflags +faststart puts the moov atom up front for streaming.
-const listPath = join(recDir, "concat.txt");
-writeFileSync(listPath, finals.map((p) => `file '${p}'`).join("\n"), "utf8");
+const listPath = join(recordingsDir, "concat.txt");
+writeFileSync(listPath, rendered.map((path) => `file '${path}'`).join("\n"), "utf8");
 
-const out = join(here, "annotated-demo.mp4");
-const args = [
+const outputPath = join(here, "../web/client/public/media/annotated-demo.mp4");
+const posterPath = join(here, "../web/client/public/media/annotated-demo-poster.jpg");
+const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
+const encode = spawnSync(ffmpeg, [
   "-y",
-  "-f", "concat", "-safe", "0", "-i", listPath,
+  "-f", "concat",
+  "-safe", "0",
+  "-i", listPath,
   "-vf", "fps=30,scale=1280:720:flags=lanczos,format=yuv420p",
-  "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+  "-c:v", "libx264",
+  "-preset", "medium",
+  "-crf", "20",
   "-pix_fmt", "yuv420p",
   "-movflags", "+faststart",
   "-an",
-  out,
-];
-console.log("\nffmpeg", args.slice(0, 6).join(" "), "…");
-const ff = spawnSync(ffmpegPath, args, { stdio: ["ignore", "inherit", "inherit"] });
-if (ff.status !== 0) {
-  console.error("ffmpeg failed");
-  process.exit(ff.status ?? 1);
-}
-console.log(`\nMP4 written → ${out}`);
+  outputPath,
+], { stdio: "inherit" });
+
+if (encode.status !== 0) process.exit(encode.status ?? 1);
+
+const poster = spawnSync(ffmpeg, [
+  "-y", "-ss", "00:00:05.800", "-i", outputPath,
+  "-frames:v", "1", "-q:v", "2", posterPath,
+], { stdio: "inherit" });
+if (poster.status !== 0) process.exit(poster.status ?? 1);
+
+console.log(`demo video: ${outputPath}`);
+console.log(`demo poster: ${posterPath}`);

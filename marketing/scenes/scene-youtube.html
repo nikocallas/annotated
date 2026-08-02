@@ -1,77 +1,8 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<link rel="stylesheet" href="_demo.css" />
-</head>
-<body>
-<div class="scene">
-  <img class="bg" src="../captures/youtube.png" alt="" />
-  <aside class="panel">
-    <div class="sp-top">
-      <span class="sp-mark"><svg viewBox="0 0 32 32"><path d="M9 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8H7.6c0-2.4 1.1-4.1 3.1-5.2L9 8.5zM21 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8h-4c0-2.4 1.1-4.1 3.1-5.2L21 8.5z"/></svg></span>
-      <span class="sp-name">Annotated</span>
-    </div>
-    <div class="sp-tabs">
-      <div class="sp-tab active">Clip</div><div class="sp-tab">Feed</div><div class="sp-tab">Profile</div>
-    </div>
-    <div class="sp-body">
-      <div class="sp-card">
-        <div class="sp-source-from">From YouTube</div>
-        <div class="sp-source-title">Steve Jobs' 2005 Stanford Commencement Address</div>
-        <div class="sp-source-host">youtube.com · Stanford</div>
-      </div>
-      <div class="sp-section">
-        <div class="sp-section-label">Clip range</div>
-        <div class="sp-range">
-          <div class="col"><label>Start</label><input id="start-input" value="0:12" /></div>
-          <div class="col"><label>End</label><input id="end-input" value="0:24" /></div>
-        </div>
-        <div class="sp-track"><span class="sel"></span><span class="h1"></span><span class="h2"></span></div>
-        <div class="sp-dur" id="dur-label">12s · max 90s</div>
-      </div>
-      <div class="sp-section">
-        <div class="sp-section-label">Your annotation</div>
-        <div class="sp-textarea" id="commentary"></div>
-      </div>
-      <div class="sp-publish">
-        <div class="sp-cap">Always linked back to the source.</div>
-        <button class="sp-btn pulse">Publish</button>
-      </div>
-    </div>
-  </aside>
-</div>
-<script>
-  // Animate end-input number ticking up to "1:18", duration label to 66s, then type the commentary.
-  const endInput = document.getElementById('end-input');
-  const durLabel = document.getElementById('dur-label');
-  const commentary = document.getElementById('commentary');
-  const fmt = (s) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
-  const targetEnd = 78;   // 1:18
-  const startSec = 12;
-  // After the slider extends (~3.4s mark), update the labels:
-  function tickEnd() {
-    let cur = 24;
-    const id = setInterval(() => {
-      cur += 4;
-      if (cur >= targetEnd) { cur = targetEnd; clearInterval(id); }
-      endInput.value = fmt(cur);
-      durLabel.textContent = `${cur - startSec}s · max 90s`;
-    }, 60);
-  }
-  setTimeout(tickEnd, 2050);
-
-  // Type commentary starting at 4.0s
-  const text = "Watch how he lands the opening minute. No throat-clearing — three stories. The framing does all the work.";
-  function typeCommentary() {
-    let i = 0;
-    const id = setInterval(() => {
-      i += 1;
-      commentary.textContent = text.slice(0, i);
-      if (i >= text.length) clearInterval(id);
-    }, 22);
-  }
-  setTimeout(typeCommentary, 4000);
-</script>
-</body>
-</html>
+<html lang="en"><head><meta charset="UTF-8"><link rel="stylesheet" href="_demo.css"></head>
+<body><div class="scene">
+  <img class="capture" src="../assets/screenshot-youtube.png" alt="">
+  <div class="veil"></div><div class="chapter">01 · Video</div>
+  <div class="range-callout"><span>Exact in + out points</span></div>
+  <div class="caption"><h1>Scrub to the line that made you stop.</h1><p>Set a precise range, preview it, and keep the original source one click away.</p></div>
+</div></body></html>
