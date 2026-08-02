@@ -65,6 +65,20 @@
     return findMediaInRoot(document);
   }
 
+  function isAudioMedia(media) {
+    if (!media) return false;
+    const tagName = media.tagName?.toLowerCase();
+    if (tagName === "audio") return true;
+    if (tagName !== "video") return false;
+    const source = media.currentSrc || media.src || media.querySelector?.("source")?.src || "";
+    const sourceType = media.querySelector?.("source")?.type || "";
+    return (
+      /^audio\//i.test(sourceType) ||
+      /\.(?:mp3|m4a|aac|flac|oga|ogg|opus|wav)(?:$|[?#])/i.test(source) ||
+      (media.readyState >= 1 && Number.isFinite(media.duration) && media.videoWidth === 0 && media.videoHeight === 0)
+    );
+  }
+
   function getYouTubeMeta() {
     const url = location.href;
     let videoId = null;
@@ -185,9 +199,13 @@
     if (host === "x.com" || host === "twitter.com") {
       return getXMeta();
     }
+    const activeMedia = getActiveMedia();
     if (
       /podcasts\.apple\.com|spotify\.com\/episode|overcast\.fm|pca\.st/.test(url) ||
-      document.querySelector("audio")
+      metaContent('meta[property="og:audio"]') ||
+      /^audio\//i.test(metaContent('meta[name="twitter:player:stream:content_type"]')) ||
+      document.querySelector("audio") ||
+      isAudioMedia(activeMedia)
     ) {
       return getPodcastMeta();
     }
