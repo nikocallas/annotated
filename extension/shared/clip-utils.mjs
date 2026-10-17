@@ -98,3 +98,25 @@ export function nextPublishStatus(current, event) {
   if (event === "reset" && current === "published") return "idle";
   throw new Error(`Invalid publish transition: ${current} -> ${event}`);
 }
+
+// Kinds of take, mirrored from web/shared/schema.ts (a test keeps them equal).
+export const ANNOTATION_TYPES = [
+  { key: "dispute", label: "Dispute", hint: "This claim is wrong or misleading" },
+  { key: "fact-check", label: "Fact check", hint: "Checking whether this holds up" },
+  { key: "context", label: "Context", hint: "What's missing from this" },
+  { key: "hot-take", label: "Hot take", hint: "A strong opinion" },
+  { key: "steelman", label: "Steelman", hint: "The best version of this argument" },
+  { key: "receipts", label: "Receipts", hint: "Evidence that proves the point" },
+  { key: "explainer", label: "Explainer", hint: "What this means, in plain terms" },
+];
+
+// While the user hasn't adjusted the range, the clip window follows the page
+// playhead: scrub the video and the handles move with it.
+export function followPlayhead(range, currentTime, duration, maxSeconds = MAX_CLIP_SECONDS) {
+  const length = Math.min(maxSeconds, Math.max(1, Math.floor((range?.end ?? 30) - (range?.start ?? 0))));
+  const start = Math.max(0, Math.floor(Number(currentTime) || 0));
+  let end = start + length;
+  const dur = Number.isFinite(duration) && duration > 0 ? Math.floor(duration) : null;
+  if (dur != null && end > dur) end = Math.max(start + 1, dur);
+  return { start, end };
+}

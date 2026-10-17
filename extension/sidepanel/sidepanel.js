@@ -10,6 +10,8 @@ import {
   sameMediaSource,
   capturePlan,
   nextPublishStatus,
+  ANNOTATION_TYPES,
+  followPlayhead,
 } from "../shared/clip-utils.mjs";
 
 // Use the canonical www origin directly. Vercel redirects the apex domain to
@@ -80,7 +82,20 @@ const state = {
   // or pastes after that import; until then, fresh selections may overwrite
   // the field. After an edit we leave their text alone unless they hit the
   // "Import selection" button.
-  form: { commentary: "", clipText: "", clipTextFromSelection: "", clipTextEdited: false, fairUseAcked: false },
+  form: {
+    commentary: "",
+    clipText: "",
+    clipTextFromSelection: "",
+    clipTextEdited: false,
+    fairUseAcked: false,
+    annotationType: "",
+    alsoPostToX: false,
+    // An open annotation request this post answers (set from the page panel).
+    requestId: null,
+  },
+  // What's already been said about the current page: annotations and open
+  // requests, fetched when the active tab's URL changes.
+  pageContext: { url: "", annotations: [], requests: [], expanded: false, asking: false },
   // Publish lifecycle
   publish: {
     status: "idle", // idle | publishing | published
@@ -315,6 +330,7 @@ if (isExtension()) {
       patchPageCard();
       patchPreviewCard();
       patchRangeInputs();
+      if (msg.data?.url && msg.data.url !== prev) loadPageContext();
     }
     if (msg?.type === "MEDIA_TIME_UPDATE") {
       const data = msg.data || {};
@@ -327,6 +343,19 @@ if (isExtension()) {
           currentTime: data.currentTime ?? state.pageMeta.currentTime,
           duration: data.duration ?? state.pageMeta.duration,
         };
+        // Until the user adjusts the range, the clip window follows the
+        // playhead: scrub the video and the handles move with it.
+        const followable = state.pageMeta.sourceType === "youtube" || state.pageMeta.sourceType === "podcast";
+        if (
+          followable &&
+          !state.clipRange.userTouched &&
+          state.publish.status === "idle" &&
+          Number.isFinite(state.pageMeta.currentTime)
+        ) {
+          const next = followPlayhead(state.clipRange, state.pageMeta.currentTime, state.pageMeta.duration);
+          state.clipRange.start = next.start;
+          state.clipRange.end = next.end;
+        }
       }
       patchRangeInputs();
     }
@@ -538,6 +567,19 @@ function renderClip() {
   });
 
   bindRecorder(node);
+  bindTypePicker(node);
+
+  const postToX = $("[data-post-to-x]", node);
+  if (postToX) {
+    postToX.checked = !!state.form.alsoPostToX;
+    postToX.addEventListener("change", () => {
+      state.form.alsoPostToX = !!postToX.checked;
+    });
+  }
+
+  const contextMount = $("[data-page-context]", node);
+  if (contextMount) fillPageContext(contextMount);
+  loadPageContext();
 
   // Build feed-style preview between commentary and the publish button.
   const previewMount = $("[data-preview-mount]", node);
@@ -624,7 +666,7 @@ async function importSelectionFromActiveTab() {
   applySelectionToClipText(text, { force: true });
 }
 
-function buildClipTextField({ rows = 6, placeholder = "highlight text on page and import selection, or paste it here..." } = {}) {
+function buildClipTextField({ rows = 6, placeholder = "Highlight the exact sentence or paragraph on the page (up to 100 words). It appears here automatically." } = {}) {
   const wrap = document.createElement("div");
   wrap.className = "clip-flex";
   const initial = state.form.clipText || state.selection?.text || "";
@@ -640,7 +682,7 @@ function buildClipTextField({ rows = 6, placeholder = "highlight text on page an
       <span class="clip-word-counter" data-clip-word-counter aria-live="polite">0 / ${MAX_CLIP_TEXT_WORDS} words</span>
     </div>
     <p class="muted small clip-text-status" data-clip-text-status>
-      highlight text on page and import selection, or paste it here...
+      Tip: pick the one line that matters, not the headline. Highlight it on the page, then say what's wrong or missing below.
     </p>
   `;
   const ta = $("[data-clip-text]", wrap);
@@ -732,9 +774,10 @@ function renderRangeClip(kind) {
       <span class="max-tag">Max ${MAX_CLIP_SECONDS} seconds</span>
     </div>
 
-    <p class="muted small clip-howto">
-      Drag either handle to scrub the ${kind === "podcast" ? "podcast" : "video"}. Use Set in / Set out
-      to capture the page playhead, then nudge either edge by one second.
+    <p class="muted small clip-howto" data-clip-howto>
+      Scrub the ${kind === "podcast" ? "episode" : "video"} and the clip follows it. Drag either
+      handle to trim; the ${kind === "podcast" ? "episode" : "video"} jumps with you.
+      <span data-follow-state></span>
     </p>
 
     <div class="clip-timeline" data-clip-timeline style="--range-start:0%;--range-end:10%;--playhead:0%">
@@ -888,7 +931,29 @@ function renderRangeClip(kind) {
       durDisplay.textContent = "";
     }
     fmtNow();
+    const followState = $("[data-follow-state]", wrap);
+    if (followState) {
+      followState.textContent = state.clipRange.userTouched ? "" : "Following the playhead.";
+    }
     patchPreviewCard();
+  }
+
+  // Seek the page player while a handle is dragged, throttled so YouTube
+  // isn't flooded. Site access is checked once per drag.
+  let seekTimer = null;
+  let pendingSeek = null;
+  let accessChecked = false;
+  function liveSeek(time) {
+    pendingSeek = time;
+    if (seekTimer) return;
+    seekTimer = setTimeout(async () => {
+      seekTimer = null;
+      if (!accessChecked) {
+        accessChecked = true;
+        if (!(await ensureActiveSiteAccess())) return;
+      }
+      if (pendingSeek != null) sendBg({ type: "SEEK_ACTIVE_TAB", time: pendingSeek, play: false });
+    }, 140);
   }
 
   $$('[data-range-handle]', wrap).forEach((input) => {
@@ -909,6 +974,7 @@ function renderRangeClip(kind) {
       clampRange();
       state.clipRange.userTouched = true;
       update();
+      liveSeek(which === "start" ? state.clipRange.start : state.clipRange.end);
     });
     input.addEventListener("change", async () => {
       const which = input.dataset.rangeHandle;
@@ -1045,6 +1111,8 @@ function patchRangeInputs() {
       timeline.style.setProperty("--playhead", `${((playhead - min) / span) * 100}%`);
     }
   }
+  const followState = document.querySelector("[data-follow-state]");
+  if (followState) followState.textContent = state.clipRange.userTouched ? "" : "Following the playhead.";
   if (nowPlaying) {
     const m = state.pageMeta || {};
     if (m.currentTime != null) {
@@ -1209,6 +1277,238 @@ function friendlyMicError(resp) {
 
 // -------------------- Feed-style preview ------------------------------------
 
+
+// -------------------- Kind of take ------------------------------------------
+
+function bindTypePicker(scope) {
+  const chips = $("[data-type-chips]", scope);
+  if (!chips) return;
+  chips.innerHTML = ANNOTATION_TYPES.map((t) => `
+    <button type="button" role="radio" class="type-chip" data-type="${t.key}"
+      aria-checked="${state.form.annotationType === t.key}" title="${escapeAttr(t.hint)}">
+      ${escapeHtml(t.label)}
+    </button>`).join("");
+  const hint = document.createElement("p");
+  hint.className = "muted small type-hint";
+  hint.dataset.typeHint = "1";
+  chips.after(hint);
+  const sync = () => {
+    $$(".type-chip", chips).forEach((chip) => {
+      chip.setAttribute("aria-checked", String(chip.dataset.type === state.form.annotationType));
+    });
+    const picked = ANNOTATION_TYPES.find((t) => t.key === state.form.annotationType);
+    hint.textContent = picked ? picked.hint : "Optional — helps people find disputes, fact checks, and context.";
+    patchPreviewCard();
+  };
+  chips.addEventListener("click", (event) => {
+    const chip = event.target.closest(".type-chip");
+    if (!chip) return;
+    state.form.annotationType = state.form.annotationType === chip.dataset.type ? "" : chip.dataset.type;
+    sync();
+  });
+  // Arrow keys move through the radio group.
+  chips.addEventListener("keydown", (event) => {
+    if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(event.key)) return;
+    const list = $$(".type-chip", chips);
+    const index = Math.max(0, list.indexOf(document.activeElement));
+    const delta = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+    const next = list[(index + delta + list.length) % list.length];
+    next.focus();
+    event.preventDefault();
+  });
+  sync();
+}
+
+// -------------------- Already on this page -----------------------------------
+
+function currentSourceUrl() {
+  return state.manualSource.url?.trim() || state.pageMeta?.url || "";
+}
+
+async function loadPageContext(force = false) {
+  const url = currentSourceUrl();
+  if (!url || !/^https?:/.test(url)) {
+    state.pageContext = { ...state.pageContext, url: "", annotations: [], requests: [] };
+    patchPageContext();
+    return;
+  }
+  if (!force && state.pageContext.url === url) return;
+  state.pageContext = { ...state.pageContext, url, annotations: [], requests: [] };
+  try {
+    const data = await api(`/api/sources/annotations?url=${encodeURIComponent(url)}`);
+    if (currentSourceUrl() !== url) return;
+    state.pageContext.annotations = Array.isArray(data?.annotations) ? data.annotations : [];
+    state.pageContext.requests = Array.isArray(data?.requests) ? data.requests : [];
+    // Drop a selected request that no longer applies to this page.
+    if (state.form.requestId && !state.pageContext.requests.some((r) => r.id === state.form.requestId)) {
+      state.form.requestId = null;
+    }
+  } catch {
+    // Older API deployments lack this endpoint; the panel just stays hidden.
+  }
+  patchPageContext();
+}
+
+function patchPageContext() {
+  const mount = document.querySelector("[data-page-context]");
+  if (mount) fillPageContext(mount);
+}
+
+function fillPageContext(mount) {
+  const { annotations, requests, expanded, asking } = state.pageContext;
+  const hasAny = annotations.length > 0 || requests.length > 0;
+  const signedIn = !!state.user;
+  mount.hidden = !currentSourceUrl() || (!hasAny && !signedIn);
+  const title = $("[data-page-context-title]", mount);
+  const toggle = $("[data-page-context-toggle]", mount);
+  const body = $("[data-page-context-body]", mount);
+  const parts = [];
+  if (annotations.length) parts.push(`${annotations.length} ${annotations.length === 1 ? "annotation" : "annotations"}`);
+  if (requests.length) parts.push(`${requests.length} open ${requests.length === 1 ? "request" : "requests"}`);
+  title.textContent = parts.length ? `On this page: ${parts.join(" · ")}` : "No one has annotated this page yet";
+  toggle.hidden = !hasAny && !asking;
+  toggle.textContent = expanded ? "Hide" : "Show";
+  toggle.setAttribute("aria-expanded", String(expanded));
+  body.hidden = !expanded && !asking;
+  toggle.onclick = () => {
+    state.pageContext.expanded = !state.pageContext.expanded;
+    fillPageContext(mount);
+  };
+
+  const requestItems = requests.map((r) => {
+    const forSomeoneElse = r.requestedUser && r.requestedUser.id !== state.user?.id;
+    const selected = state.form.requestId === r.id;
+    return `
+      <li class="ctx-request${selected ? " is-selected" : ""}">
+        <div class="small"><strong>@${escapeHtml(r.user?.username || "someone")}</strong> asked
+          ${r.requestedUser ? `<strong>@${escapeHtml(r.requestedUser.username)}</strong>` : "everyone"}</div>
+        ${r.note ? `<div class="ctx-note">${escapeHtml(r.note)}</div>` : ""}
+        ${forSomeoneElse
+          ? `<div class="muted small">Addressed to @${escapeHtml(r.requestedUser.username)}.</div>`
+          : `<button type="button" class="btn btn-outline btn-sm" data-answer-request="${escapeAttr(r.id)}">
+               ${selected ? "Answering this ✓" : "Answer this request"}
+             </button>`}
+      </li>`;
+  }).join("");
+  const annotationItems = annotations.slice(0, 5).map((a) => {
+    const type = ANNOTATION_TYPES.find((t) => t.key === a.annotationType);
+    return `
+      <li class="ctx-annotation">
+        <a href="${API_BASE}/a/${encodeURIComponent(a.id)}" target="_blank" rel="noopener noreferrer">
+          ${type ? `<span class="type-chip is-static" data-type="${type.key}">${escapeHtml(type.label)}</span>` : ""}
+          <strong>@${escapeHtml(a.user?.username || "")}</strong>
+          <span class="muted">${escapeHtml((a.commentaryText || a.clipText || "").slice(0, 120))}</span>
+        </a>
+      </li>`;
+  }).join("");
+
+  body.innerHTML = `
+    ${requests.length ? `<ul class="ctx-list">${requestItems}</ul>` : ""}
+    ${annotations.length ? `<ul class="ctx-list">${annotationItems}</ul>` : ""}
+    ${signedIn ? (asking ? `
+      <form class="ctx-ask" data-ask-form>
+        <label class="label small" for="ask-who">Ask someone specific (optional)</label>
+        <input id="ask-who" type="text" data-ask-who placeholder="@username" autocomplete="off" />
+        <label class="label small" for="ask-note">What should they look at?</label>
+        <textarea id="ask-note" data-ask-note rows="2" maxlength="1000" placeholder="e.g. Is the claim in paragraph three right?"></textarea>
+        <div class="ctx-ask-actions">
+          <button type="submit" class="btn btn-primary btn-sm">Post request</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-ask-cancel>Cancel</button>
+        </div>
+      </form>` : `
+      <button type="button" class="btn btn-ghost btn-sm ctx-ask-open" data-ask-open>Ask someone to fact-check this page →</button>`) : ""}
+  `;
+  if (!expanded && !asking && signedIn) {
+    // Keep the "ask" entry point visible even when the list is collapsed.
+    body.hidden = false;
+    $$(".ctx-list", body).forEach((list) => { list.hidden = true; });
+  }
+  $$("[data-answer-request]", body).forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.answerRequest;
+      state.form.requestId = state.form.requestId === id ? null : id;
+      if (state.form.requestId && !state.form.annotationType) state.form.annotationType = "fact-check";
+      toast(state.form.requestId ? "Your post will answer this request" : "No longer answering the request");
+      render();
+    });
+  });
+  $("[data-ask-open]", body)?.addEventListener("click", () => {
+    state.pageContext.asking = true;
+    fillPageContext(mount);
+    $("[data-ask-who]", mount)?.focus();
+  });
+  $("[data-ask-cancel]", body)?.addEventListener("click", () => {
+    state.pageContext.asking = false;
+    fillPageContext(mount);
+  });
+  $("[data-ask-form]", body)?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const who = ($("[data-ask-who]", body)?.value || "").trim();
+    const note = ($("[data-ask-note]", body)?.value || "").trim();
+    try {
+      await api("/api/requests", {
+        method: "POST",
+        body: JSON.stringify({
+          sourceUrl: currentSourceUrl(),
+          sourceTitle: state.manualSource.title?.trim() || state.pageMeta?.title || null,
+          requestedUsername: who || null,
+          note: note || null,
+        }),
+      });
+      state.pageContext.asking = false;
+      toast(who ? `Asked ${who.startsWith("@") ? who : `@${who}`} to annotate this page` : "Request posted for everyone");
+      loadPageContext(true);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't post the request", "error");
+    }
+  });
+}
+
+// -------------------- Page screenshot ----------------------------------------
+
+// Captures what the user is looking at, downscaled to at most 1600px wide as
+// a JPEG. Returns null whenever Chrome won't allow it; never throws.
+async function captureScreenshotBlob() {
+  try {
+    const shot = await sendBg({ type: "CAPTURE_VISIBLE_TAB" });
+    if (!shot?.ok || !shot.dataUrl) return null;
+    const source = dataUrlToBlob(shot.dataUrl);
+    const bitmap = await createImageBitmap(source);
+    const scale = Math.min(1, 1600 / bitmap.width, 1600 / bitmap.height);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close?.();
+    for (const quality of [0.82, 0.7, 0.55]) {
+      const blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
+      if (blob.size <= 1.4 * 1024 * 1024) return blob;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function annotationPermalink(id) {
+  return `${API_BASE}/a/${encodeURIComponent(id)}`;
+}
+
+function xIntentUrl(id, commentary, title) {
+  const take = commentary
+    ? `“${commentary.slice(0, 180)}${commentary.length > 180 ? "…" : ""}”`
+    : (title || "New annotation");
+  const text = `${take}\n\nOn: ${title || "the source"} — via Annotated`;
+  return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(annotationPermalink(id))}`;
+}
+
+function openTab(url, active = true) {
+  if (isExtension() && chrome.tabs?.create) chrome.tabs.create({ url, active });
+  else window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function buildPreviewModel() {
   const meta = state.pageMeta || {};
   const manualUrl = state.manualSource.url?.trim() || "";
@@ -1230,6 +1530,7 @@ function buildPreviewModel() {
     clipText: state.form.clipText || "",
     commentary: state.form.commentary || "",
     hasAudio: !!state.audio?.dataUrl,
+    annotationType: state.form.annotationType || "",
   };
 }
 
@@ -1258,8 +1559,11 @@ function renderPreviewCard() {
         <span class="name" data-preview-name></span>
         <span class="handle" data-preview-handle></span>
       </div>
+      <span class="type-chip is-static" data-preview-type hidden></span>
       <span class="badge" data-preview-badge></span>
     </div>
+    <div class="preview-commentary" data-preview-commentary></div>
+    <div class="preview-quote" data-preview-quote hidden></div>
     <div class="preview-source">
       <div class="preview-thumb" data-preview-thumb>
         <span class="play" data-preview-play>▶</span>
@@ -1271,8 +1575,6 @@ function renderPreviewCard() {
         <a class="preview-source-link" data-preview-source-link target="_blank" rel="noopener noreferrer"></a>
       </div>
     </div>
-    <div class="preview-quote" data-preview-quote hidden></div>
-    <div class="preview-commentary muted" data-preview-commentary></div>
     <div class="preview-foot">
       <span class="clip-tag" data-preview-clip-tag></span>
       <span class="audio-tag" data-preview-audio hidden>♪ Audio commentary</span>
@@ -1286,6 +1588,13 @@ function renderPreviewCard() {
 function fillPreviewCard(card) {
   if (!card) return;
   const m = buildPreviewModel();
+  const typeEl = $("[data-preview-type]", card);
+  if (typeEl) {
+    const t = ANNOTATION_TYPES.find((x) => x.key === m.annotationType);
+    typeEl.hidden = !t;
+    typeEl.dataset.type = t?.key || "";
+    typeEl.textContent = t?.label || "";
+  }
   const user = state.user || {};
   const avatarEl = $("[data-preview-avatar]", card);
   if (user.avatarUrl) {
@@ -1456,6 +1765,8 @@ async function onPublish(node, publishBtn, errorEl) {
     sourceImage: meta.ogImage || null,
     commentaryText: commentary || null,
     commentaryAudioUploadId: null,
+    annotationType: state.form.annotationType || null,
+    requestId: state.form.requestId || null,
   };
 
   if (payload.sourceType === "article") {
@@ -1503,6 +1814,11 @@ async function onPublish(node, publishBtn, errorEl) {
   publishBtn.textContent = "Publishing…";
 
   let createdAnnotationId = null;
+  // Screenshot articles and X posts as the user sees them right now, before
+  // anything else changes the tab. Video/podcast posts carry their own clip.
+  const screenshotPromise = payload.sourceType === "article" && !manualUrl
+    ? captureScreenshotBlob()
+    : Promise.resolve(null);
   try {
     payload.commentaryAudioUploadId = await uploadAudioIfPresent();
     const result = await api("/api/clips", { method: "POST", body: JSON.stringify(payload) });
@@ -1531,13 +1847,33 @@ async function onPublish(node, publishBtn, errorEl) {
       );
     }
 
+    const screenshot = await screenshotPromise;
+    if (screenshot) {
+      publishBtn.textContent = "Saving page screenshot…";
+      try {
+        await uploadVerifiedMedia("page-screenshot", screenshot, createdAnnotationId);
+      } catch (error) {
+        // The post is already live; a missing thumbnail is not worth failing it.
+        console.warn("[Annotated] screenshot upload skipped", error);
+      }
+    }
+
     state.publish.status = nextPublishStatus(state.publish.status, "success");
     state.publish.annotationId = createdAnnotationId;
     state.publish.pageUrlAtPublish = state.pageMeta?.url || sourceUrl;
+    state.publish.commentary = commentary;
+    state.publish.title = payload.sourceTitle;
+    state.publish.fulfilledRequest = !!result.fulfilledRequestId;
 
-    // Auto-reset after PUBLISH_RESET_MS
+    // Take the user straight to the permalink (judges flagged the extra
+    // "view post" click), and open the X composer too if they asked for it.
+    openTab(annotationPermalink(createdAnnotationId), true);
+    if (state.form.alsoPostToX) {
+      openTab(xIntentUrl(createdAnnotationId, commentary, payload.sourceTitle), true);
+    }
+
     if (state.publish.resetTimer) clearTimeout(state.publish.resetTimer);
-    state.publish.resetTimer = setTimeout(() => resetPublishState(), PUBLISH_RESET_MS);
+    state.publish.resetTimer = setTimeout(() => resetPublishState(), PUBLISH_RESET_MS * 3);
     render();
   } catch (err) {
     if (createdAnnotationId) {
@@ -1573,6 +1909,12 @@ function resetPublishState() {
   state.form.clipTextFromSelection = "";
   state.form.clipTextEdited = false;
   state.form.fairUseAcked = false;
+  state.form.annotationType = "";
+  state.form.requestId = null;
+  state.publish.commentary = "";
+  state.publish.title = "";
+  state.publish.fulfilledRequest = false;
+  state.pageContext.url = "";
   state.selection = null;
   state.clipRange.userTouched = false;
   seedClipRangeFromMeta();
@@ -1582,6 +1924,8 @@ function resetPublishState() {
 }
 
 function renderPublishSuccess() {
+  const id = state.publish.annotationId;
+  const permalink = id ? annotationPermalink(id) : API_BASE;
   const node = document.createElement("section");
   node.className = "view";
   node.innerHTML = `
@@ -1591,20 +1935,47 @@ function renderPublishSuccess() {
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
-      <div class="label">Published!</div>
-      <div class="sub">Your annotation is live on the feed. The side panel will reset shortly, or open the post to share it.</div>
-      <div class="actions">
-        <button class="btn btn-outline btn-sm" data-view-post>View post</button>
-        <button class="btn btn-ghost btn-sm" data-publish-reset>Clip another →</button>
+      <div class="label">Your annotation is live</div>
+      <div class="sub">${state.publish.fulfilledRequest
+        ? "It answers the request on this page. We opened it in a new tab."
+        : "We opened it in a new tab. Share it to start the conversation."}</div>
+      <div class="permalink-row">
+        <input class="permalink-input mono" type="text" readonly value="${escapeAttr(permalink)}" aria-label="Annotation link" data-permalink />
+        <button class="btn btn-outline btn-sm" type="button" data-copy-link>Copy</button>
       </div>
+      <div class="actions success-actions">
+        <button class="btn btn-primary btn-sm" type="button" data-share-x>Post to X</button>
+        <button class="btn btn-outline btn-sm" type="button" data-invite>Invite someone</button>
+        <button class="btn btn-outline btn-sm" type="button" data-view-post>Open post</button>
+      </div>
+      <button class="btn btn-ghost btn-sm" type="button" data-publish-reset>Clip another →</button>
     </div>
   `;
-  $("[data-view-post]", node).addEventListener("click", () => {
-    if (state.publish.annotationId) {
-      const url = `https://www.annotatedextension.com/a/${encodeURIComponent(state.publish.annotationId)}`;
-      if (isExtension() && chrome.tabs?.create) chrome.tabs.create({ url });
-      else window.open(url, "_blank", "noopener,noreferrer");
+  const keepOpen = () => {
+    // The user is acting on the card; don't reset it out from under them.
+    if (state.publish.resetTimer) clearTimeout(state.publish.resetTimer);
+    state.publish.resetTimer = null;
+  };
+  $("[data-copy-link]", node).addEventListener("click", async () => {
+    keepOpen();
+    try {
+      await navigator.clipboard.writeText(permalink);
+      toast("Link copied");
+    } catch {
+      $("[data-permalink]", node).select();
     }
+  });
+  $("[data-permalink]", node).addEventListener("focus", (e) => e.target.select());
+  $("[data-share-x]", node).addEventListener("click", () => {
+    keepOpen();
+    if (id) openTab(xIntentUrl(id, state.publish.commentary, state.publish.title));
+  });
+  $("[data-invite]", node).addEventListener("click", () => {
+    keepOpen();
+    openTab(`${API_BASE}/#/invite`);
+  });
+  $("[data-view-post]", node).addEventListener("click", () => {
+    if (id) openTab(permalink);
   });
   $("[data-publish-reset]", node).addEventListener("click", () => {
     resetPublishState();
@@ -1654,11 +2025,15 @@ function renderFeedCard(a) {
         <div style="font-size:13px; font-weight:600;">${escapeHtml(a.user?.displayName || "")}</div>
         <div class="muted small">@${escapeHtml(a.user?.username || "")} · ${escapeHtml(a.sourcePublication || hostname(a.sourceUrl))}</div>
       </div>
+      ${(() => {
+        const t = ANNOTATION_TYPES.find((x) => x.key === a.annotationType);
+        return t ? `<span class="type-chip is-static" data-type="${t.key}">${escapeHtml(t.label)}</span>` : "";
+      })()}
       <span class="badge ${a.sourceType}">${a.sourceType}</span>
     </div>
-    <button type="button" class="feed-card-open" data-open-detail aria-label="Open annotation: ${escapeAttr(cardTitle)}">${escapeHtml(cardTitle)}</button>
-    ${a.clipText ? `<div class="feed-card-quote">"${escapeHtml(a.clipText.slice(0, 220))}${a.clipText.length > 220 ? "…" : ""}"</div>` : ""}
     ${a.commentaryText ? `<div class="feed-card-commentary">${escapeHtml(a.commentaryText)}</div>` : ""}
+    ${a.clipText ? `<div class="feed-card-quote">"${escapeHtml(a.clipText.slice(0, 220))}${a.clipText.length > 220 ? "…" : ""}"</div>` : ""}
+    <button type="button" class="feed-card-open" data-open-detail aria-label="Open annotation: ${escapeAttr(cardTitle)}">${escapeHtml(cardTitle)}</button>
     <div class="feed-card-foot">
       <span>${a.commentCount} comments</span>
       <a href="${escapeAttr(a.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;">↗ Source</a>

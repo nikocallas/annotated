@@ -101,6 +101,14 @@
           <a class="source-link" data-source-link target="_blank" rel="noopener noreferrer">View source ↗</a>
         </div>
 
+        <section class="page-context" data-page-context hidden aria-live="polite">
+          <div class="page-context-head">
+            <span class="page-context-title" data-page-context-title>Already on this page</span>
+            <button class="link-mini" type="button" data-page-context-toggle aria-expanded="false">Show</button>
+          </div>
+          <div class="page-context-body" data-page-context-body hidden></div>
+        </section>
+
         <details class="manual-url" data-manual-source>
           <summary>Use a different URL</summary>
           <input type="url" data-source-url aria-label="Source URL" placeholder="https://example.com/article-or-video" />
@@ -111,9 +119,14 @@
           <!-- Clip-type-specific UI injected here -->
         </div>
 
+        <fieldset class="type-picker" data-type-picker>
+          <legend class="label">What kind of take?</legend>
+          <div class="type-chips" role="radiogroup" aria-label="Kind of take" data-type-chips></div>
+        </fieldset>
+
         <div class="commentary-section">
-          <label class="label" for="annotation-commentary">Your commentary</label>
-          <textarea id="annotation-commentary" data-commentary placeholder="Why does this matter?" rows="3"></textarea>
+          <label class="label" for="annotation-commentary">Your take</label>
+          <textarea id="annotation-commentary" data-commentary placeholder="What's wrong, missing, or worth knowing here? Add #topics to help people find it." rows="4"></textarea>
 
           <div class="recorder" data-recorder>
             <div class="recorder-row">
@@ -154,14 +167,20 @@
           </span>
         </label>
 
+        <label class="post-to-x" data-post-to-x-wrap>
+          <input type="checkbox" data-post-to-x />
+          <span>Also post my take to X after publishing</span>
+        </label>
+
         <div class="actions">
           <button class="btn btn-primary btn-lg" data-publish>Publish annotation</button>
         </div>
         <p class="hint" data-error role="alert" hidden></p>
         <p class="hint">
-          Clips capped at 90s. Reading clips capped at 100 words. YouTube
-          downscaled to 240p server-side. Source URL is always linked. All
-          content annotated on must be fair use.
+          Clips capped at 90s. Reading clips capped at 100 words. Video is
+          recorded at 240p. Source URL is always linked, and a screenshot of
+          the page is saved with articles and X posts. All content annotated
+          on must be fair use.
         </p>
       </section>
     </template>

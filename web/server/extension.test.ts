@@ -137,3 +137,20 @@ test("content script recognizes native, metadata, and direct-file podcast audio"
   assert.match(contentScript, /twitter:player:stream:content_type/);
   assert.match(contentScript, /media\.videoWidth === 0 && media\.videoHeight === 0/);
 });
+
+test("extension annotation types mirror the shared schema", async () => {
+  const { ANNOTATION_TYPES: extensionTypes } = await import("../../extension/shared/clip-utils.mjs");
+  const { ANNOTATION_TYPES: schemaTypes, ANNOTATION_TYPE_LABELS } = await import("@shared/schema");
+  assert.deepEqual(extensionTypes.map((t: { key: string }) => t.key), [...schemaTypes]);
+  for (const t of extensionTypes as { key: keyof typeof ANNOTATION_TYPE_LABELS; label: string }[]) {
+    assert.equal(t.label, ANNOTATION_TYPE_LABELS[t.key]);
+  }
+});
+
+test("the clip window follows the playhead, keeping its length and the 90s cap", async () => {
+  const { followPlayhead } = await import("../../extension/shared/clip-utils.mjs");
+  assert.deepEqual(followPlayhead({ start: 0, end: 30 }, 125.7, 600), { start: 125, end: 155 });
+  assert.deepEqual(followPlayhead({ start: 10, end: 55 }, 580, 600), { start: 580, end: 600 });
+  assert.deepEqual(followPlayhead({ start: 0, end: 500 }, 0, null), { start: 0, end: 90 });
+  assert.deepEqual(followPlayhead(null, -5, 100), { start: 0, end: 30 });
+});
