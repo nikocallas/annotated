@@ -22,7 +22,17 @@ import {
   countClipTextWords,
   type ClaimReasonCategory,
   type VoteValue,
+  isAnnotationType,
+  extractHashtags,
+  insertAnnotationRequestSchema,
 } from "@shared/schema";
+import {
+  computeTrending,
+  rankForYou,
+  rankSuggestedUsers,
+  sourceUrlVariants,
+} from "./discovery";
+import { sendEmail } from "./email";
 import { dispatchClaimEmails } from "./claim-email";
 import {
   claimModerationService as defaultClaimModeration,
@@ -303,23 +313,23 @@ export function registerRoutes(
   );
 
   // ---- USERS -------------------------------------------------------------
-  // Suggested users — order matters for "People worth following" rail.
-  // Niko is the demo-author, so he isn't suggested back to himself; the
-  // rail filters out the current user client-side as well.
-  const SUGGESTED_ORDER = ["nikocallas", "fmaks", "volodyaa", "nazar"];
+  // "People worth following": real contributors ranked by public posts and
+  // followers. The viewer and anyone they already follow are excluded.
   app.get(
     "/api/users",
-    asyncHandler(async (_req, res) => {
-      const users = await storage.listUsers();
-      const ranked = [...users].sort((a, b) => {
-        const ai = SUGGESTED_ORDER.indexOf(a.username);
-        const bi = SUGGESTED_ORDER.indexOf(b.username);
-        const av = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
-        const bv = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
-        if (av !== bv) return av - bv;
-        return b.createdAt - a.createdAt;
-      });
-      return res.json(ranked);
+    asyncHandler(async (req, res) => {
+      const viewer = await auth.optionalActor(req);
+      const users = (await storage.listUsers()).slice(0, 200);
+      const withStats = await Promise.all(
+        users.map(async (user) => ({
+          user,
+          followers: await storage.followerCount(user.id),
+          annotationCount: await storage.countPublicAnnotationsByUser(user.id),
+        })),
+      );
+      const excludeIds = viewer ? await storage.listFollowingIds(viewer.id) : [];
+      const limit = boundedIntegerQuery(req.query.limit, 5, 20);
+      return res.json(rankSuggestedUsers(withStats, { viewerId: viewer?.id, excludeIds, limit }));
     })
   );
 
@@ -402,8 +412,31 @@ export function registerRoutes(
       const viewerUserId = viewer?.id;
       const limit = boundedIntegerQuery(req.query.limit, 60, 100);
       const shuffle = req.query.shuffle === "1" || req.query.shuffle === "true";
-      const annotations = await storage.listAnnotations({ followerOf, limit, viewerUserId });
-      if (shuffle) {
+      const annotationType = isAnnotationType(req.query.type) ? req.query.type : undefined;
+      const tag = typeof req.query.tag === "string"
+        ? req.query.tag.replace(/^#/, "").trim().toLowerCase().slice(0, 40)
+        : "";
+      const forYou = req.query.mode === "for-you";
+      // Topic and For You views rank from a wider candidate pool.
+      const poolLimit = tag || forYou ? 100 : limit;
+      let annotations = await storage.listAnnotations({ followerOf, limit: poolLimit, viewerUserId, annotationType });
+      if (tag) annotations = annotations.filter((a) => extractHashtags(a.commentaryText).includes(tag));
+      if (forYou) {
+        const [followingIds, own, saved] = viewer
+          ? await Promise.all([
+              storage.listFollowingIds(viewer.id),
+              storage.listAnnotations({ userId: viewer.id, limit: 50, viewerUserId: viewer.id }),
+              storage.listBookmarkedAnnotations(viewer.id),
+            ])
+          : [[], [], []];
+        annotations = rankForYou(annotations, {
+          viewerId: viewer?.id,
+          followingIds,
+          affinityPosts: [...own, ...saved],
+        });
+      }
+      annotations = annotations.slice(0, limit);
+      if (shuffle && !forYou) {
         // Fisher–Yates with a per-request seed so each feed load reorders.
         for (let i = annotations.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
@@ -420,6 +453,35 @@ export function registerRoutes(
     asyncHandler(async (_req, res) => {
       const top = await storage.getMostViewedAnnotation();
       return res.json(top ?? null);
+    })
+  );
+
+  // Trending sources, topics (#hashtags), and annotation types over the last
+  // two weeks of public posts — the feed's right rail.
+  app.get(
+    "/api/trending",
+    asyncHandler(async (_req, res) => {
+      const sinceSec = Math.floor(Date.now() / 1000) - 14 * 24 * 60 * 60;
+      const recent = await storage.listAnnotations({ limit: 100, sinceSec });
+      res.setHeader("Cache-Control", "public, max-age=60");
+      return res.json(computeTrending(recent));
+    })
+  );
+
+  // Everything already said about one page: existing annotations and open
+  // requests. The side panel calls this for the tab the user is on.
+  app.get(
+    "/api/sources/annotations",
+    asyncHandler(async (req, res) => {
+      const viewer = await auth.optionalActor(req);
+      const url = typeof req.query.url === "string" ? req.query.url : "";
+      const variants = sourceUrlVariants(url);
+      if (variants.length === 0) return res.status(400).json({ error: "A valid source URL is required" });
+      const [annotations, requests] = await Promise.all([
+        storage.listAnnotations({ sourceUrls: variants, limit: 20, viewerUserId: viewer?.id }),
+        storage.listAnnotationRequests({ sourceUrls: variants, status: "open", limit: 20 }).catch(() => []),
+      ]);
+      return res.json({ annotations, requests });
     })
   );
 
@@ -502,6 +564,14 @@ export function registerRoutes(
     asyncHandler(async (req, res) => {
       const actor = await auth.requireActor(req);
       const intent = await mediaStorage.inspectMediaUpload(actor.id, req.body?.uploadId);
+      if (intent.kind === "page-screenshot") {
+        const annotationId = typeof req.body?.annotationId === "string" ? req.body.annotationId : "";
+        const target = await storage.getAnnotation(annotationId);
+        if (!target) return res.status(404).json({ error: "Annotation not found" });
+        if (target.userId !== actor.id) {
+          return res.status(403).json({ error: "You can only attach a screenshot to your own annotation" });
+        }
+      }
       if (intent.kind === "clip-video" || intent.kind === "clip-audio") {
         const annotationId = typeof req.body?.annotationId === "string" ? req.body.annotationId : "";
         const annotationForClip = await storage.getAnnotation(annotationId);
@@ -519,6 +589,13 @@ export function registerRoutes(
         uploadId: req.body?.uploadId,
       });
 
+      if (media.kind === "page-screenshot") {
+        const annotationId = typeof req.body?.annotationId === "string" ? req.body.annotationId : "";
+        await mediaStorage.attachMediaUpload(actor.id, media.uploadId, annotationId);
+        if (storageBackend !== "supabase") {
+          await storage.updateAnnotation(annotationId, { clipThumbnailUrl: media.url });
+        }
+      }
       if (media.kind === "clip-video" || media.kind === "clip-audio") {
         const annotationId = typeof req.body?.annotationId === "string" ? req.body.annotationId : "";
         // Attach the verified intent first. If this step fails, the annotation
@@ -563,7 +640,11 @@ export function registerRoutes(
       if (ann.isPublic !== 1 && ann.userId !== viewerUserId) {
         return res.status(404).json({ error: "Annotation not found" });
       }
-      return res.json(ann);
+      const [followers, annotationCount] = await Promise.all([
+        storage.followerCount(ann.userId),
+        storage.countPublicAnnotationsByUser(ann.userId),
+      ]);
+      return res.json({ ...ann, authorStats: { followers, annotations: annotationCount } });
     })
   );
 
@@ -629,7 +710,34 @@ export function registerRoutes(
           throw error;
         }
       }
-      return res.status(201).json({ annotation, max: MAX_CLIP_SECONDS, targetHeight: TARGET_VIDEO_HEIGHT });
+      // Answering an annotation request marks it fulfilled. A request is only
+      // fulfilled by a post about the same page, and only when it is open to
+      // everyone or addressed to this author. Failures never block publishing.
+      const requestId = typeof req.body?.requestId === "string" ? req.body.requestId : "";
+      let fulfilledRequestId: string | null = null;
+      if (requestId) {
+        try {
+          const request = await storage.getAnnotationRequest(requestId);
+          const samePage = !!request && sourceUrlVariants(request.sourceUrl).includes(annotation.sourceUrl);
+          const addressedHere = !!request && (!request.requestedUserId || request.requestedUserId === actor.id);
+          if (request && request.status === "open" && samePage && addressedHere) {
+            await storage.updateAnnotationRequest(request.id, {
+              status: "fulfilled",
+              fulfilledAnnotationId: annotation.id,
+              fulfilledAt: Math.floor(Date.now() / 1000),
+            });
+            fulfilledRequestId = request.id;
+          }
+        } catch {
+          console.warn(JSON.stringify({ event: "annotation_request_fulfil_skipped" }));
+        }
+      }
+      return res.status(201).json({
+        annotation,
+        fulfilledRequestId,
+        max: MAX_CLIP_SECONDS,
+        targetHeight: TARGET_VIDEO_HEIGHT,
+      });
     })
   );
 
@@ -668,6 +776,112 @@ export function registerRoutes(
       }
       const result = await mediaStorage.cleanupExpiredMediaUploads();
       return res.json({ ok: true, ...result });
+    }),
+  );
+
+  // ---- ANNOTATION REQUESTS ("bounty on a story") ---------------------------
+  // Ask the community, or one named person, to annotate or fact-check a page.
+  app.get(
+    "/api/requests",
+    asyncHandler(async (req, res) => {
+      const status = req.query.status === "fulfilled" || req.query.status === "closed" ? req.query.status : "open";
+      let requestedUserId: string | undefined;
+      if (req.query.for === "me") {
+        const actor = await auth.requireActor(req);
+        requestedUserId = actor.id;
+      }
+      const limit = boundedIntegerQuery(req.query.limit, 50, 100);
+      const requests = await storage.listAnnotationRequests({ status, requestedUserId, limit });
+      return res.json(requests);
+    }),
+  );
+
+  app.get(
+    "/api/requests/:id",
+    asyncHandler(async (req, res) => {
+      const request = await storage.getAnnotationRequest(String(req.params.id));
+      if (!request) return res.status(404).json({ error: "Request not found" });
+      return res.json(request);
+    }),
+  );
+
+  app.post(
+    "/api/requests",
+    asyncHandler(async (req, res) => {
+      const actor = await auth.requireActor(req);
+      const parsed = insertAnnotationRequestSchema.safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+      try {
+        validateSourceUrl(parsed.data.sourceUrl);
+      } catch (err) {
+        if (err instanceof ClipValidationError) return res.status(400).json({ error: err.message, field: err.field });
+        throw err;
+      }
+      let requestedUserId: string | null = null;
+      if (parsed.data.requestedUsername) {
+        const username = parsed.data.requestedUsername.replace(/^@/, "").toLowerCase();
+        const target = await storage.getUserByUsername(username);
+        if (!target) return res.status(404).json({ error: `No Annotated user named @${username}` });
+        if (target.id === actor.id) return res.status(400).json({ error: "Ask someone else to annotate this" });
+        requestedUserId = target.id;
+      }
+      const request = await storage.createAnnotationRequest({
+        userId: actor.id,
+        sourceUrl: parsed.data.sourceUrl,
+        sourceTitle: parsed.data.sourceTitle ?? null,
+        note: parsed.data.note || null,
+        requestedUserId,
+      });
+      return res.status(201).json(await storage.getAnnotationRequest(request.id));
+    }),
+  );
+
+  app.post(
+    "/api/requests/:id/close",
+    asyncHandler(async (req, res) => {
+      const actor = await auth.requireActor(req);
+      const request = await storage.getAnnotationRequest(String(req.params.id));
+      if (!request) return res.status(404).json({ error: "Request not found" });
+      if (request.userId !== actor.id) return res.status(403).json({ error: "Only the requester can close this" });
+      const updated = await storage.updateAnnotationRequest(request.id, { status: "closed" });
+      return res.json(updated);
+    }),
+  );
+
+  // ---- INVITES -------------------------------------------------------------
+  // Invite someone by email. Sends through Resend when it is configured;
+  // otherwise tells the client to fall back to the user's own mail app.
+  app.post(
+    "/api/invites",
+    asyncHandler(async (req, res) => {
+      const actor = await auth.requireActor(req);
+      const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) {
+        return res.status(400).json({ error: "Enter a valid email address" });
+      }
+      const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 500) : "";
+      const inviteUrl = `https://www.annotatedextension.com/?ref=${encodeURIComponent(actor.username)}`;
+      const escape = (value: string) =>
+        value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+      const subject = `${actor.displayName} invited you to Annotated`;
+      const text = [
+        `${actor.displayName} (@${actor.username}) invited you to Annotated — clip the exact moment from any article, video, or podcast and add the context that's missing.`,
+        note ? `\n“${note}”\n` : "",
+        `Join here: ${inviteUrl}`,
+      ].join("\n");
+      const html = `<p><strong>${escape(actor.displayName)}</strong> (@${escape(actor.username)}) invited you to Annotated — clip the exact moment from any article, video, or podcast and add the context that's missing.</p>${
+        note ? `<blockquote>${escape(note)}</blockquote>` : ""
+      }<p><a href="${inviteUrl}">Join Annotated</a></p>`;
+      const result = await sendEmail({ to: email, subject, text, html });
+      if (!result.ok) {
+        return res.status(result.reason === "not_configured" ? 503 : 502).json({
+          error: "Email delivery is unavailable",
+          fallback: "mailto",
+          subject,
+          body: text,
+        });
+      }
+      return res.status(201).json({ sent: true });
     }),
   );
 

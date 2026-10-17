@@ -11,6 +11,8 @@ export interface RateLimitRule {
 
 export const RATE_LIMIT_RULES: RateLimitRule[] = [
   { name: "support", matches: (req) => req.path === "/api/support", limit: 5, windowMs: 60 * 60_000 },
+  { name: "invites", matches: (req) => req.method === "POST" && req.path === "/api/invites", limit: 20, windowMs: 24 * 60 * 60_000 },
+  { name: "requests", matches: (req) => req.method === "POST" && req.path === "/api/requests", limit: 30, windowMs: 60 * 60_000 },
   { name: "claims", matches: (req) => req.path === "/api/claims" || /\/api\/annotations\/[^/]+\/claims$/.test(req.path), limit: 10, windowMs: 60 * 60_000 },
   { name: "auth", matches: (req) => req.path.startsWith("/api/auth/"), limit: 30, windowMs: 10 * 60_000 },
   { name: "uploads", matches: (req) => req.path.startsWith("/api/uploads/"), limit: 30, windowMs: 60 * 60_000 },

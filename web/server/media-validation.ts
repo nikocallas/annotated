@@ -1,4 +1,8 @@
-export type MediaKind = "clip-video" | "clip-audio" | "commentary-audio";
+export type MediaKind = "clip-video" | "clip-audio" | "commentary-audio" | "page-screenshot";
+
+// Screenshots are stored small: enough to show what the page or X post looked
+// like, never a full-resolution copy of someone else's page.
+export const MAX_SCREENSHOT_DIMENSION = 1600;
 
 export interface VerifiedMedia {
   durationSeconds: number;
@@ -6,7 +10,7 @@ export interface VerifiedMedia {
   height: number | null;
   hasVideo: boolean;
   hasAudio: boolean;
-  container: "webm";
+  container: "webm" | "jpeg";
 }
 
 export class MediaValidationError extends Error {
@@ -182,7 +186,49 @@ export function inspectWebM(buffer: Buffer): VerifiedMedia {
   };
 }
 
+/**
+ * Verifies a baseline or progressive JPEG and reads its pixel dimensions from
+ * the first start-of-frame segment. Anything else is rejected.
+ */
+export function inspectJpeg(buffer: Buffer): VerifiedMedia {
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+    throw new MediaValidationError("Uploaded screenshot is not a JPEG image");
+  }
+  let offset = 2;
+  while (offset + 4 <= buffer.length) {
+    if (buffer[offset] !== 0xff) throw new MediaValidationError("JPEG structure is invalid");
+    const marker = buffer[offset + 1];
+    // Fill bytes and standalone markers carry no length.
+    if (marker === 0xff) { offset += 1; continue; }
+    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) { offset += 2; continue; }
+    if (marker === 0xd9 || marker === 0xda) break;
+    const length = buffer.readUInt16BE(offset + 2);
+    if (length < 2 || offset + 2 + length > buffer.length) {
+      throw new MediaValidationError("JPEG segment size is invalid");
+    }
+    const isStartOfFrame = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isStartOfFrame) {
+      if (length < 7) throw new MediaValidationError("JPEG frame header is invalid");
+      const height = buffer.readUInt16BE(offset + 5);
+      const width = buffer.readUInt16BE(offset + 7);
+      if (!width || !height) throw new MediaValidationError("JPEG dimensions are invalid");
+      return { durationSeconds: 0, width, height, hasVideo: false, hasAudio: false, container: "jpeg" };
+    }
+    offset += 2 + length;
+  }
+  throw new MediaValidationError("Unable to read the screenshot dimensions");
+}
+
 export function validateUploadedMedia(buffer: Buffer, kind: MediaKind): VerifiedMedia {
+  if (kind === "page-screenshot") {
+    const image = inspectJpeg(buffer);
+    if ((image.width ?? 0) > MAX_SCREENSHOT_DIMENSION || (image.height ?? 0) > MAX_SCREENSHOT_DIMENSION) {
+      throw new MediaValidationError(
+        `Screenshot is ${image.width}x${image.height}; the limit is ${MAX_SCREENSHOT_DIMENSION}px per side`,
+      );
+    }
+    return image;
+  }
   const media = inspectWebM(buffer);
   if (!Number.isFinite(media.durationSeconds) || media.durationSeconds <= 0) {
     throw new MediaValidationError("Unable to verify the uploaded media duration");

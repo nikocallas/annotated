@@ -6,6 +6,15 @@ const LIMITS: Record<MediaKind, { bucket: string; mime: string; maxBytes: number
   "clip-video": { bucket: "clip-media", mime: "video/webm", maxBytes: 20 * 1024 * 1024 },
   "clip-audio": { bucket: "clip-media", mime: "audio/webm", maxBytes: 8 * 1024 * 1024 },
   "commentary-audio": { bucket: "commentary-audio", mime: "audio/webm", maxBytes: 2 * 1024 * 1024 },
+  // The clip-media bucket already allows image/jpeg (migration 0012).
+  "page-screenshot": { bucket: "clip-media", mime: "image/jpeg", maxBytes: 1536 * 1024 },
+};
+
+const EXTENSIONS: Record<MediaKind, string> = {
+  "clip-video": "webm",
+  "clip-audio": "webm",
+  "commentary-audio": "webm",
+  "page-screenshot": "jpg",
 };
 
 export class MediaStorageError extends Error {
@@ -55,7 +64,7 @@ export async function mediaStorageHealthCheck() {
 }
 
 function settings(kind: unknown): { kind: MediaKind; bucket: string; mime: string; maxBytes: number } {
-  if (kind !== "clip-video" && kind !== "clip-audio" && kind !== "commentary-audio") {
+  if (kind !== "clip-video" && kind !== "clip-audio" && kind !== "commentary-audio" && kind !== "page-screenshot") {
     throw new MediaStorageError(400, "Unsupported media upload kind");
   }
   const mediaKind: MediaKind = kind;
@@ -87,7 +96,7 @@ export async function createSignedMediaUpload(input: {
 
   const client = adminClient();
   const uploadId = randomUUID();
-  const path = `${input.userId}/${config.kind}/${uploadId}.webm`;
+  const path = `${input.userId}/${config.kind}/${uploadId}.${EXTENSIONS[config.kind]}`;
   const { error: intentError } = await client.from("media_uploads").insert({
     id: uploadId,
     user_id: input.userId,
@@ -149,7 +158,7 @@ export async function finalizeMediaUpload(input: {
       durationSeconds: Number(record.duration_seconds ?? 0),
       width: record.width,
       height: record.height,
-      container: "webm" as const,
+      container: (record.kind === "page-screenshot" ? "jpeg" : "webm") as "webm" | "jpeg",
       hasVideo: !!record.has_video,
       hasAudio: !!record.has_audio,
     };
