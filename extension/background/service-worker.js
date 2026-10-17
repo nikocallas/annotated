@@ -385,6 +385,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Screenshot of what the user is annotating, taken at publish time. It
+  // becomes the post's thumbnail and preserves X posts that are later
+  // deleted. Best effort: Chrome only allows this with activeTab or a host
+  // grant, and a failure never blocks publishing.
+  if (message?.type === "CAPTURE_VISIBLE_TAB") {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const active = tabs[0];
+        if (active?.windowId == null || !/^https?:/.test(active.url || "")) {
+          return sendResponse({ ok: false, error: "no_capturable_tab" });
+        }
+        const dataUrl = await chrome.tabs.captureVisibleTab(active.windowId, { format: "jpeg", quality: 82 });
+        sendResponse({ ok: true, dataUrl, url: active.url });
+      } catch (err) {
+        sendResponse({ ok: false, error: err?.message || String(err) });
+      }
+    })();
+    return true;
+  }
+
   if (message?.type === "CAPTURE_ACTIVE_TAB_CLIP") {
     (async () => {
       let active = null;

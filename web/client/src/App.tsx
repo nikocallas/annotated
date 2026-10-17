@@ -13,6 +13,7 @@ import ProfilePage from "@/pages/profile";
 import AnnotationDetailPage from "@/pages/annotation-detail";
 import InstallPage from "@/pages/install";
 import InvitePage from "@/pages/invite";
+import RequestsPage from "@/pages/requests";
 
 function AppRouter() {
   return (
@@ -22,6 +23,7 @@ function AppRouter() {
       <Route path="/login" component={LoginPage} />
       <Route path="/install" component={InstallPage} />
       <Route path="/invite" component={InvitePage} />
+      <Route path="/requests" component={RequestsPage} />
       <Route path="/u/:username" component={ProfilePage} />
       <Route path="/a/:id" component={AnnotationDetailPage} />
       <Route component={NotFound} />

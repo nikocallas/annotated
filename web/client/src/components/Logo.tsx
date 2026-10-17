@@ -10,18 +10,25 @@ export function QuoteMark({ size = 28 }: { size?: number }) {
       }}
       aria-hidden
     >
+      {/* Highlighter over a highlighted line of text: Jason's original
+          annotated.com idea was a yellow highlighter. */}
       <svg
-        width={Math.round(size * 0.7)}
-        height={Math.round(size * 0.7)}
-        viewBox="0 0 32 32"
+        width={Math.round(size * 0.82)}
+        height={Math.round(size * 0.82)}
+        viewBox="4 4 56 56"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
+        style={{ color: "hsl(var(--primary-foreground))" }}
       >
-        {/* Stylized double quotation mark */}
-        <path
-          d="M9 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8H7.6c0-2.4 1.1-4.1 3.1-5.2L9 8.5zM21 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8h-4c0-2.4 1.1-4.1 3.1-5.2L21 8.5z"
-          fill="hsl(var(--primary-foreground))"
-        />
+          <rect x="12" y="15" width="30" height="5" rx="2.5" fill="currentColor" opacity="0.55"/>
+          <rect x="9" y="26" width="38" height="13" rx="3" fill="#FFE24A"/>
+          <rect x="12" y="30" width="32" height="5" rx="2.5" fill="currentColor"/>
+          <rect x="12" y="45" width="22" height="5" rx="2.5" fill="currentColor" opacity="0.55"/>
+          <g transform="translate(47 37) rotate(35)">
+            <rect x="-4.5" y="-21" width="9" height="15" rx="2" fill="currentColor"/>
+            <path d="M-4.5 -6h9l-2 6h-5z" fill="currentColor"/>
+            <path d="M-2.5 0h5l-1.2 3h-2.6z" fill="#FFE24A" stroke="currentColor" strokeWidth="1"/>
+          </g>
       </svg>
     </span>
   );

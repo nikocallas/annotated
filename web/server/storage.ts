@@ -13,6 +13,8 @@ import {
   type Vote,
   type VoteValue,
   type CommentWithReplies,
+  type AnnotationRequest,
+  type AnnotationRequestWithRelations,
 } from "@shared/schema";
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -32,6 +34,19 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  */
 
 const now = () => Math.floor(Date.now() / 1000);
+
+export interface ListAnnotationsOptions {
+  userId?: string;
+  limit?: number;
+  followerOf?: string;
+  viewerUserId?: string;
+  /** Only posts of this annotation type. */
+  annotationType?: string;
+  /** Only posts about one of these exact source URLs. */
+  sourceUrls?: string[];
+  /** Only posts created at or after this Unix time (seconds). */
+  sinceSec?: number;
+}
 
 function isUniqueViolation(error: unknown): boolean {
   return !!error && typeof error === "object" && "code" in error
@@ -56,12 +71,8 @@ export interface IStorage {
     id: string,
     viewerUserId?: string,
   ): Promise<AnnotationWithRelations | undefined>;
-  listAnnotations(opts?: {
-    userId?: string;
-    limit?: number;
-    followerOf?: string;
-    viewerUserId?: string;
-  }): Promise<AnnotationWithRelations[]>;
+  listAnnotations(opts?: ListAnnotationsOptions): Promise<AnnotationWithRelations[]>;
+  countPublicAnnotationsByUser(userId: string): Promise<number>;
   createAnnotation(input: InsertAnnotation & { userId: string }): Promise<Annotation>;
   updateAnnotation(id: string, patch: Partial<Annotation>): Promise<Annotation | undefined>;
   deleteAnnotation(id: string): Promise<void>;
@@ -83,6 +94,27 @@ export interface IStorage {
   isFollowing(followerId: string, followingId: string): Promise<boolean>;
   followerCount(userId: string): Promise<number>;
   followingCount(userId: string): Promise<number>;
+  listFollowingIds(userId: string): Promise<string[]>;
+
+  // Annotation requests ("bounty on a story")
+  createAnnotationRequest(input: {
+    userId: string;
+    sourceUrl: string;
+    sourceTitle: string | null;
+    note: string | null;
+    requestedUserId: string | null;
+  }): Promise<AnnotationRequest>;
+  getAnnotationRequest(id: string): Promise<AnnotationRequestWithRelations | undefined>;
+  listAnnotationRequests(opts?: {
+    status?: "open" | "fulfilled" | "closed";
+    sourceUrls?: string[];
+    requestedUserId?: string;
+    limit?: number;
+  }): Promise<AnnotationRequestWithRelations[]>;
+  updateAnnotationRequest(
+    id: string,
+    patch: Partial<Pick<AnnotationRequest, "status" | "fulfilledAnnotationId" | "fulfilledAt">>,
+  ): Promise<AnnotationRequest | undefined>;
 
   // Claims
   createClaim(input: InsertClaim): Promise<Claim>;
@@ -159,6 +191,7 @@ type AnnotationRow = {
   clip_status: string;
   commentary_text: string | null;
   commentary_audio_url: string | null;
+  annotation_type?: string | null;
   is_public: number;
   view_count?: number | null;
   created_at: number;
@@ -182,6 +215,7 @@ function annotationFromRow(r: AnnotationRow): Annotation {
     clipStatus: r.clip_status,
     commentaryText: r.commentary_text,
     commentaryAudioUrl: r.commentary_audio_url,
+    annotationType: r.annotation_type ?? null,
     isPublic: r.is_public,
     viewCount: Number(r.view_count ?? 0),
     createdAt: Number(r.created_at),
@@ -189,7 +223,7 @@ function annotationFromRow(r: AnnotationRow): Annotation {
 }
 
 function annotationToRow(a: Annotation): AnnotationRow {
-  return {
+  const row: AnnotationRow = {
     id: a.id,
     user_id: a.userId,
     source_url: a.sourceUrl,
@@ -209,6 +243,38 @@ function annotationToRow(a: Annotation): AnnotationRow {
     is_public: a.isPublic,
     view_count: a.viewCount ?? 0,
     created_at: a.createdAt,
+  };
+  // Only send the column when it carries a value, so publishing keeps working
+  // against a database that has not yet received migration 0017.
+  if (a.annotationType) row.annotation_type = a.annotationType;
+  return row;
+}
+
+type AnnotationRequestRow = {
+  id: string;
+  user_id: string;
+  source_url: string;
+  source_title: string | null;
+  note: string | null;
+  requested_user_id: string | null;
+  status: string;
+  fulfilled_annotation_id: string | null;
+  created_at: number;
+  fulfilled_at: number | null;
+};
+
+function annotationRequestFromRow(r: AnnotationRequestRow): AnnotationRequest {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    sourceUrl: r.source_url,
+    sourceTitle: r.source_title,
+    note: r.note,
+    requestedUserId: r.requested_user_id,
+    status: r.status,
+    fulfilledAnnotationId: r.fulfilled_annotation_id,
+    createdAt: Number(r.created_at),
+    fulfilledAt: r.fulfilled_at == null ? null : Number(r.fulfilled_at),
   };
 }
 
@@ -418,9 +484,15 @@ export class SupabaseStorage implements IStorage {
       viewerVote,
     };
   }
-  async listAnnotations(opts: { userId?: string; limit?: number; followerOf?: string; viewerUserId?: string } = {}) {
+  async listAnnotations(opts: ListAnnotationsOptions = {}) {
     const limit = opts.limit ?? 50;
     let query = this.client.from("annotations").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (opts.annotationType) query = query.eq("annotation_type", opts.annotationType);
+    if (opts.sourceUrls) {
+      if (opts.sourceUrls.length === 0) return [];
+      query = query.in("source_url", opts.sourceUrls);
+    }
+    if (opts.sinceSec != null) query = query.gte("created_at", opts.sinceSec);
     if (opts.userId) {
       query = query.eq("user_id", opts.userId);
       if (opts.viewerUserId !== opts.userId) query = query.eq("is_public", 1);
@@ -515,6 +587,7 @@ export class SupabaseStorage implements IStorage {
       clipText: input.clipText ?? null,
       commentaryText: input.commentaryText ?? null,
       commentaryAudioUrl: input.commentaryAudioUrl ?? null,
+      annotationType: input.annotationType ?? null,
       // Media annotations remain private while the extension captures and the
       // server verifies their artifact. Finalization publishes atomically.
       isPublic: input.sourceType === "article" ? (input.isPublic ?? 1) : 0,
@@ -727,6 +800,122 @@ export class SupabaseStorage implements IStorage {
     if (error) throw error;
     return Number(count ?? 0);
   }
+  async listFollowingIds(userId: string) {
+    const { data, error } = await this.client
+      .from("follows")
+      .select("following_id")
+      .eq("follower_id", userId);
+    if (error) throw error;
+    return (data ?? []).map((r: { following_id: string }) => r.following_id);
+  }
+  async countPublicAnnotationsByUser(userId: string) {
+    const { count, error } = await this.client
+      .from("annotations")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_public", 1);
+    if (error) throw error;
+    return Number(count ?? 0);
+  }
+
+  private async hydrateRequests(rows: AnnotationRequest[]): Promise<AnnotationRequestWithRelations[]> {
+    if (rows.length === 0) return [];
+    const userIds = Array.from(new Set(rows.flatMap((r) => [r.userId, r.requestedUserId].filter(Boolean) as string[])));
+    const { data: userRows, error } = await this.client.from("users").select("*").in("id", userIds);
+    if (error) throw error;
+    const users = new Map((userRows ?? []).map((r) => {
+      const u = userFromRow(r as UserRow);
+      return [u.id, u] as const;
+    }));
+    return rows
+      .filter((r) => users.has(r.userId))
+      .map((r) => ({
+        ...r,
+        user: users.get(r.userId)!,
+        requestedUser: r.requestedUserId ? users.get(r.requestedUserId) ?? null : null,
+        fulfilledAnnotation: r.fulfilledAnnotationId ? { id: r.fulfilledAnnotationId } : null,
+      }));
+  }
+  async createAnnotationRequest(input: {
+    userId: string;
+    sourceUrl: string;
+    sourceTitle: string | null;
+    note: string | null;
+    requestedUserId: string | null;
+  }) {
+    const request: AnnotationRequest = {
+      id: randomUUID(),
+      userId: input.userId,
+      sourceUrl: input.sourceUrl,
+      sourceTitle: input.sourceTitle,
+      note: input.note,
+      requestedUserId: input.requestedUserId,
+      status: "open",
+      fulfilledAnnotationId: null,
+      createdAt: now(),
+      fulfilledAt: null,
+    };
+    const { error } = await this.client.from("annotation_requests").insert({
+      id: request.id,
+      user_id: request.userId,
+      source_url: request.sourceUrl,
+      source_title: request.sourceTitle,
+      note: request.note,
+      requested_user_id: request.requestedUserId,
+      status: request.status,
+      fulfilled_annotation_id: null,
+      created_at: request.createdAt,
+      fulfilled_at: null,
+    });
+    if (error) throw error;
+    return request;
+  }
+  async getAnnotationRequest(id: string) {
+    const { data, error } = await this.client.from("annotation_requests").select("*").eq("id", id).maybeSingle();
+    if (error) throw error;
+    if (!data) return undefined;
+    const [hydrated] = await this.hydrateRequests([annotationRequestFromRow(data as AnnotationRequestRow)]);
+    return hydrated;
+  }
+  async listAnnotationRequests(opts: {
+    status?: "open" | "fulfilled" | "closed";
+    sourceUrls?: string[];
+    requestedUserId?: string;
+    limit?: number;
+  } = {}) {
+    let query = this.client
+      .from("annotation_requests")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(Math.min(100, opts.limit ?? 50));
+    if (opts.status) query = query.eq("status", opts.status);
+    if (opts.requestedUserId) query = query.eq("requested_user_id", opts.requestedUserId);
+    if (opts.sourceUrls) {
+      if (opts.sourceUrls.length === 0) return [];
+      query = query.in("source_url", opts.sourceUrls);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    return this.hydrateRequests((data ?? []).map((r) => annotationRequestFromRow(r as AnnotationRequestRow)));
+  }
+  async updateAnnotationRequest(
+    id: string,
+    patch: Partial<Pick<AnnotationRequest, "status" | "fulfilledAnnotationId" | "fulfilledAt">>,
+  ) {
+    const update: Partial<AnnotationRequestRow> = {};
+    if (patch.status) update.status = patch.status;
+    if ("fulfilledAnnotationId" in patch) update.fulfilled_annotation_id = patch.fulfilledAnnotationId ?? null;
+    if ("fulfilledAt" in patch) update.fulfilled_at = patch.fulfilledAt ?? null;
+    const { data, error } = await this.client
+      .from("annotation_requests")
+      .update(update)
+      .eq("id", id)
+      .select("*")
+      .maybeSingle();
+    if (error) throw error;
+    return data ? annotationRequestFromRow(data as AnnotationRequestRow) : undefined;
+  }
+
 
   async createClaim(input: InsertClaim) {
     const row: Claim = {
@@ -918,6 +1107,7 @@ export class MemoryStorage implements IStorage {
   private claims = new Map<string, Claim>();
   private bookmarks = new Map<string, Bookmark>();
   private votes = new Map<string, Vote>();
+  private requests = new Map<string, AnnotationRequest>();
 
   async healthCheck() {}
 
@@ -987,6 +1177,10 @@ export class MemoryStorage implements IStorage {
     for (const [claimId, claim] of Array.from(this.claims.entries())) {
       if (claim.claimantUserId === id) this.claims.set(claimId, { ...claim, claimantUserId: null });
     }
+    for (const [requestId, request] of Array.from(this.requests.entries())) {
+      if (request.userId === id) this.requests.delete(requestId);
+      else if (request.requestedUserId === id) this.requests.set(requestId, { ...request, requestedUserId: null });
+    }
   }
 
   async getAnnotation(id: string) {
@@ -1009,9 +1203,15 @@ export class MemoryStorage implements IStorage {
       viewerVote: this.viewerVoteFor(viewerUserId, id),
     };
   }
-  async listAnnotations(opts: { userId?: string; limit?: number; followerOf?: string; viewerUserId?: string } = {}) {
+  async listAnnotations(opts: ListAnnotationsOptions = {}) {
     const limit = opts.limit ?? 50;
     let rows = Array.from(this.annotations.values());
+    if (opts.annotationType) rows = rows.filter((a) => a.annotationType === opts.annotationType);
+    if (opts.sourceUrls) {
+      const urls = new Set(opts.sourceUrls);
+      rows = rows.filter((a) => urls.has(a.sourceUrl));
+    }
+    if (opts.sinceSec != null) rows = rows.filter((a) => a.createdAt >= opts.sinceSec!);
     if (opts.userId) {
       rows = rows.filter((a) => a.userId === opts.userId);
       if (opts.viewerUserId !== opts.userId) rows = rows.filter((a) => a.isPublic === 1);
@@ -1059,6 +1259,7 @@ export class MemoryStorage implements IStorage {
       clipText: input.clipText ?? null,
       commentaryText: input.commentaryText ?? null,
       commentaryAudioUrl: input.commentaryAudioUrl ?? null,
+      annotationType: input.annotationType ?? null,
       isPublic: input.sourceType === "article" ? (input.isPublic ?? 1) : 0,
       viewCount: 0,
       userId: input.userId,
@@ -1178,6 +1379,74 @@ export class MemoryStorage implements IStorage {
   }
   async followingCount(userId: string) {
     return Array.from(this.follows.values()).filter((f) => f.followerId === userId).length;
+  }
+  async listFollowingIds(userId: string) {
+    return Array.from(this.follows.values()).filter((f) => f.followerId === userId).map((f) => f.followingId);
+  }
+  async countPublicAnnotationsByUser(userId: string) {
+    return Array.from(this.annotations.values()).filter((a) => a.userId === userId && a.isPublic === 1).length;
+  }
+
+  private hydrateRequest(r: AnnotationRequest): AnnotationRequestWithRelations | null {
+    const user = this.users.get(r.userId);
+    if (!user) return null;
+    return {
+      ...r,
+      user,
+      requestedUser: r.requestedUserId ? this.users.get(r.requestedUserId) ?? null : null,
+      fulfilledAnnotation: r.fulfilledAnnotationId ? { id: r.fulfilledAnnotationId } : null,
+    };
+  }
+  async createAnnotationRequest(input: {
+    userId: string;
+    sourceUrl: string;
+    sourceTitle: string | null;
+    note: string | null;
+    requestedUserId: string | null;
+  }) {
+    const request: AnnotationRequest = {
+      id: randomUUID(),
+      ...input,
+      status: "open",
+      fulfilledAnnotationId: null,
+      createdAt: now(),
+      fulfilledAt: null,
+    };
+    this.requests.set(request.id, request);
+    return request;
+  }
+  async getAnnotationRequest(id: string) {
+    const r = this.requests.get(id);
+    return r ? this.hydrateRequest(r) ?? undefined : undefined;
+  }
+  async listAnnotationRequests(opts: {
+    status?: "open" | "fulfilled" | "closed";
+    sourceUrls?: string[];
+    requestedUserId?: string;
+    limit?: number;
+  } = {}) {
+    let rows = Array.from(this.requests.values());
+    if (opts.status) rows = rows.filter((r) => r.status === opts.status);
+    if (opts.requestedUserId) rows = rows.filter((r) => r.requestedUserId === opts.requestedUserId);
+    if (opts.sourceUrls) {
+      const urls = new Set(opts.sourceUrls);
+      rows = rows.filter((r) => urls.has(r.sourceUrl));
+    }
+    return rows
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, Math.min(100, opts.limit ?? 50))
+      .map((r) => this.hydrateRequest(r))
+      .filter((r): r is AnnotationRequestWithRelations => r !== null);
+  }
+  async updateAnnotationRequest(
+    id: string,
+    patch: Partial<Pick<AnnotationRequest, "status" | "fulfilledAnnotationId" | "fulfilledAt">>,
+  ) {
+    const cur = this.requests.get(id);
+    if (!cur) return undefined;
+    const next = { ...cur, ...patch };
+    this.requests.set(id, next);
+    return next;
   }
 
   async createClaim(input: InsertClaim) {

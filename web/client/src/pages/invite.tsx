@@ -2,7 +2,13 @@ import { useState } from "react";
 import { AppLayout } from "@/components/AppLayout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth-context";
+import { apiFetch } from "@/lib/queryClient";
+import { Link } from "wouter";
 import { MessageSquare, Mail, Link as LinkIcon, Share2, Copy } from "lucide-react";
 
 const LANDING_URL = "https://www.annotatedextension.com";
@@ -41,6 +47,106 @@ function buildTweetHref() {
   return (
     `https://twitter.com/intent/tweet?text=${encodeURIComponent(TWEET_TEXT)}` +
     `&url=${encodeURIComponent(LANDING_URL)}`
+  );
+}
+
+function EmailInviteCard() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sentTo, setSentTo] = useState<string[]>([]);
+
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    const to = email.trim();
+    if (!to) return;
+    setSending(true);
+    try {
+      const res = await apiFetch("/api/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: to, note: note.trim() || undefined }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSentTo((prev) => [to, ...prev]);
+        setEmail("");
+        toast({ title: "Invite sent", description: `We emailed ${to}.` });
+        return;
+      }
+      if (body?.fallback === "mailto") {
+        // Email delivery isn't configured: hand off to the user's mail app
+        // with the same personal message, addressed to their friend.
+        window.location.href =
+          `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(body.subject ?? INVITE_SUBJECT)}` +
+          `&body=${encodeURIComponent(body.body ?? INVITE_BODY)}`;
+        setSentTo((prev) => [to, ...prev]);
+        setEmail("");
+        return;
+      }
+      toast({ title: "Invite not sent", description: body?.error ?? "Try again.", variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (!user) {
+    return (
+      <Card className="border-card-border bg-card p-5 text-sm">
+        <div className="font-semibold mb-1">Invite by email</div>
+        <p className="text-muted-foreground mb-3">Sign in to send a personal invite from your account.</p>
+        <Link href="/login">
+          <Button size="sm" data-testid="button-invite-signin">Sign in</Button>
+        </Link>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-card-border bg-card p-5">
+      <form onSubmit={send} className="space-y-3" data-testid="form-invite-email">
+        <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Invite by email</div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex-1">
+            <Label htmlFor="invite-email" className="sr-only">Friend's email</Label>
+            <Input
+              id="invite-email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="friend@example.com"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              data-testid="input-invite-email"
+            />
+          </div>
+          <Button type="submit" disabled={sending || !email.trim()} data-testid="button-invite-send">
+            <Mail className="w-4 h-4" />
+            {sending ? "Sending…" : "Send invite"}
+          </Button>
+        </div>
+        <div>
+          <Label htmlFor="invite-note" className="text-xs text-muted-foreground">Add a note (optional)</Label>
+          <Textarea
+            id="invite-note"
+            rows={2}
+            maxLength={500}
+            placeholder="I think you'd have a great take on this."
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            data-testid="input-invite-note"
+          />
+        </div>
+        {sentTo.length > 0 && (
+          <p className="text-xs text-muted-foreground" data-testid="text-invites-sent">
+            Invited: {sentTo.join(", ")}
+          </p>
+        )}
+      </form>
+    </Card>
   );
 }
 
@@ -95,10 +201,12 @@ export default function InvitePage() {
             Love Annotated? Spread the word.
           </h1>
           <p className="text-muted-foreground max-w-xl mx-auto">
-            Send the landing page to a friend over text, email, or social. Great
-            conversations start with great company.
+            Ideas multiply when they’re shared. Invite a friend by email, or send
+            the link over text or social.
           </p>
         </header>
+
+        <EmailInviteCard />
 
         <Card className="border-card-border bg-card p-5">
           <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">

@@ -33,6 +33,10 @@
   --primary: 22 100% 55%;             /* #FF6A1A — signal orange */
   --primary-foreground: 36 12% 8%;
   --primary-readable: 20 88% 36%;
+  /* Highlighter yellow: Jason's original annotated.com mark was a yellow
+     highlighter. Quoted source text is "highlighted" with it. */
+  --highlight: 50 100% 62%;
+  --highlight-ink: 36 12% 8%;
   --secondary: 235 65% 57%;           /* #4B57D9 — ultramarine */
   --secondary-foreground: 0 0% 100%;
   --muted: 38 23% 88%;
@@ -88,6 +92,8 @@
 }
 
 .dark {
+  --highlight: 48 95% 48%;
+  --highlight-ink: 36 12% 8%;
   --button-outline: rgba(255, 255, 255, 0.1);
   --badge-outline: rgba(255, 255, 255, 0.05);
   --opaque-button-border-intensity: 9;
@@ -326,6 +332,89 @@
   text-transform: uppercase;
 }
 .annotation-note p { margin: 0; }
+
+/* ---- Highlighter + comment-first annotation layout ---------------------- */
+.highlighted {
+  background: linear-gradient(
+    180deg,
+    transparent 0.32em,
+    hsl(var(--highlight) / 0.62) 0.32em,
+    hsl(var(--highlight) / 0.62) calc(100% - 0.06em),
+    transparent calc(100% - 0.06em)
+  );
+  color: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0 0.12em;
+  border-radius: 0.12em;
+}
+.commentary-lead {
+  font-size: 1.06rem;
+  line-height: 1.55;
+  letter-spacing: -0.006em;
+  color: hsl(var(--foreground));
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.commentary-lead.is-detail {
+  font-size: clamp(1.25rem, 1.05rem + 0.8vw, 1.6rem);
+  line-height: 1.42;
+  letter-spacing: -0.015em;
+  font-weight: 500;
+}
+.hashtag-link {
+  color: hsl(var(--secondary));
+  font-weight: 600;
+  text-decoration: none;
+}
+.hashtag-link:hover { text-decoration: underline; }
+.source-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 1px);
+  background: hsl(var(--background) / 0.55);
+}
+.source-card.has-thumb { grid-template-columns: 112px minmax(0, 1fr); }
+.source-card.is-detail.has-thumb { grid-template-columns: minmax(0, 1fr); }
+.source-card .source-thumb {
+  width: 100%;
+  height: 100%;
+  min-height: 84px;
+  object-fit: cover;
+  object-position: top center;
+  background: hsl(var(--muted));
+  border-right: 1px solid hsl(var(--border));
+}
+.source-card.is-detail .source-thumb {
+  max-height: 340px;
+  border-right: 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+@media (max-width: 420px) {
+  .source-card.has-thumb { grid-template-columns: 84px minmax(0, 1fr); }
+}
+.type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.type-badge[data-type="dispute"]    { background: hsl(0 72% 50% / 0.12);   color: hsl(0 70% 38%);   border-color: hsl(0 72% 50% / 0.25); }
+.type-badge[data-type="fact-check"] { background: hsl(205 80% 45% / 0.12); color: hsl(205 85% 30%); border-color: hsl(205 80% 45% / 0.25); }
+.type-badge[data-type="context"]    { background: hsl(var(--secondary) / 0.12); color: hsl(235 60% 40%); border-color: hsl(var(--secondary) / 0.25); }
+.type-badge[data-type="hot-take"]   { background: hsl(var(--primary) / 0.14); color: hsl(var(--primary-readable)); border-color: hsl(var(--primary) / 0.3); }
+.type-badge[data-type="steelman"]   { background: hsl(270 45% 50% / 0.12); color: hsl(270 45% 36%); border-color: hsl(270 45% 50% / 0.25); }
+.type-badge[data-type="receipts"]   { background: hsl(145 55% 36% / 0.12); color: hsl(145 60% 24%); border-color: hsl(145 55% 36% / 0.25); }
+.type-badge[data-type="explainer"]  { background: hsl(var(--highlight) / 0.35); color: hsl(40 70% 22%); border-color: hsl(45 90% 45% / 0.35); }
+.dark .type-badge { filter: brightness(1.45) saturate(0.9); }
 
 /* ---- Product-first startup landing ------------------------------------ */
 .landing-header {

@@ -1,6 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AnnotationWithRelations, User } from "@shared/schema";
+import {
+  ANNOTATION_TYPES,
+  ANNOTATION_TYPE_LABELS,
+  isAnnotationType,
+  type AnnotationRequestWithRelations,
+  type AnnotationType,
+  type AnnotationWithRelations,
+  type User,
+} from "@shared/schema";
+import { AnnotationTypeBadge } from "@/components/AnnotationParts";
+import { RequestAnnotationButton } from "@/components/RequestAnnotationButton";
+import { useFeedParams } from "@/hooks/use-feed-params";
 import { AppLayout } from "@/components/AppLayout";
 import { FeedCard } from "@/components/FeedCard";
 import { FollowButton } from "@/components/FollowButton";
@@ -28,16 +39,21 @@ import {
   Bookmark as BookmarkIcon,
   Search,
   Quote,
+  TrendingUp,
+  Hash,
+  HandHelping,
+  X as XIcon,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { apiFetch } from "@/lib/queryClient";
 
-type SortKey = "latest" | "most-viewed" | "most-popular" | "most-commented";
+type SortKey = "best" | "latest" | "most-viewed" | "most-popular" | "most-commented";
 type FilterKey = "all" | "youtube" | "article" | "podcast";
 type FeedTab = "for-you" | "following" | "latest" | "bookmarks";
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "best", label: "Best for you" },
   { key: "latest", label: "Latest" },
   { key: "most-viewed", label: "Most Viewed" },
   { key: "most-popular", label: "Most Popular" },
@@ -56,24 +72,15 @@ const FILTER_OPTIONS: { key: FilterKey; label: string; icon: typeof LayoutGrid }
 ];
 
 const FEED_TABS: { key: FeedTab; label: string; icon: typeof Sparkles; requiresAuth: boolean }[] = [
-  { key: "for-you", label: "For You", icon: Sparkles, requiresAuth: true },
+  { key: "for-you", label: "For You", icon: Sparkles, requiresAuth: false },
   { key: "following", label: "Following", icon: Users, requiresAuth: true },
   { key: "latest", label: "Latest", icon: Clock, requiresAuth: false },
   { key: "bookmarks", label: "Bookmarks", icon: BookmarkIcon, requiresAuth: true },
 ];
 
-function readInitialSort(): SortKey {
-  if (typeof window === "undefined") return "latest";
-  const search = window.location.search;
-  const hash = window.location.hash;
-  const fromSearch =
-    new URLSearchParams(search).get("tab") || new URLSearchParams(search).get("sort");
-  const fromHash =
-    new URLSearchParams(hash.split("?")[1] ?? "").get("tab") ||
-    new URLSearchParams(hash.split("?")[1] ?? "").get("sort");
-  const v = fromSearch || fromHash;
-  return isSortKey(v) ? v : "latest";
-}
+const FEED_TAB_KEYS = FEED_TABS.map((t) => t.key);
+const isFeedTab = (v: string | null | undefined): v is FeedTab =>
+  !!v && (FEED_TAB_KEYS as string[]).includes(v);
 
 // Deterministic popularity score: comments are the strongest engagement
 // signal we collect server-side. Bookmarks and shares aren't surfaced on the
@@ -89,25 +96,22 @@ function popularityScore(a: AnnotationWithRelations): number {
 
 export default function FeedPage() {
   const { user } = useAuth();
-  const [sort, setSort] = useState<SortKey>(readInitialSort);
+  const { params, update } = useFeedParams();
+  const tab: FeedTab = isFeedTab(params.get("tab")) ? (params.get("tab") as FeedTab) : "for-you";
+  const defaultSort: SortKey = tab === "for-you" ? "best" : "latest";
+  const sortParam = params.get("sort");
+  const sort: SortKey = isSortKey(sortParam) ? sortParam : defaultSort;
+  const typeParam = params.get("type");
+  const annotationType: AnnotationType | null = isAnnotationType(typeParam) ? typeParam : null;
+  const tag = (params.get("tag") ?? "").replace(/^#/, "").toLowerCase().slice(0, 40);
   const [filter, setFilter] = useState<FilterKey>("all");
-  const [tab, setTab] = useState<FeedTab>("latest");
   const [query, setQuery] = useState("");
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const baseHash = "#/";
-    const target = sort === "latest" ? baseHash : `${baseHash}?sort=${sort}`;
-    if (window.location.hash !== target) {
-      const path = window.location.pathname;
-      const search = window.location.search;
-      window.history.replaceState(null, "", `${path}${search}${target}`);
-    }
-  }, [sort]);
-
   const handleTabSelect = (next: FeedTab) => {
-    setTab(next);
+    update({ tab: next === "for-you" ? null : next, sort: null });
   };
+  const setSort = (next: SortKey) => update({ sort: next === defaultSort ? null : next }, { replace: true });
+  const setType = (next: AnnotationType | null) => update({ type: next });
 
   const activeTabMeta = FEED_TABS.find((t) => t.key === tab);
   const tabLocked = !!activeTabMeta?.requiresAuth && !user;
@@ -128,7 +132,7 @@ export default function FeedPage() {
                 The context layer of the internet
               </div>
               <h2 id="feed-heading">What’s worth carrying forward</h2>
-              <p>Exact moments, primary sources, and the perspective that makes them matter.</p>
+              <p>Highlight any sentence, clip any moment, and dispute it or add the context that’s missing.</p>
             </div>
             <label className="feed-search">
               <Search className="h-4 w-4" aria-hidden />
@@ -142,37 +146,141 @@ export default function FeedPage() {
               />
             </label>
           </section>
+          <MobileTabs tab={tab} onTabChange={handleTabSelect} />
           {!tabLocked && (
-            <TopFilters
-              filter={filter}
-              onFilterChange={setFilter}
-              sort={sort}
-              onSortChange={setSort}
-            />
+            <>
+              <TopFilters
+                filter={filter}
+                onFilterChange={setFilter}
+                sort={sort}
+                onSortChange={setSort}
+                showBest={tab === "for-you"}
+              />
+              <TypeChips value={annotationType} onChange={setType} />
+              {tag && (
+                <div className="mt-3 flex items-center gap-2 text-sm" data-testid="feed-active-tag">
+                  <span className="text-muted-foreground">Topic</span>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-card-border bg-card px-3 py-1 font-semibold">
+                    <Hash className="w-3.5 h-3.5" aria-hidden />
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => update({ tag: null })}
+                      className="ml-1 rounded-full p-1 hover-elevate"
+                      aria-label={`Clear topic ${tag}`}
+                      data-testid="button-clear-tag"
+                    >
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </span>
+                </div>
+              )}
+            </>
           )}
-          <div className={tabLocked ? "" : "mt-5"}>
+          <div className="mt-5">
             {tabLocked ? (
               <LockedTabPrompt tab={tab} />
             ) : (
-              <FeedList tab={tab} sort={sort} filter={filter} query={query} />
+              <FeedList
+                tab={tab}
+                sort={sort}
+                filter={filter}
+                query={query}
+                annotationType={annotationType}
+                tag={tag}
+              />
             )}
           </div>
         </div>
 
         {/* Right rail */}
         <aside className="space-y-5 order-last lg:block">
+          <TrendingRail />
           <PeopleWorthFollowing />
+          <OpenRequestsRail />
           <MostViewedClip />
           {!user && (
             <OAuthSignIn
               compact
               title="Sign in to follow"
-              description="Use X or Google to follow creators and unlock your Following feed."
+              description="Use X or Google to follow creators and personalize For You."
             />
           )}
         </aside>
       </div>
     </AppLayout>
+  );
+}
+
+// ---------- Annotation type chips ------------------------------------------
+
+function TypeChips({
+  value,
+  onChange,
+}: {
+  value: AnnotationType | null;
+  onChange: (next: AnnotationType | null) => void;
+}) {
+  return (
+    <div
+      className="mt-3 -mx-1 px-1 flex gap-2 overflow-x-auto pb-1"
+      role="group"
+      aria-label="Filter by kind of take"
+      data-testid="feed-type-chips"
+    >
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        aria-pressed={value === null}
+        className={`min-h-11 shrink-0 rounded-full border px-3 text-xs font-semibold hover-elevate ${
+          value === null ? "bg-foreground text-background border-foreground" : "bg-card border-card-border"
+        }`}
+        data-testid="chip-type-all"
+      >
+        All takes
+      </button>
+      {ANNOTATION_TYPES.map((t) => (
+        <button
+          key={t}
+          type="button"
+          onClick={() => onChange(value === t ? null : t)}
+          aria-pressed={value === t}
+          className={`min-h-11 shrink-0 rounded-full px-1 hover-elevate ${value === t ? "ring-2 ring-foreground" : ""}`}
+          data-testid={`chip-type-${t}`}
+        >
+          <AnnotationTypeBadge type={t} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------- Mobile tab strip (the sidebar is desktop-only) -----------------
+
+function MobileTabs({ tab, onTabChange }: { tab: FeedTab; onTabChange: (t: FeedTab) => void }) {
+  return (
+    <nav className="lg:hidden -mx-1 px-1 mb-3 flex gap-1 overflow-x-auto" aria-label="Feed tabs">
+      {FEED_TABS.map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          onClick={() => onTabChange(opt.key)}
+          aria-current={tab === opt.key ? "page" : undefined}
+          className={`min-h-11 shrink-0 rounded-full px-3 text-sm font-medium hover-elevate ${
+            tab === opt.key ? "bg-sidebar-accent text-foreground" : "text-muted-foreground"
+          }`}
+          data-testid={`mobile-tab-${opt.key}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+      <Link
+        href="/requests"
+        className="min-h-11 shrink-0 inline-flex items-center rounded-full px-3 text-sm font-medium text-muted-foreground hover-elevate"
+      >
+        Requests
+      </Link>
+    </nav>
   );
 }
 
@@ -209,11 +317,19 @@ function LeftSidebar({
             </button>
           );
         })}
+        <Link
+          href="/requests"
+          className="min-h-11 w-full text-left flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium hover-elevate text-muted-foreground"
+          data-testid="sidebar-link-requests"
+        >
+          <HandHelping className="w-4 h-4" />
+          Requests
+        </Link>
         <div className="pt-4 mt-4 border-t border-card-border">
           <div className="rounded-lg border border-card-border bg-card p-4">
             <div className="text-sm font-semibold mb-1">Invite your friends</div>
             <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-              Great conversations start with great company.
+              Ideas multiply when they’re shared. Invite someone by email.
             </p>
             <Link href="/invite">
               <Button size="sm" className="w-full" data-testid="button-invite-annotated">
@@ -234,11 +350,13 @@ function TopFilters({
   onFilterChange,
   sort,
   onSortChange,
+  showBest,
 }: {
   filter: FilterKey;
   onFilterChange: (f: FilterKey) => void;
   sort: SortKey;
   onSortChange: (s: SortKey) => void;
+  showBest: boolean;
 }) {
   return (
     <div
@@ -280,7 +398,7 @@ function TopFilters({
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="end" className="rounded-xl">
-            {SORT_OPTIONS.map((opt) => (
+            {SORT_OPTIONS.filter((opt) => showBest || opt.key !== "best").map((opt) => (
               <SelectItem
                 key={opt.key}
                 value={opt.key}
@@ -309,11 +427,15 @@ function FeedList({
   sort,
   filter,
   query,
+  annotationType,
+  tag,
 }: {
   tab: FeedTab;
   sort: SortKey;
   filter: FilterKey;
   query: string;
+  annotationType: AnnotationType | null;
+  tag: string;
 }) {
   const { user } = useAuth();
 
@@ -325,13 +447,22 @@ function FeedList({
     enabled: boolean;
   }>(() => {
     const viewerKey = user?.id ?? "";
+    const qs = new URLSearchParams();
+    if (annotationType) qs.set("type", annotationType);
+    if (tag) qs.set("tag", tag);
+    const withFilters = (base: string) => {
+      const extra = qs.toString();
+      if (!extra) return base;
+      return `${base}${base.includes("?") ? "&" : "?"}${extra}`;
+    };
+    const filters = { type: annotationType ?? "", tag };
     switch (tab) {
       case "following":
         return {
-          queryKey: ["/api/feed", { followerOf: user?.id ?? "", viewer: viewerKey }],
+          queryKey: ["/api/feed", { followerOf: user?.id ?? "", viewer: viewerKey, ...filters }],
           fetcher: async () => {
             if (!user) return [];
-            const res = await apiFetch("/api/feed?followerOf=1");
+            const res = await apiFetch(withFilters("/api/feed?followerOf=1"));
             return res.json();
           },
           enabled: !!user,
@@ -342,23 +473,32 @@ function FeedList({
           fetcher: async () => {
             if (!user) return [];
             const res = await apiFetch("/api/bookmarks");
-            return res.json();
+            const rows: AnnotationWithRelations[] = await res.json();
+            return rows.filter((a) => !annotationType || a.annotationType === annotationType);
           },
           enabled: !!user,
         };
-      case "for-you":
       case "latest":
+        return {
+          queryKey: ["/api/feed", { viewer: viewerKey, ...filters }],
+          fetcher: async () => {
+            const res = await apiFetch(withFilters("/api/feed"));
+            return res.json();
+          },
+          enabled: true,
+        };
+      case "for-you":
       default:
         return {
-          queryKey: ["/api/feed", { shuffle: 1, viewer: viewerKey }],
+          queryKey: ["/api/feed", { mode: "for-you", viewer: viewerKey, ...filters }],
           fetcher: async () => {
-            const res = await apiFetch("/api/feed?shuffle=1");
+            const res = await apiFetch(withFilters("/api/feed?mode=for-you"));
             return res.json();
           },
           enabled: true,
         };
     }
-  }, [tab, user]);
+  }, [tab, user, annotationType, tag]);
 
   const { data: all = [], isLoading } = useQuery<AnnotationWithRelations[]>({
     queryKey: queryDescriptor.queryKey,
@@ -387,6 +527,8 @@ function FeedList({
   const sourceRows = useMemo<AnnotationWithRelations[]>(() => {
     const rows = [...all];
     switch (sort) {
+      case "best":
+        return rows; // server-ranked For You order
       case "latest":
         return rows.sort((a, b) => b.createdAt - a.createdAt);
       case "most-viewed":
@@ -437,6 +579,8 @@ function FeedList({
       >
         {query.trim()
           ? `No annotations match “${query.trim()}”. Try a source, creator, or phrase.`
+          : annotationType || tag
+          ? "No posts match this filter yet. Be the first: clip something and pick this kind of take."
           : "Nothing here yet — try a different filter."}
       </div>
     );
@@ -454,15 +598,9 @@ function FeedList({
 // ---------- Locked tab prompt (signed-out For You / Following / Bookmarks) --
 
 const LOCKED_COPY: Record<
-  Exclude<FeedTab, "latest">,
+  Exclude<FeedTab, "latest" | "for-you">,
   { title: string; description: string; icon: typeof Sparkles }
 > = {
-  "for-you": {
-    title: "Sign in to view For You",
-    description:
-      "Sign in to get a personalized stream of clips picked for the people and topics you follow.",
-    icon: Sparkles,
-  },
   following: {
     title: "Sign in to view Following",
     description:
@@ -478,7 +616,7 @@ const LOCKED_COPY: Record<
 };
 
 function LockedTabPrompt({ tab }: { tab: FeedTab }) {
-  if (tab === "latest") return null;
+  if (tab === "latest" || tab === "for-you") return null;
   const copy = LOCKED_COPY[tab];
   const Icon = copy.icon;
   return (
@@ -523,18 +661,15 @@ function FeedSkeleton() {
 
 function PeopleWorthFollowing() {
   const { user } = useAuth();
-  const { data, isLoading } = useQuery<User[]>({
-    queryKey: ["/api/users"],
+  const { data, isLoading } = useQuery<(User & { followers?: number; annotationCount?: number })[]>({
+    queryKey: ["/api/users", { viewer: user?.id ?? "" }],
+    queryFn: async () => {
+      const res = await apiFetch("/api/users");
+      if (!res.ok) return [];
+      return res.json();
+    },
   });
-  // Hard-coded suggested set per spec — these four usernames in this order.
-  const SUGGESTED = ["nikocallas", "fmaks", "volodyaa", "nazar"];
-  const candidates = useMemo(() => {
-    const list = data ?? [];
-    const byUsername = new Map(list.map((u) => [u.username, u] as const));
-    return SUGGESTED
-      .map((u) => byUsername.get(u))
-      .filter((u): u is User => !!u && u.id !== user?.id);
-  }, [data, user]);
+  const candidates = useMemo(() => (data ?? []).filter((u) => u.id !== user?.id), [data, user]);
 
   return (
     <section
@@ -576,7 +711,15 @@ function PeopleWorthFollowing() {
                 </Avatar>
                 <div className="min-w-0">
                   <div className="text-sm font-medium truncate">{u.displayName}</div>
-                  <div className="text-xs text-muted-foreground truncate">@{u.username}</div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    @{u.username}
+                    {typeof u.annotationCount === "number" && (
+                      <span>
+                        {" "}· {u.annotationCount} {u.annotationCount === 1 ? "post" : "posts"}
+                        {typeof u.followers === "number" && u.followers > 0 ? ` · ${u.followers} followers` : ""}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </Link>
               <div className="ml-auto shrink-0">
@@ -636,6 +779,149 @@ function MostViewedClip() {
       </Link>
       <div className="text-[10px] text-muted-foreground mt-2">
         The moment drawing the most attention across Annotated right now.
+      </div>
+    </section>
+  );
+}
+
+// ---------- Right rail: Trending -------------------------------------------
+
+interface TrendingItem {
+  key: string;
+  label: string;
+  count: number;
+}
+
+function TrendingRail() {
+  const { update } = useFeedParams();
+  const { data } = useQuery<{ sources: TrendingItem[]; topics: TrendingItem[]; types: TrendingItem[] }>({
+    queryKey: ["/api/trending"],
+  });
+  if (!data || (data.sources.length === 0 && data.topics.length === 0)) return null;
+  return (
+    <section
+      className="rounded-lg border border-card-border bg-card p-4 space-y-4"
+      data-testid="rail-trending"
+      aria-labelledby="rail-trending-heading"
+    >
+      <h3
+        id="rail-trending-heading"
+        className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground"
+      >
+        <TrendingUp className="w-3 h-3" aria-hidden />
+        Trending
+      </h3>
+      {data.topics.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold mb-1.5">Topics</div>
+          <ul className="flex flex-wrap gap-1.5">
+            {data.topics.map((t) => (
+              <li key={t.key}>
+                <button
+                  type="button"
+                  onClick={() => update({ tag: t.key, tab: null })}
+                  className="min-h-9 inline-flex items-center rounded-full border border-card-border px-2.5 text-xs font-semibold hover-elevate"
+                  data-testid={`rail-topic-${t.key}`}
+                >
+                  {t.label}
+                  <span className="ml-1 text-muted-foreground font-normal">{t.count}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.sources.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold mb-1.5">Sources</div>
+          <ol className="space-y-1">
+            {data.sources.map((src, i) => (
+              <li key={src.key} className="flex items-center gap-2 text-sm" data-testid={`rail-source-${i}`}>
+                <span className="w-4 text-xs text-muted-foreground tabular-nums">{i + 1}</span>
+                <span className="truncate">{src.label}</span>
+                <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                  {src.count} {src.count === 1 ? "post" : "posts"}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {data.types.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold mb-1.5">Kinds of take</div>
+          <ul className="flex flex-wrap gap-1.5">
+            {data.types.map((t) => (
+              <li key={t.key}>
+                <button
+                  type="button"
+                  onClick={() => update({ type: t.key, tab: null })}
+                  className="rounded-full hover-elevate"
+                  aria-label={`Show ${ANNOTATION_TYPE_LABELS[t.key as AnnotationType] ?? t.key} posts`}
+                >
+                  <AnnotationTypeBadge type={t.key} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------- Right rail: Open requests --------------------------------------
+
+function OpenRequestsRail() {
+  const { data } = useQuery<AnnotationRequestWithRelations[]>({
+    queryKey: ["/api/requests", { status: "open", limit: 3 }],
+    queryFn: async () => {
+      const res = await apiFetch("/api/requests?limit=3");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  return (
+    <section
+      className="rounded-lg border border-card-border bg-card p-4 space-y-3"
+      data-testid="rail-open-requests"
+      aria-labelledby="rail-requests-heading"
+    >
+      <h3
+        id="rail-requests-heading"
+        className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground"
+      >
+        <HandHelping className="w-3 h-3" aria-hidden />
+        Context wanted
+      </h3>
+      {data && data.length > 0 ? (
+        <ul className="space-y-2.5">
+          {data.map((r) => (
+            <li key={r.id} className="text-sm">
+              <a
+                href={r.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium leading-snug hover:underline line-clamp-2"
+              >
+                {r.sourceTitle ?? r.sourceUrl}
+              </a>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                @{r.user.username} asked{r.requestedUser ? ` @${r.requestedUser.username}` : " everyone"}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Want a fact-check or the missing context on a story? Ask the community.
+        </p>
+      )}
+      <div className="flex items-center justify-between gap-2">
+        <RequestAnnotationButton label="Ask" />
+        <Link href="/requests" className="text-xs text-primary-readable hover:underline" data-testid="link-all-requests">
+          All requests →
+        </Link>
       </div>
     </section>
   );

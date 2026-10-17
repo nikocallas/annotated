@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { storage } from "./storage";
-import type { AnnotationWithRelations } from "@shared/schema";
+import {
+  ANNOTATION_TYPE_LABELS,
+  isAnnotationType,
+  type AnnotationWithRelations,
+} from "@shared/schema";
 
 declare const __ANNOTATED_INDEX_HTML__: string;
 
@@ -47,10 +51,15 @@ export function metadataForAnnotation(annotation: AnnotationWithRelations): Anno
     `${byline} annotated a moment from ${annotation.sourcePublication || "the web"}.`,
     200,
   );
+  const kind = isAnnotationType(annotation.annotationType)
+    ? `${ANNOTATION_TYPE_LABELS[annotation.annotationType]} by ${byline}`
+    : `Annotated by ${byline}`;
   return {
-    title: `${sourceTitle} — annotated by ${byline}`.slice(0, 155),
+    title: `${kind}: ${sourceTitle}`.slice(0, 155),
     description,
-    image: safeImage(annotation.sourceImage),
+    // A captured screenshot shows what was annotated; fall back to the
+    // page's own preview image, then the site default.
+    image: safeImage(annotation.clipThumbnailUrl || annotation.sourceImage),
     canonical: `${CANONICAL_ORIGIN}/a/${encodeURIComponent(annotation.id)}`,
     sourceUrl: annotation.sourceUrl,
   };

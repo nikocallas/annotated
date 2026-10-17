@@ -25,7 +25,18 @@ import { SiX } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
-import type { AnnotationWithRelations } from "@shared/schema";
+import {
+  ANNOTATION_TYPE_LABELS,
+  isAnnotationType,
+  type AnnotationWithRelations,
+} from "@shared/schema";
+import { AnnotationTypeBadge, CommentaryText, SourceCard } from "@/components/AnnotationParts";
+import { FollowButton } from "@/components/FollowButton";
+import { RequestAnnotationButton } from "@/components/RequestAnnotationButton";
+
+type AnnotationDetail = AnnotationWithRelations & {
+  authorStats?: { followers: number; annotations: number };
+};
 
 const CANONICAL_ORIGIN = "https://www.annotatedextension.com";
 
@@ -36,7 +47,7 @@ export default function AnnotationDetailPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery<AnnotationWithRelations>({
+  const { data, isLoading } = useQuery<AnnotationDetail>({
     queryKey: ["/api/annotations", id, { userId: user?.id ?? "" }],
     queryFn: async () => {
       const res = await apiFetch(`/api/annotations/${id}`);
@@ -105,7 +116,11 @@ export default function AnnotationDetailPage() {
   function handlePostOnX() {
     if (!data) return;
     const url = `${CANONICAL_ORIGIN}/a/${encodeURIComponent(id)}`;
-    const text = `${data.sourceTitle ?? "Annotated clip"} — clipped on @annotated`;
+    const title = data.sourceTitle ?? "Annotated clip";
+    const take = data.commentaryText
+      ? `“${data.commentaryText.slice(0, 180)}${data.commentaryText.length > 180 ? "…" : ""}”`
+      : title;
+    const text = `${take}\n\nOn: ${title} — via Annotated`;
     const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
     window.open(intent, "_blank", "noopener,noreferrer");
   }
@@ -143,6 +158,14 @@ export default function AnnotationDetailPage() {
     month: "long",
     day: "numeric",
   });
+  const publishedDateTime = new Date(a.createdAt * 1000).toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const typeLabel = isAnnotationType(a.annotationType) ? ANNOTATION_TYPE_LABELS[a.annotationType] : null;
   const clipLength =
     a.clipStartSec != null && a.clipEndSec != null
       ? formatClipLength(a.clipEndSec - a.clipStartSec)
@@ -166,114 +189,105 @@ export default function AnnotationDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:gap-8">
           {/* ----------------- Main column ----------------- */}
           <article className="space-y-6 min-w-0">
-            {/* Type chip + view count */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <SourceBadge type={a.sourceType} />
-              <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                <Eye className="w-3 h-3" />
-                <span data-testid="text-detail-views">
-                  {(a.viewCount ?? 0).toLocaleString()} views
-                </span>
-              </span>
-            </div>
-
-            {/* Title */}
-            <h1
-              className="text-3xl md:text-4xl leading-[1.15] font-semibold"
-              style={{ fontFamily: "var(--font-sans)" }}
-              data-testid="text-annotation-title"
-            >
-              {a.sourceTitle ?? "Untitled clip"}
-            </h1>
-
-            {/* Author/meta line */}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
-              <Avatar className="h-5 w-5">
-                <AvatarImage src={a.user.avatarUrl ?? undefined} alt={a.user.displayName} />
-                <AvatarFallback>{a.user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <Link
-                href={`/u/${a.user.username}`}
-                className="hover:text-foreground"
-                data-testid="link-author-inline"
-              >
-                Annotated by {a.user.displayName}
+            {/* Author line + what kind of take this is */}
+            <header className="flex items-start gap-3" data-testid="detail-author-header">
+              <Link href={`/u/${a.user.username}`} className="shrink-0 rounded-full" data-testid="link-author-avatar">
+                <Avatar className="h-11 w-11">
+                  <AvatarImage src={a.user.avatarUrl ?? undefined} alt={a.user.displayName} />
+                  <AvatarFallback>{a.user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
               </Link>
-              <span aria-hidden>·</span>
-              <span>{publishedDate}</span>
-              {clipLength && (
-                <>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-x-2 gap-y-1 flex-wrap">
+                  <Link
+                    href={`/u/${a.user.username}`}
+                    className="font-semibold hover:underline"
+                    data-testid="link-author-inline"
+                  >
+                    {a.user.displayName}
+                  </Link>
+                  <span className="text-sm text-muted-foreground">@{a.user.username}</span>
+                </div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap mt-0.5">
+                  <time dateTime={new Date(a.createdAt * 1000).toISOString()}>{publishedDateTime}</time>
                   <span aria-hidden>·</span>
-                  <span data-testid="text-clip-length">{clipLength}</span>
-                </>
-              )}
-              <span aria-hidden>·</span>
-              <span>Public</span>
-            </div>
+                  <span className="inline-flex items-center gap-1">
+                    <Eye className="w-3 h-3" aria-hidden />
+                    <span data-testid="text-detail-views">{(a.viewCount ?? 0).toLocaleString()} views</span>
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                <AnnotationTypeBadge type={a.annotationType} href={`/?type=${a.annotationType}`} />
+                <SourceBadge type={a.sourceType} />
+              </div>
+            </header>
 
-            {/* Source excerpt / player card */}
+            {/* The annotation is the star. */}
+            <section aria-labelledby="annotation-heading" className="space-y-3">
+              <h1
+                id="annotation-heading"
+                className="text-sm font-medium text-muted-foreground"
+                data-testid="text-annotation-title"
+              >
+                {typeLabel ? `${typeLabel} on ` : "On "}
+                <span className="text-foreground">“{a.sourceTitle ?? hostname(a.sourceUrl)}”</span>
+              </h1>
+              {a.commentaryText && (
+                <CommentaryText text={a.commentaryText} detail testId="text-commentary" />
+              )}
+              {a.commentaryAudioUrl && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="card-commentary">
+                  <Mic className="w-4 h-4 text-primary-readable" aria-hidden />
+                  <audio controls src={a.commentaryAudioUrl} className="h-9 max-w-full" aria-label="Audio commentary" />
+                </div>
+              )}
+            </section>
+
+            {/* The evidence: highlighted passage or bounded clip, with the
+                fair-use claim action right beside it. */}
             <Card
               className="overflow-hidden border-card-border bg-card p-5 space-y-4"
               data-testid="card-source-excerpt"
             >
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
-                {a.sourceType === "article"
-                  ? "Source excerpt"
-                  : a.sourceType === "youtube"
-                  ? "Video clip"
-                  : "Audio clip"}
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+                <span>
+                  {a.sourceType === "article"
+                    ? "Highlighted passage"
+                    : a.sourceType === "youtube"
+                    ? "Video clip · 240p"
+                    : "Audio clip"}
+                </span>
+                {clipLength && (
+                  <span className="normal-case tracking-normal font-normal" data-testid="text-clip-length">
+                    · {clipLength}
+                  </span>
+                )}
               </div>
 
               <ClipPreview annotation={a} fullPlayer />
 
-              <div className="flex items-center justify-between border-t border-card-border/60 pt-3 text-xs">
-                <span className="text-muted-foreground">{hostname(a.sourceUrl)}</span>
-                <a
-                  href={a.sourceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
-                  data-testid="link-source-detail"
-                >
-                  {a.sourceType === "podcast"
-                    ? "Listen to the full episode"
-                    : a.sourceType === "youtube"
-                    ? "Watch the full video"
-                    : "Read the original"}
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 border-t border-card-border/60 pt-3 text-xs"
+                data-testid="card-trust-safety"
+              >
+                <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                  <ShieldCheck className="w-3.5 h-3.5" aria-hidden />
+                  Own this work and think this clip goes too far?
+                  <a href="/claims" className="text-primary-readable hover:underline" data-testid="link-claim-learn">
+                    How claims work
+                  </a>
+                </span>
+                <FileClaimButton
+                  annotationId={a.id}
+                  postTitle={a.sourceTitle}
+                  postSourceUrl={a.sourceUrl}
+                />
               </div>
             </Card>
 
-            {/* Annotation / commentary card */}
-            {(a.commentaryText || a.commentaryAudioUrl) && (
-              <Card
-                className="overflow-hidden border-card-border bg-card p-5 space-y-3"
-                data-testid="card-commentary"
-              >
-                <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-                  <Avatar className="h-4 w-4">
-                    <AvatarImage src={a.user.avatarUrl ?? undefined} alt={a.user.displayName} />
-                    <AvatarFallback>{a.user.displayName.slice(0, 2).toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  Annotation by {a.user.displayName}
-                </div>
-                {a.commentaryAudioUrl && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Mic className="w-4 h-4 text-primary" />
-                    <audio controls src={a.commentaryAudioUrl} className="h-8" />
-                  </div>
-                )}
-                {a.commentaryText && (
-                  <p
-                    className="text-base leading-relaxed text-foreground/90"
-                    data-testid="text-commentary"
-                  >
-                    {a.commentaryText}
-                  </p>
-                )}
-              </Card>
-            )}
+            {/* The source as context, with a screenshot or preview. */}
+            <SourceCard annotation={a} detail />
 
             {/* Action row: Vote / Mark / Post on X / Share */}
             <div
@@ -344,35 +358,6 @@ export default function AnnotationDetailPage() {
               <CommentThread annotationId={a.id} />
             </section>
 
-            {/* Trust & Safety / File a claim */}
-            <Card
-              className="border-card-border bg-card p-4 flex flex-wrap items-start gap-3"
-              data-testid="card-trust-safety"
-            >
-              <div className="rounded-full bg-primary/10 text-primary p-2">
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-sm">Trust &amp; Safety</div>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  We believe in informed conversation and accountability. If you
-                  believe this clip exceeds fair use or infringes your rights,
-                  file a claim and our team will review.{" "}
-                  <a
-                    href="/claims"
-                    className="text-primary hover:underline"
-                    data-testid="link-claim-learn"
-                  >
-                    Learn how claims work →
-                  </a>
-                </p>
-              </div>
-              <FileClaimButton
-                annotationId={a.id}
-                postTitle={a.sourceTitle}
-                postSourceUrl={a.sourceUrl}
-              />
-            </Card>
           </article>
 
           {/* ----------------- Right rail ----------------- */}
@@ -399,13 +384,43 @@ export default function AnnotationDetailPage() {
               {a.user.bio && (
                 <p className="text-xs text-muted-foreground leading-relaxed">{a.user.bio}</p>
               )}
-              <Link
-                href={`/u/${a.user.username}`}
-                className="inline-block text-xs text-primary hover:underline pt-1"
-                data-testid="link-rail-view-profile"
-              >
-                View profile →
-              </Link>
+              {a.authorStats && (
+                <dl className="grid grid-cols-2 gap-2 text-center" data-testid="rail-author-stats">
+                  <div className="rounded-md bg-muted/60 py-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Annotations</dt>
+                    <dd className="text-lg font-semibold" data-testid="text-author-annotations">
+                      {a.authorStats.annotations.toLocaleString()}
+                    </dd>
+                  </div>
+                  <div className="rounded-md bg-muted/60 py-2">
+                    <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Followers</dt>
+                    <dd className="text-lg font-semibold" data-testid="text-author-followers">
+                      {a.authorStats.followers.toLocaleString()}
+                    </dd>
+                  </div>
+                </dl>
+              )}
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Link
+                  href={`/u/${a.user.username}`}
+                  className="inline-block text-xs text-primary-readable hover:underline"
+                  data-testid="link-rail-view-profile"
+                >
+                  View profile →
+                </Link>
+                <FollowButton targetUserId={a.user.id} targetUsername={a.user.username} />
+              </div>
+            </Card>
+
+            {/* Ask for more context on the same page. */}
+            <Card className="border-card-border bg-card p-4 space-y-2" data-testid="rail-request">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                Want another take?
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Ask the community, or someone specific, to fact-check or annotate this source.
+              </p>
+              <RequestAnnotationButton sourceUrl={a.sourceUrl} sourceTitle={a.sourceTitle} />
             </Card>
 
             {/* About the source */}

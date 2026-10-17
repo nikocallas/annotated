@@ -13,3 +13,10 @@ export function capturePlan(sourceType: string, startSec: number, endSec: number
 };
 export function isValidAuthHandoff(message: unknown): boolean;
 export function nextPublishStatus(current: string, event: string): "idle" | "publishing" | "published";
+export const ANNOTATION_TYPES: { key: string; label: string; hint: string }[];
+export function followPlayhead(
+  range: { start: number; end: number } | null | undefined,
+  currentTime: number,
+  duration?: number | null,
+  maxSeconds?: number,
+): { start: number; end: number };

@@ -12,12 +12,17 @@
       <div class="topbar-row">
         <a class="brand" href="https://annotatedextension.com" target="_blank" rel="noopener noreferrer" aria-label="Annotated home">
           <span class="brand-mark" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M9 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8H7.6c0-2.4 1.1-4.1 3.1-5.2L9 8.5zM21 8.5c-2.6 1.4-4.4 3.9-4.4 7.5v8h7v-8h-4c0-2.4 1.1-4.1 3.1-5.2L21 8.5z"
-                fill="currentColor"
-              />
-            </svg>
+            <svg width="20" height="20" viewBox="4 4 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="12" y="15" width="30" height="5" rx="2.5" fill="currentColor" opacity="0.55"/>
+          <rect x="9" y="26" width="38" height="13" rx="3" fill="#FFE24A"/>
+          <rect x="12" y="30" width="32" height="5" rx="2.5" fill="currentColor"/>
+          <rect x="12" y="45" width="22" height="5" rx="2.5" fill="currentColor" opacity="0.55"/>
+          <g transform="translate(47 37) rotate(35)">
+            <rect x="-4.5" y="-21" width="9" height="15" rx="2" fill="currentColor"/>
+            <path d="M-4.5 -6h9l-2 6h-5z" fill="currentColor"/>
+            <path d="M-2.5 0h5l-1.2 3h-2.6z" fill="#FFE24A" stroke="currentColor" stroke-width="1"/>
+          </g>
+        </svg>
           </span>
           <span class="brand-name">Annotated</span>
         </a>
@@ -101,6 +106,14 @@
           <a class="source-link" data-source-link target="_blank" rel="noopener noreferrer">View source ↗</a>
         </div>
 
+        <section class="page-context" data-page-context hidden aria-live="polite">
+          <div class="page-context-head">
+            <span class="page-context-title" data-page-context-title>Already on this page</span>
+            <button class="link-mini" type="button" data-page-context-toggle aria-expanded="false">Show</button>
+          </div>
+          <div class="page-context-body" data-page-context-body hidden></div>
+        </section>
+
         <details class="manual-url" data-manual-source>
           <summary>Use a different URL</summary>
           <input type="url" data-source-url aria-label="Source URL" placeholder="https://example.com/article-or-video" />
@@ -111,9 +124,14 @@
           <!-- Clip-type-specific UI injected here -->
         </div>
 
+        <fieldset class="type-picker" data-type-picker>
+          <legend class="label">What kind of take?</legend>
+          <div class="type-chips" role="radiogroup" aria-label="Kind of take" data-type-chips></div>
+        </fieldset>
+
         <div class="commentary-section">
-          <label class="label" for="annotation-commentary">Your commentary</label>
-          <textarea id="annotation-commentary" data-commentary placeholder="Why does this matter?" rows="3"></textarea>
+          <label class="label" for="annotation-commentary">Your take</label>
+          <textarea id="annotation-commentary" data-commentary placeholder="What's wrong, missing, or worth knowing here? Add #topics to help people find it." rows="4"></textarea>
 
           <div class="recorder" data-recorder>
             <div class="recorder-row">
@@ -154,14 +172,20 @@
           </span>
         </label>
 
+        <label class="post-to-x" data-post-to-x-wrap>
+          <input type="checkbox" data-post-to-x />
+          <span>Also post my take to X after publishing</span>
+        </label>
+
         <div class="actions">
           <button class="btn btn-primary btn-lg" data-publish>Publish annotation</button>
         </div>
         <p class="hint" data-error role="alert" hidden></p>
         <p class="hint">
-          Clips capped at 90s. Reading clips capped at 100 words. YouTube
-          downscaled to 240p server-side. Source URL is always linked. All
-          content annotated on must be fair use.
+          Clips capped at 90s. Reading clips capped at 100 words. Video is
+          recorded at 240p. Source URL is always linked, and a screenshot of
+          the page is saved with articles and X posts. All content annotated
+          on must be fair use.
         </p>
       </section>
     </template>
