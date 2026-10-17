@@ -3,6 +3,7 @@ import { formatRange } from "./SourceBadge";
 import { Play, Mic, Loader2 } from "lucide-react";
 import { ClippedYouTubeEmbed } from "./ClippedYouTubeEmbed";
 import { ClippedSpotifyEmbed } from "./ClippedSpotifyEmbed";
+import { RecordedClipPlayer, isRecordedClip } from "./RecordedClipPlayer";
 
 const MAX_CLIP_SECONDS = 90;
 
@@ -140,7 +141,35 @@ export function ClipPreview({
       );
     }
 
-    // Render the YouTube iframe player constrained to the clip range. The
+    // Preferred: the 240p clip the extension recorded and stored. This is the
+    // only copy that is truly bounded to the clip range and downscaled per spec.
+    if (isRecordedClip(a.clipMediaUrl)) {
+      const dur = clipped.end - clipped.start;
+      return (
+        <div
+          className="rounded-md overflow-hidden border border-card-border bg-black"
+          data-testid={`clip-video-${a.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
+          <RecordedClipPlayer
+            src={a.clipMediaUrl}
+            kind="video"
+            testId={`clip-video-recorded-${a.id}`}
+          />
+          <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between">
+            <span data-testid={`clip-range-${a.id}`}>
+              Clip {range} • {dur}s
+            </span>
+            <span className="font-mono">240p clip</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Fallback: render the YouTube iframe player constrained to the clip range. The
     // start/end URL params handle initial bounds; ClippedYouTubeEmbed polls
     // currentTime and re-pauses if the user scrubs past the end.
     const dur = clipped.end - clipped.start;
@@ -183,7 +212,7 @@ export function ClipPreview({
   const dur = podClipped ? podClipped.end - podClipped.start : 0;
 
   const spotifyId = spotifyEpisodeId(a.sourceUrl);
-  if (spotifyId && podClipped && range) {
+  if (spotifyId && podClipped && range && !isRecordedClip(a.clipMediaUrl)) {
     return (
       <div
         className="rounded-md overflow-hidden border border-card-border bg-card"
@@ -222,7 +251,7 @@ export function ClipPreview({
           <Mic className="w-4 h-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <audio src={a.clipMediaUrl} controls preload="metadata" className="w-full" />
+          <RecordedClipPlayer src={a.clipMediaUrl} kind="audio" testId={`clip-audio-recorded-${a.id}`} />
           <div className="text-xs text-muted-foreground mt-1">
             {range ? `${range} (${dur}s) • clipped audio` : "Clipped audio"}
           </div>
