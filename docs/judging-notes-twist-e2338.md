@@ -3,7 +3,9 @@
 Source: "Jason's Put a $5K Bounty on His Dream Chrome Extension | E2338",
 https://www.youtube.com/watch?v=X8SALDwOpTU (judges: Jason Calacanis, Lon Harris).
 Notes are paraphrased from the episode's auto-captions; timestamps are approximate.
-Our status is checked against `agent/bounty-p0-fixes` on 2026-10-17.
+Our status was checked against `agent/bounty-p0-fixes` on 2026-10-17. Every
+action below was then implemented on the same branch; see "Implementation
+status" at the end.
 
 ## How the contest is being judged
 
@@ -100,3 +102,30 @@ Status key: ✅ have it · 🟡 partial · ❌ missing.
 
 The round-one leader, annotated.wtf, was down on 2026-10-17 ("Failed to start
 container").
+
+## Implementation status (2026-10-17)
+
+All items above are implemented on `agent/bounty-p0-fixes`:
+
+| Item | Where |
+|---|---|
+| L1 comment-first layout | `FeedCard.tsx`, `annotation-detail.tsx`, side-panel preview and feed cards |
+| L2 source card with screenshot/thumbnail | `AnnotationParts.tsx` `SourceCard`; extension captures `page-screenshot` media |
+| L3 author annotation and follower counts | `/api/annotations/:id` `authorStats`; detail rail |
+| L5 metadata audit | The vote row's "Upvote/Downvote" text is screen-reader-only, not visible |
+| E1 drag-first clipping, live sync | Range follows the playhead until trimmed; handles seek live while dragged |
+| E2 straight to permalink | Publishing opens the post; success card has copy, post to X, invite |
+| E3 post to X from the side panel | "Also post my take to X" option and success-card button |
+| E4 annotation types | Migration 0017, schema, API filter, picker, badges, feed chips |
+| E6 empty-state guidance | Article clip field copy |
+| E8 highlighter branding | New logo mark, favicons, extension icons, yellow highlight on quotes |
+| X2 preserve X posts | Screenshot attached as the post thumbnail |
+| S2 trending | `/api/trending` and right rail (topics, sources, kinds of take) |
+| S3 For You | `rankForYou` in `server/discovery.ts`; default tab |
+| S4 people worth following | Ranked from real contributors |
+| S5 invite by email | `/api/invites` (Resend when configured, else mailto fallback) |
+| T1 claim beside clip | Detail page evidence card |
+| D1–D3 demo | `docs/round-two-demo-script.md` |
+| Request an annotation | Migration 0017, `/api/requests`, `/requests` page, side-panel ask/answer |
+| Open source | `LICENSE` (MIT); the repository still has to be made public on GitHub |
+

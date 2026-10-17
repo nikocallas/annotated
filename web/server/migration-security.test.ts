@@ -49,3 +49,24 @@ test("media attachment is single-use, serialized, and published atomically", () 
   assert.match(attachment, /revoke all on function public\.attach_media_upload[\s\S]*from public, anon, authenticated/);
   assert.match(attachment, /grant execute on function public\.attach_media_upload[\s\S]*to service_role/);
 });
+
+test("annotation requests and screenshots stay server-owned (0017)", () => {
+  const sql = readFileSync(resolve(migrationRoot, "0017_annotation_types_requests_screenshots.sql"), "utf8").toLowerCase();
+  assert.match(sql, /alter table public\.annotation_requests enable row level security/);
+  assert.match(sql, /alter table public\.annotation_requests force row level security/);
+  assert.match(sql, /revoke all on public\.annotation_requests from public, anon, authenticated/);
+  assert.match(sql, /revoke all on function public\.attach_media_upload\(text, text, text\) from public, anon, authenticated/);
+  assert.match(sql, /grant execute on function public\.attach_media_upload\(text, text, text\) to service_role/);
+  assert.match(sql, /'page-screenshot'/);
+  assert.doesNotMatch(sql, /disable row level security|grant (select|insert|update|delete)[^;]*to (anon|authenticated)/);
+  // A screenshot must never publish a post on its own.
+  const screenshotBranch = sql.slice(sql.indexOf("elsif incoming.kind = 'page-screenshot'"), sql.indexOf("else\n    update public.annotations\n    set commentary_audio_url"));
+  assert.doesNotMatch(screenshotBranch, /is_public/);
+});
+
+test("seed cleanup only targets seed rows (0016)", () => {
+  const sql = readFileSync(resolve(migrationRoot, "0016_remove_seed_content.sql"), "utf8").toLowerCase();
+  const deletes = sql.match(/delete from [^;]+;/g) ?? [];
+  assert.equal(deletes.length, 2);
+  for (const statement of deletes) assert.match(statement, /where id like 'seed-/);
+});

@@ -6,6 +6,15 @@ Production: [www.annotatedextension.com](https://www.annotatedextension.com)
 
 Chrome Web Store: [Annotated](https://chromewebstore.google.com/detail/annotated/eaealcbiidjigfndjchchbnjdjicbajb)
 
+## What it does
+
+- **Highlight and dispute.** Highlight any sentence (up to 100 words) or clip up to 90 seconds of a YouTube video or podcast from the Chrome side panel, say what kind of take it is (dispute, fact check, context, hot take, steelman, receipts, explainer), and publish.
+- **Comment first, evidence attached.** Every annotation page leads with the author's take, then the highlighted passage or the 240p clip Annotated recorded, then the source with a screenshot and a link back to the original. A **File a claim** button sits next to every clip.
+- **Context on the page you're reading.** The side panel shows what people have already said about the open tab and any open requests for it.
+- **Request an annotation.** Put a bounty of attention on a story: ask the community, or one named person, to fact-check a page. Publishing an answer fulfils the request.
+- **A social feed built on sources.** For You ranking, Following, trending topics (#hashtags), sources and kinds of take, people worth following, comments, votes, bookmarks, email invites, and one-click posting to X.
+- **Receipts survive.** Articles and X posts save a screenshot at publish time, so a deleted post is still visible.
+
 ## Architecture
 
 ```text
@@ -107,3 +116,7 @@ The Web Store artifact is `annotated-chrome-web-store.zip`, with `manifest.json`
 Vercel's root directory is `web/`. `npm run build` emits the static client, API function, per-annotation metadata function, and downloadable extension archive. `/a/:id` is rendered through the metadata function so crawlers receive a unique title, description, image, and canonical production URL before the React app hydrates.
 
 Production merges and Vercel Git deployments are owner-authorized for this repository. Chrome Web Store version `1.8.1` was published on August 3, 2026; do not upload or submit another Store version without separate explicit owner approval.
+
+## License
+
+[MIT](LICENSE). Built for the [annotated.com bounty](https://bounty.thisweekinstartups.com) by Jason Calacanis.

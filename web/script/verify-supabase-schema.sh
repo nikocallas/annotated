@@ -28,6 +28,7 @@ begin
     and c.relkind = 'r';
 
   if app_tables <> array[
+    'annotation_requests',
     'annotations',
     'bookmarks',
     'claim_events',
@@ -50,8 +51,8 @@ begin
       and c.relkind = 'r'
       and c.relrowsecurity
       and c.relforcerowsecurity
-  ) <> 10 then
-    raise exception 'All ten public tables must have enabled and forced RLS';
+  ) <> 11 then
+    raise exception 'All eleven public tables must have enabled and forced RLS';
   end if;
 
   if (select count(*) from pg_policies where schemaname = 'public') <> 21 then
@@ -135,6 +136,13 @@ begin
       and indexname = 'idx_users_auth_provider_id'
   ) then
     raise exception 'The duplicate auth-provider index must stay removed';
+  end if;
+
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'annotations' and column_name = 'annotation_type'
+  ) then
+    raise exception 'Migration 0017 must add annotations.annotation_type';
   end if;
 
   -- 0016 removes all launch-era seed rows; the public feed holds only real

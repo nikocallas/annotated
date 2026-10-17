@@ -24,7 +24,7 @@ The deployed database is authoritative for current data/schema, GitHub is author
 - `web/client/`: React 18, Vite 7, TypeScript, Wouter, TanStack Query, Tailwind/Radix public site.
 - `web/server/`: Express 5 API, authentication, storage adapter, media validation, rate limiting, claim moderation/email, and Vercel handlers.
 - `web/shared/schema.ts`: shared application contract. It uses Drizzle's SQLite types for the in-memory development/test adapter; production persistence is explicitly mapped to Supabase Postgres in `web/server/storage.ts`.
-- `supabase/migrations/`: ordered, additive production migrations. Never rewrite migrations `0001`–`0015`; add a reviewed migration. `0015` records production-only RLS guard objects and locally remediates the August 8 advisor findings; it has not been applied to Production.
+- `supabase/migrations/`: ordered, additive production migrations. Never rewrite migrations `0001`–`0015`; add a reviewed migration. `0015` records production-only RLS guard objects and locally remediates the August 8 advisor findings. `0016` removes launch-era seed content and `0017` adds annotation types, annotation requests, and the `page-screenshot` media kind. As of 2026-10-17, `0015`–`0017` have not been applied to Production.
 - `web/vercel.json`: functions, rewrites, headers/CSP, and the daily media-cleanup cron.
 - `docs/resubmission-readiness.md`: detailed August 1–2 production-hardening evidence and rollback notes. Treat its Store status and dependency-audit result as historical, not current.
 - `docs/ANNOTATED_RECOVERY_REPORT.md`: August 8 recovery inventory, drift analysis, test baseline, and next actions.
@@ -62,7 +62,7 @@ npm run supabase:verify
 npm run dev:local
 ```
 
-The stack replays `0001`–`0015`, runs Auth/Postgres/Storage/REST/Realtime/Studio, and excludes only optional local Analytics/Vector services that Annotated does not use. `supabase:configure` writes local-only credentials to `~/.config/annotated/local.env` with mode 600. `supabase:verify` resets the database, asserts the canonical schema/security/seed invariants, lints, and requires clean local security/performance advisors. `dev:local` loads the credentials and uses port 5001 because macOS Control Center owns port 5000. `npm run supabase:stop` stops the stack. Never add `--linked` to reset commands or point routine local mutation testing at production.
+The stack replays `0001`–`0017`, runs Auth/Postgres/Storage/REST/Realtime/Studio, and excludes only optional local Analytics/Vector services that Annotated does not use. `supabase:configure` writes local-only credentials to `~/.config/annotated/local.env` with mode 600. `supabase:verify` resets the database, asserts the canonical schema/security/seed invariants, lints, and requires clean local security/performance advisors. `dev:local` loads the credentials and uses port 5001 because macOS Control Center owns port 5000. `npm run supabase:stop` stops the stack. Never add `--linked` to reset commands or point routine local mutation testing at production.
 
 Without the external local environment file, plain `npm run dev` remains a deliberate empty in-memory fallback.
 
