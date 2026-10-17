@@ -16,7 +16,13 @@ annotation types, requests, or screenshots on it. Everything else (layout,
 recorded-clip playback, Spotify embeds, trending, For You, invites) works
 without them, because new columns are only written when they have a value.
 
-## 2. Database (owner approval, then apply in order)
+## 2. Database — applied 2026-10-17
+
+Applied in one SQL Editor run (0015, seed backup, 0016, 0017). Verified: 0 seed
+rows remain, 72 rows backed up in `private.seed_backup_2026_10_17`, the
+`annotation_type` column, `annotation_requests` table (forced RLS), and
+`page-screenshot` attachment are live, and the earlier SECURITY DEFINER
+advisor warnings are cleared. Original plan, for reference:
 
 | Migration | What it does | Reversible? |
 |---|---|---|
