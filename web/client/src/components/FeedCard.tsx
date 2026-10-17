@@ -4,7 +4,8 @@ import type { AnnotationWithRelations } from "@shared/schema";
 import { useMutation } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card } from "@/components/ui/card";
-import { SourceBadge, timeAgo, hostname } from "./SourceBadge";
+import { SourceBadge, timeAgo } from "./SourceBadge";
+import { AnnotationTypeBadge, CommentaryText, SourceCard } from "./AnnotationParts";
 import { MessageCircle, Mic, Bookmark, Share2, Eye } from "lucide-react";
 import { SiX } from "react-icons/si";
 import { ClipPreview } from "./ClipPreview";
@@ -91,7 +92,8 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
   const handlePostOnX = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const text = `${shareTitle} — clipped on @annotated`;
+    const take = a.commentaryText ? `“${a.commentaryText.slice(0, 180)}${a.commentaryText.length > 180 ? "…" : ""}”` : shareTitle;
+    const text = `${take}\n\nOn: ${shareTitle} — via Annotated`;
     const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(annotationUrl)}`;
     window.open(intent, "_blank", "noopener,noreferrer");
   };
@@ -109,46 +111,53 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
             </Avatar>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-sm" data-testid={`text-author-${a.id}`}>
+                <Link
+                  href={`/u/${a.user.username}`}
+                  className="font-semibold text-sm hover:underline"
+                  data-testid={`text-author-${a.id}`}
+                >
                   {a.user.displayName}
-                </span>
+                </Link>
                 <span className="text-xs text-muted-foreground">@{a.user.username}</span>
               </div>
-              <div className="text-xs text-muted-foreground">{timeAgo(a.createdAt)}</div>
+              <Link
+                href={`/a/${a.id}`}
+                className="text-xs text-muted-foreground hover:underline"
+                data-testid={`link-permalink-${a.id}`}
+              >
+                <time dateTime={new Date(a.createdAt * 1000).toISOString()}>{timeAgo(a.createdAt)}</time>
+              </Link>
             </div>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+              <AnnotationTypeBadge type={a.annotationType} href={`/?type=${a.annotationType}`} />
               <SourceBadge type={a.sourceType} />
             </div>
           </div>
 
-          {/* Source attribution */}
-          <div className="source-provenance text-sm">
-            <div className="text-muted-foreground text-xs mb-1">From {a.sourcePublication ?? hostname(a.sourceUrl)}</div>
-            <Link
-              href={`/a/${a.id}`}
-              className="inline-flex min-h-11 items-center rounded-sm font-medium leading-snug underline-offset-4 hover:underline"
-              aria-label={`Open annotation: ${a.sourceTitle ?? a.sourceUrl}`}
-              data-testid={`text-source-title-${a.id}`}
-            >
-              {a.sourceTitle ?? a.sourceUrl}
-            </Link>
-            {a.sourceAuthor && (
-              <div className="text-xs text-muted-foreground mt-0.5">By {a.sourceAuthor}</div>
-            )}
-          </div>
-
-          {/* Clip preview */}
-          <ClipPreview annotation={a} compact />
-
-          {/* Commentary */}
+          {/* The annotation is the star: the author's take comes first. */}
           {a.commentaryText && (
-            <div className="annotation-note">
-              <span>Why this matters</span>
-              <p className="text-sm leading-relaxed text-foreground/90" data-testid={`text-commentary-${a.id}`}>
-                {a.commentaryText}
-              </p>
+            <CommentaryText text={a.commentaryText} testId={`text-commentary-${a.id}`} />
+          )}
+          {a.commentaryAudioUrl && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+              <Mic className="w-3.5 h-3.5 text-primary-readable" aria-hidden />
+              <audio controls preload="none" src={a.commentaryAudioUrl} className="h-8 max-w-full" aria-label="Audio commentary" />
             </div>
           )}
+
+          {/* The exact evidence: highlighted passage or bounded clip. */}
+          <ClipPreview annotation={a} compact />
+
+          {/* The source as context, with a thumbnail and a link back. */}
+          <SourceCard annotation={a} />
+          <Link
+            href={`/a/${a.id}`}
+            className="inline-flex min-h-11 items-center self-start text-sm font-medium text-primary-readable underline-offset-4 hover:underline"
+            aria-label={`Open annotation: ${a.sourceTitle ?? a.sourceUrl}`}
+            data-testid={`text-source-title-${a.id}`}
+          >
+            {a.commentCount > 0 ? `Join the discussion (${a.commentCount}) →` : "Open annotation →"}
+          </Link>
 
           {/* Footer */}
           <div className="flex items-center gap-1 text-xs text-muted-foreground pt-1 border-t border-card-border/60 -mx-5 -mb-5 mt-1 px-3 py-2">
@@ -180,12 +189,6 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
               {(a.viewCount ?? 0).toLocaleString()}
               <span className="hidden sm:inline ml-0.5">views</span>
             </span>
-            {a.commentaryAudioUrl && (
-              <span className="inline-flex items-center gap-1 px-2">
-                <Mic className="w-3.5 h-3.5" />
-                Audio
-              </span>
-            )}
             <div className="ml-auto flex items-center gap-0.5">
               <button
                 type="button"

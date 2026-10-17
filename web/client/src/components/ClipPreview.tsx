@@ -117,7 +117,7 @@ export function ClipPreview({
         style={{ fontFamily: "var(--font-serif)", fontSize: compact ? "1.12rem" : "1.25rem" }}
         data-testid={`clip-text-${a.id}`}
       >
-        “{a.clipText}”
+        <span className="highlighted">{a.clipText}</span>
       </blockquote>
     );
   }
