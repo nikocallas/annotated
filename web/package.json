@@ -8,6 +8,12 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
+    "dev:local": "bash script/dev-local.sh",
+    "supabase:start": "supabase start --workdir .. --exclude logflare,vector",
+    "supabase:configure": "bash script/configure-local-env.sh",
+    "supabase:reset": "supabase db reset --workdir .. --local",
+    "supabase:verify": "supabase db reset --workdir .. --local && bash script/verify-supabase-schema.sh && supabase db lint --workdir .. --local --level warning --fail-on error && supabase db advisors --workdir .. --local --type all --level warn --fail-on error",
+    "supabase:stop": "supabase stop --workdir ..",
     "build:extension": "tsx script/build-extension-zip.ts",
     "build:extension:cws": "tsx script/build-extension-cws-zip.ts",
     "build": "tsx script/build-extension-zip.ts && tsx script/build.ts",
