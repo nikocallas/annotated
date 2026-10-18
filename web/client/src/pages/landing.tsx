@@ -599,7 +599,12 @@ export default function LandingPage() {
       <main>
         <section className="lp-hero" aria-labelledby="hero-title">
           <div className="lp-hero-copy">
-            <h1 id="hero-title">Highlight any sentence on the web. Dispute it, or add what’s missing.</h1>
+            <div>
+              <p className="lp-tagline">
+                Clip. <mark>Annotate.</mark>
+              </p>
+              <h1 id="hero-title">Highlight any sentence on the web. Dispute it, or add what’s missing.</h1>
+            </div>
             <div className="lp-hero-side">
               <p>
                 Annotated is a Chrome side panel for fact-checking and adding context to articles, videos, and

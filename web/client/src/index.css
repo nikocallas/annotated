@@ -479,6 +479,7 @@ h1, h2, h3 { text-wrap: balance; }
   font-size: 0.88rem;
 }
 .mk-footer nav a:hover { color: hsl(var(--foreground)); }
+.mk-footer-brand p.mk-footer-tagline { margin-top: 0.75rem; color: hsl(var(--foreground)); font-weight: 700; font-size: 0.95rem; }
 .mk-footer small { grid-column: 1 / -1; color: hsl(var(--muted-foreground)); font-size: 0.8rem; }
 
 /* ---- Landing -------------------------------------------------------------- */
@@ -505,6 +506,18 @@ h1, h2, h3 { text-wrap: balance; }
   font-weight: 800;
   line-height: 0.98;
   letter-spacing: -0.04em;
+}
+.lp-tagline {
+  margin: 0 0 1.1rem;
+  font-size: clamp(1.25rem, 2vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+.lp-tagline mark {
+  color: hsl(var(--highlight-ink));
+  background: linear-gradient(100deg, hsl(var(--highlight) / 0.92), hsl(var(--highlight) / 0.8) 60%, hsl(var(--highlight) / 0.95)) no-repeat 0 75% / 100% 70%;
+  padding: 0 0.12em;
 }
 .lp-hero-side > p:first-child {
   margin: 0;
@@ -928,6 +941,7 @@ h1, h2, h3 { text-wrap: balance; }
 }
 @media (max-width: 1023px) {
   .lp-hero-copy { grid-template-columns: 1fr; align-items: start; }
+  .lp-tagline { margin-bottom: 0.8rem; }
   .wb { grid-template-columns: minmax(0, 1fr) 19rem; }
   .lp-kinds-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lp-recent ul { grid-template-columns: 1fr 1fr; }
