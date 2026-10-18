@@ -83,7 +83,7 @@ function NonEmbeddableVideoShell({
           {a.sourceTitle ?? "Video clip"}
         </div>
         <div className="text-xs text-muted-foreground mt-0.5">
-          {range ? `Clip ${range}${dur != null ? ` • ${dur}s` : ""}` : "Clip preview unavailable"}
+          {range ? `Clip ${range}${dur != null ? ` (${dur}s)` : ""}` : "Clip preview unavailable"}
         </div>
       </div>
       <span
@@ -161,7 +161,7 @@ export function ClipPreview({
           />
           <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between">
             <span data-testid={`clip-range-${a.id}`}>
-              Clip {range} • {dur}s
+              Clip {range} ({dur}s)
             </span>
             <span>240p clip</span>
           </div>
@@ -192,7 +192,7 @@ export function ClipPreview({
         />
         <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between">
           <span data-testid={`clip-range-${a.id}`}>
-            Clip {range} • {dur}s
+            Clip {range} ({dur}s)
           </span>
           <span>YouTube clip</span>
         </div>
@@ -232,7 +232,7 @@ export function ClipPreview({
         />
         <div className="px-3 py-2 text-xs text-muted-foreground bg-card flex items-center justify-between">
           <span data-testid={`clip-range-${a.id}`}>
-            Clip {range} • {dur}s
+            Clip {range} ({dur}s)
           </span>
           <span>Spotify clip</span>
         </div>
@@ -253,7 +253,7 @@ export function ClipPreview({
         <div className="flex-1 min-w-0">
           <RecordedClipPlayer src={a.clipMediaUrl} kind="audio" testId={`clip-audio-recorded-${a.id}`} />
           <div className="text-xs text-muted-foreground mt-1">
-            {range ? `${range} (${dur}s) • clipped audio` : "Clipped audio"}
+            {range ? `Clipped audio, ${range} (${dur}s)` : "Clipped audio"}
           </div>
         </div>
       </div>

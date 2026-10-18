@@ -69,7 +69,7 @@ if (path === "/privacy" || path === "/privacy/") {
   root.render(<App />);
 } else if ((path === "/" || path === "") && !window.location.hash) {
   // Bare / → landing page. The app feed is at /feed (path) or /#/ (hash).
-  document.title = "Annotated: highlight any sentence on the web and add the context";
+  document.title = "Annotated: Clip. Annotate.";
   root.render(<LandingPage />);
 } else {
   if (!window.location.hash) {

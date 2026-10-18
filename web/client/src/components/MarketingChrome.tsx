@@ -81,6 +81,7 @@ export function MarketingFooter() {
       <div className="mk-footer-inner">
         <div className="mk-footer-brand">
           <Logo />
+          <p className="mk-footer-tagline">Clip. Annotate.</p>
           <p>Every note stays attached to the exact line or moment it is about.</p>
         </div>
         <nav aria-label="Footer">

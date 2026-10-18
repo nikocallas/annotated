@@ -50,28 +50,32 @@ ${d.stack}`)}else{var b;l=(b=o?.stack)!==null&&b!==void 0?b:""}let y=this.url.to
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>Annotated: highlight any sentence on the web and add the context</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12141C" media="(prefers-color-scheme: dark)" />
+    <title>Annotated: Clip. Annotate.</title>
     <meta name="description" content="A Chrome side panel for disputing, fact-checking, and adding context to articles, videos, and podcasts. Every note stays attached to the exact line or moment, with a link back to the source." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Annotated" />
     <meta property="og:url" content="https://www.annotatedextension.com/" />
-    <meta property="og:title" content="Annotated: highlight any sentence on the web and add the context" />
+    <meta property="og:title" content="Annotated: Clip. Annotate." />
     <meta property="og:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta property="og:image" content="https://www.annotatedextension.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Annotated: a highlighted sentence with a dispute note pinned beside it" />
+    <meta property="og:image:alt" content="Annotated. Clip. Annotate. A highlighted sentence with a dispute note pinned beside it." />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Annotated: highlight any sentence on the web and add the context" />
+    <meta name="twitter:title" content="Annotated: Clip. Annotate." />
     <meta name="twitter:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta name="twitter:image" content="https://www.annotatedextension.com/og-image.png" />
-    <meta name="twitter:image:alt" content="Annotated: a highlighted sentence with a dispute note pinned beside it" />
-    <script type="module" crossorigin src="/assets/index-DXYTiUgU.js"></script>
+    <meta name="twitter:image:alt" content="Annotated. Clip. Annotate. A highlighted sentence with a dispute note pinned beside it." />
+    <script type="module" crossorigin src="/assets/index-D2U3rVQy.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-DI7ldGyV.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CTQqk0FH.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-D9S5E2IL.css">
   </head>
   <body>
     <div id="root"></div>
@@ -83,28 +87,32 @@ ${d.stack}`)}else{var b;l=(b=o?.stack)!==null&&b!==void 0?b:""}let y=this.url.to
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>Annotated: highlight any sentence on the web and add the context</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12141C" media="(prefers-color-scheme: dark)" />
+    <title>Annotated: Clip. Annotate.</title>
     <meta name="description" content="A Chrome side panel for disputing, fact-checking, and adding context to articles, videos, and podcasts. Every note stays attached to the exact line or moment, with a link back to the source." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Annotated" />
     <meta property="og:url" content="https://www.annotatedextension.com/" />
-    <meta property="og:title" content="Annotated: highlight any sentence on the web and add the context" />
+    <meta property="og:title" content="Annotated: Clip. Annotate." />
     <meta property="og:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta property="og:image" content="https://www.annotatedextension.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Annotated: a highlighted sentence with a dispute note pinned beside it" />
+    <meta property="og:image:alt" content="Annotated. Clip. Annotate. A highlighted sentence with a dispute note pinned beside it." />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Annotated: highlight any sentence on the web and add the context" />
+    <meta name="twitter:title" content="Annotated: Clip. Annotate." />
     <meta name="twitter:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta name="twitter:image" content="https://www.annotatedextension.com/og-image.png" />
-    <meta name="twitter:image:alt" content="Annotated: a highlighted sentence with a dispute note pinned beside it" />
-    <script type="module" crossorigin src="/assets/index-DXYTiUgU.js"></script>
+    <meta name="twitter:image:alt" content="Annotated. Clip. Annotate. A highlighted sentence with a dispute note pinned beside it." />
+    <script type="module" crossorigin src="/assets/index-D2U3rVQy.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-DI7ldGyV.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CTQqk0FH.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-D9S5E2IL.css">
   </head>
   <body>
     <div id="root"></div>
