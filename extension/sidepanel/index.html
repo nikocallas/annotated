@@ -15,7 +15,7 @@
             <svg width="20" height="20" viewBox="4 4 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <rect x="12" y="15" width="30" height="5" rx="2.5" fill="currentColor" opacity="0.55"/>
           <rect x="9" y="26" width="38" height="13" rx="3" fill="#FFE24A"/>
-          <rect x="12" y="30" width="32" height="5" rx="2.5" fill="currentColor"/>
+          <rect x="12" y="30" width="32" height="5" rx="2.5" fill="#1A1D2E"/>
           <rect x="12" y="45" width="22" height="5" rx="2.5" fill="currentColor" opacity="0.55"/>
           <g transform="translate(47 37) rotate(35)">
             <rect x="-4.5" y="-21" width="9" height="15" rx="2" fill="currentColor"/>
@@ -54,7 +54,7 @@
     <template id="login-view">
       <section class="view view-login">
         <div class="hero">
-          <h2>Sign in to start clipping</h2>
+          <h2>Sign in to start annotating</h2>
           <p class="muted">
             Annotated uses X or Google to sign you in. No email, no password.
           </p>
@@ -81,7 +81,6 @@
           </p>
           <p class="data-disclosure-links">
             <a href="https://www.annotatedextension.com/privacy" target="_blank" rel="noopener noreferrer">Privacy</a>
-            <span aria-hidden="true">·</span>
             <a href="https://www.annotatedextension.com/tos" target="_blank" rel="noopener noreferrer">Terms</a>
           </p>
         </div>
@@ -103,7 +102,7 @@
           </div>
           <div class="page-card-title" data-title>Open Annotated on a tab to detect a source</div>
           <div class="page-card-author muted small" data-author></div>
-          <a class="source-link" data-source-link target="_blank" rel="noopener noreferrer">View source ↗</a>
+          <a class="source-link" data-source-link target="_blank" rel="noopener noreferrer">View source</a>
         </div>
 
         <section class="page-context" data-page-context hidden aria-live="polite">
@@ -144,7 +143,7 @@
             <audio data-audio-preview controls hidden></audio>
             <div class="recorder-actions" data-recorder-actions hidden>
               <button class="btn btn-ghost btn-sm" type="button" data-record-discard>Discard</button>
-              <span class="muted small" data-record-attached>Audio attached to publish ✓</span>
+              <span class="muted small" data-record-attached>Audio attached</span>
             </div>
             <div class="recorder-error" data-record-error hidden>
               <strong>Microphone access blocked.</strong>
@@ -182,10 +181,9 @@
         </div>
         <p class="hint" data-error role="alert" hidden></p>
         <p class="hint">
-          Clips capped at 90s. Reading clips capped at 100 words. Video is
-          recorded at 240p. Source URL is always linked, and a screenshot of
-          the page is saved with articles and X posts. All content annotated
-          on must be fair use.
+          Video and audio clips stop at 90 seconds, passages at 100 words, and
+          video is saved at 240p. Every post links back to the source, and
+          articles and X posts keep a screenshot of the page.
         </p>
       </section>
     </template>
@@ -224,7 +222,7 @@
 
     <template id="detail-view">
       <section class="view">
-        <button class="link-back" data-back>← Back to feed</button>
+        <button class="link-back" data-back>Back to feed</button>
         <div class="detail-card" data-detail>
           <div class="muted small" role="status">Loading…</div>
         </div>

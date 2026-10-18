@@ -513,7 +513,7 @@ function applyMetaTo(scope, meta) {
 
   if (url) {
     sourceLinkEl.href = url;
-    sourceLinkEl.textContent = `View source on ${hostname(url)} ↗`;
+    sourceLinkEl.textContent = `View source on ${hostname(url)}`;
     sourceLinkEl.style.display = "";
   } else {
     sourceLinkEl.style.display = "none";
@@ -1365,7 +1365,7 @@ function fillPageContext(mount) {
   const parts = [];
   if (annotations.length) parts.push(`${annotations.length} ${annotations.length === 1 ? "annotation" : "annotations"}`);
   if (requests.length) parts.push(`${requests.length} open ${requests.length === 1 ? "request" : "requests"}`);
-  title.textContent = parts.length ? `On this page: ${parts.join(" · ")}` : "No one has annotated this page yet";
+  title.textContent = parts.length ? `On this page: ${parts.join(", ")}` : "No one has annotated this page yet";
   toggle.hidden = !hasAny && !asking;
   toggle.textContent = expanded ? "Hide" : "Show";
   toggle.setAttribute("aria-expanded", String(expanded));
@@ -1416,7 +1416,7 @@ function fillPageContext(mount) {
           <button type="button" class="btn btn-ghost btn-sm" data-ask-cancel>Cancel</button>
         </div>
       </form>` : `
-      <button type="button" class="btn btn-ghost btn-sm ctx-ask-open" data-ask-open>Ask someone to fact-check this page →</button>`) : ""}
+      <button type="button" class="btn btn-ghost btn-sm ctx-ask-open" data-ask-open>Ask someone to fact-check this page</button>`) : ""}
   `;
   if (!expanded && !asking && signedIn) {
     // Keep the "ask" entry point visible even when the list is collapsed.
@@ -1614,7 +1614,7 @@ function fillPreviewCard(card) {
   const linkEl = $("[data-preview-source-link]", card);
   if (m.sourceUrl) {
     linkEl.href = m.sourceUrl;
-    linkEl.textContent = `↗ ${hostname(m.sourceUrl)}`;
+    linkEl.textContent = hostname(m.sourceUrl);
     linkEl.style.display = "";
   } else {
     linkEl.style.display = "none";
@@ -1665,9 +1665,9 @@ function fillPreviewCard(card) {
   const clipTag = $("[data-preview-clip-tag]", card);
   if (m.sourceType === "youtube" || m.sourceType === "podcast") {
     const len = Math.max(0, m.clipEnd - m.clipStart);
-    clipTag.textContent = `Clip ${fmt(m.clipStart)} – ${fmt(m.clipEnd)} · ${len}s`;
+    clipTag.textContent = `Clip ${fmt(m.clipStart)} to ${fmt(m.clipEnd)} (${len}s)`;
   } else if (m.clipText) {
-    clipTag.textContent = `Quote · ${m.clipText.length} chars`;
+    clipTag.textContent = `Passage, ${m.clipText.length} characters`;
   } else {
     clipTag.textContent = "";
   }
@@ -1948,7 +1948,7 @@ function renderPublishSuccess() {
         <button class="btn btn-outline btn-sm" type="button" data-invite>Invite someone</button>
         <button class="btn btn-outline btn-sm" type="button" data-view-post>Open post</button>
       </div>
-      <button class="btn btn-ghost btn-sm" type="button" data-publish-reset>Clip another →</button>
+      <button class="btn btn-ghost btn-sm" type="button" data-publish-reset>Annotate something else</button>
     </div>
   `;
   const keepOpen = () => {
@@ -2023,7 +2023,7 @@ function renderFeedCard(a) {
       <div class="avatar">${a.user?.avatarUrl ? `<img src="${escapeAttr(a.user.avatarUrl)}" alt="${escapeAttr(a.user?.displayName || "Creator")}" />` : avatarFallback(a.user?.displayName)}</div>
       <div style="flex:1; min-width:0;">
         <div style="font-size:13px; font-weight:600;">${escapeHtml(a.user?.displayName || "")}</div>
-        <div class="muted small">@${escapeHtml(a.user?.username || "")} · ${escapeHtml(a.sourcePublication || hostname(a.sourceUrl))}</div>
+        <div class="muted small">@${escapeHtml(a.user?.username || "")} on ${escapeHtml(a.sourcePublication || hostname(a.sourceUrl))}</div>
       </div>
       ${(() => {
         const t = ANNOTATION_TYPES.find((x) => x.key === a.annotationType);
@@ -2036,7 +2036,7 @@ function renderFeedCard(a) {
     <button type="button" class="feed-card-open" data-open-detail aria-label="Open annotation: ${escapeAttr(cardTitle)}">${escapeHtml(cardTitle)}</button>
     <div class="feed-card-foot">
       <span>${a.commentCount} comments</span>
-      <a href="${escapeAttr(a.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;">↗ Source</a>
+      <a href="${escapeAttr(a.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="margin-left:auto;">Source</a>
     </div>
   `;
   $(`[data-open-detail]`, card).addEventListener("click", () => showDetail(a.id));
@@ -2102,10 +2102,10 @@ async function renderDetail(id) {
       </div>
       <h2 class="detail-title">${escapeHtml(a.sourceTitle || "Annotated clip")}</h2>
       ${a.sourceAuthor ? `<div class="muted small">By ${escapeHtml(a.sourceAuthor)}</div>` : ""}
-      <a href="${escapeAttr(a.sourceUrl)}" target="_blank" rel="noopener noreferrer">↗ View original on ${escapeHtml(hostname(a.sourceUrl))}</a>
+      <a href="${escapeAttr(a.sourceUrl)}" target="_blank" rel="noopener noreferrer">View the original on ${escapeHtml(hostname(a.sourceUrl))}</a>
       ${a.clipText ? `<div class="feed-card-quote">"${escapeHtml(a.clipText)}"</div>` : ""}
-      ${a.clipStartSec != null ? `<div class="muted small mono">Clipped ${fmt(a.clipStartSec)} – ${fmt(a.clipEndSec)} (${a.clipEndSec - a.clipStartSec}s · ${a.sourceType === "youtube" ? "240p" : "audio"})</div>` : ""}
-      ${a.commentaryText ? `<div style="border-left:2px solid var(--primary); padding:4px 0 4px 10px; font-size:14px;">${escapeHtml(a.commentaryText)}</div>` : ""}
+      ${a.clipStartSec != null ? `<div class="muted small mono">Clipped ${fmt(a.clipStartSec)} to ${fmt(a.clipEndSec)} (${a.clipEndSec - a.clipStartSec}s, ${a.sourceType === "youtube" ? "240p video" : "audio"})</div>` : ""}
+      ${a.commentaryText ? `<div class="feed-card-commentary" style="border-left:2px solid var(--pencil); padding:4px 0 4px 10px;">${escapeHtml(a.commentaryText)}</div>` : ""}
       ${a.commentaryAudioUrl ? `<audio controls src="${escapeAttr(a.commentaryAudioUrl)}" style="width:100%;"></audio>` : ""}
       <div style="display:flex; gap:8px; padding-top:8px; border-top:1px solid var(--border);">
         <a class="btn btn-outline btn-sm" href="https://www.annotatedextension.com/a/${encodeURIComponent(a.id)}" target="_blank" rel="noopener noreferrer">Open landing page</a>
