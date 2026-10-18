@@ -179,11 +179,11 @@ export function SourceCard({
         </a>
       )}
       <div className="min-w-0 p-3 flex flex-col gap-1">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold truncate">
+        <div className="text-[13px] text-muted-foreground font-semibold truncate">
           {publication}
           {isScreenshot && (
-            <span className="normal-case tracking-normal font-normal">
-              {" "}· {xPost ? "Saved copy of the post" : "Screenshot when annotated"}
+            <span className="font-normal">
+              {", "}{xPost ? "saved copy of the post" : "screenshot when annotated"}
             </span>
           )}
         </div>

@@ -250,7 +250,7 @@ export default function AuthCallbackPage() {
               )}
               <div className="mt-6 text-xs">
                 <a href="/feed" className="underline hover:text-foreground">
-                  Or continue to your feed →
+                  Or continue to your feed
                 </a>
               </div>
             </>

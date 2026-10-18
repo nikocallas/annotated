@@ -43,7 +43,7 @@ export function CommentThread({ annotationId }: { annotationId: string }) {
 
   return (
     <section className="space-y-5" aria-label="Comments">
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+      <h3 className="text-sm font-semibold text-muted-foreground">
         {totalCount} {totalCount === 1 ? "comment" : "comments"}
       </h3>
 
@@ -169,8 +169,7 @@ function CommentNode({
             {c.user.displayName}
           </Link>
           <span className="text-xs text-muted-foreground">@{c.user.username}</span>
-          <span className="text-xs text-muted-foreground">·</span>
-          <span className="text-xs text-muted-foreground">{timeAgo(c.createdAt)}</span>
+          <time className="text-xs text-muted-foreground ml-1">{timeAgo(c.createdAt)}</time>
         </div>
         <p className="text-sm text-foreground/90 leading-relaxed mt-0.5 whitespace-pre-wrap">
           {c.body}

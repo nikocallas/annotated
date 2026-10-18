@@ -208,9 +208,8 @@ export default function AnnotationDetailPage() {
                   </Link>
                   <span className="text-sm text-muted-foreground">@{a.user.username}</span>
                 </div>
-                <div className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap mt-0.5">
+                <div className="text-xs text-muted-foreground flex items-center gap-3 flex-wrap mt-0.5">
                   <time dateTime={new Date(a.createdAt * 1000).toISOString()}>{publishedDateTime}</time>
-                  <span aria-hidden>·</span>
                   <span className="inline-flex items-center gap-1">
                     <Eye className="w-3 h-3" aria-hidden />
                     <span data-testid="text-detail-views">{(a.viewCount ?? 0).toLocaleString()} views</span>
@@ -250,17 +249,17 @@ export default function AnnotationDetailPage() {
               className="overflow-hidden border-card-border bg-card p-5 space-y-4"
               data-testid="card-source-excerpt"
             >
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
+              <div className="text-[13px] text-muted-foreground font-semibold flex items-center gap-2">
                 <span>
                   {a.sourceType === "article"
                     ? "Highlighted passage"
                     : a.sourceType === "youtube"
-                    ? "Video clip · 240p"
+                    ? "Video clip at 240p"
                     : "Audio clip"}
                 </span>
                 {clipLength && (
-                  <span className="normal-case tracking-normal font-normal" data-testid="text-clip-length">
-                    · {clipLength}
+                  <span className="font-normal" data-testid="text-clip-length">
+                    ({clipLength})
                   </span>
                 )}
               </div>
@@ -364,7 +363,7 @@ export default function AnnotationDetailPage() {
           <aside className="space-y-4 lg:sticky lg:top-20 self-start" data-testid="rail-detail">
             {/* Annotated By */}
             <Card className="border-card-border bg-card p-4 space-y-3" data-testid="rail-annotated-by">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+              <div className="text-[13px] text-muted-foreground font-semibold">
                 Annotated by
               </div>
               <Link
@@ -387,13 +386,13 @@ export default function AnnotationDetailPage() {
               {a.authorStats && (
                 <dl className="grid grid-cols-2 gap-2 text-center" data-testid="rail-author-stats">
                   <div className="rounded-md bg-muted/60 py-2">
-                    <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Annotations</dt>
+                    <dt className="text-xs text-muted-foreground">Annotations</dt>
                     <dd className="text-lg font-semibold" data-testid="text-author-annotations">
                       {a.authorStats.annotations.toLocaleString()}
                     </dd>
                   </div>
                   <div className="rounded-md bg-muted/60 py-2">
-                    <dt className="text-[10px] uppercase tracking-wider text-muted-foreground">Followers</dt>
+                    <dt className="text-xs text-muted-foreground">Followers</dt>
                     <dd className="text-lg font-semibold" data-testid="text-author-followers">
                       {a.authorStats.followers.toLocaleString()}
                     </dd>
@@ -406,7 +405,7 @@ export default function AnnotationDetailPage() {
                   className="inline-block text-xs text-primary-readable hover:underline"
                   data-testid="link-rail-view-profile"
                 >
-                  View profile →
+                  View profile
                 </Link>
                 <FollowButton targetUserId={a.user.id} targetUsername={a.user.username} />
               </div>
@@ -414,7 +413,7 @@ export default function AnnotationDetailPage() {
 
             {/* Ask for more context on the same page. */}
             <Card className="border-card-border bg-card p-4 space-y-2" data-testid="rail-request">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+              <div className="text-[13px] text-muted-foreground font-semibold">
                 Want another take?
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
@@ -425,23 +424,23 @@ export default function AnnotationDetailPage() {
 
             {/* About the source */}
             <Card className="border-card-border bg-card p-4 space-y-3" data-testid="rail-about-source">
-              <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+              <div className="text-[13px] text-muted-foreground font-semibold">
                 About the source
               </div>
               <SourceBadge type={a.sourceType} />
               <div className="text-xs text-muted-foreground">{hostname(a.sourceUrl)}</div>
               <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-                <dt className="uppercase tracking-wider text-muted-foreground">Published</dt>
+                <dt className="text-muted-foreground">Published</dt>
                 <dd className="text-right">{publishedDate}</dd>
                 {clipLength && (
                   <>
-                    <dt className="uppercase tracking-wider text-muted-foreground">Clip length</dt>
+                    <dt className="text-muted-foreground">Clip length</dt>
                     <dd className="text-right">{clipLength}</dd>
                   </>
                 )}
                 {a.sourceAuthor && (
                   <>
-                    <dt className="uppercase tracking-wider text-muted-foreground">Author</dt>
+                    <dt className="text-muted-foreground">Author</dt>
                     <dd className="text-right truncate">{a.sourceAuthor}</dd>
                   </>
                 )}
@@ -472,7 +471,7 @@ export default function AnnotationDetailPage() {
                 so the layout matches the reference. */}
             {(a.sourceType === "youtube" || a.sourceType === "podcast") && (
               <Card className="border-card-border bg-card p-4 space-y-2" data-testid="rail-transcript">
-                <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <div className="text-[13px] text-muted-foreground font-semibold">
                   Transcript
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">

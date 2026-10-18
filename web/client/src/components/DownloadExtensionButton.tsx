@@ -36,7 +36,7 @@ export function ChromeLogo({ size = 18, className }: { size?: number; className?
 export function DownloadExtensionButton({
   size = "md",
   variant = "primary",
-  label = "Get the Chrome Extension",
+  label = "Add to Chrome",
   className = "",
   style,
 }: {
@@ -56,7 +56,7 @@ export function DownloadExtensionButton({
   const variantClasses =
     variant === "outline"
       ? "border border-border bg-background text-foreground hover:bg-foreground/5"
-      : "bg-primary text-primary-foreground hover:opacity-95";
+      : "bg-primary text-primary-foreground border border-[hsl(var(--primary-border))] hover:brightness-[0.97]";
 
   const iconSize = size === "lg" ? 22 : size === "sm" ? 16 : 18;
 
@@ -68,10 +68,10 @@ export function DownloadExtensionButton({
     <a
       href={EXTENSION_INSTALL_HREF}
       {...linkProps}
-      className={`inline-flex min-h-11 items-center justify-center rounded-md font-semibold transition-shadow shadow-sm hover:shadow-md ${sizeClasses} ${variantClasses} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center rounded-md font-semibold transition-[filter,background-color] ${sizeClasses} ${variantClasses} ${className}`}
       style={style}
       data-testid="button-download-extension"
-      aria-label="Get the Chrome extension"
+      aria-label="Add Annotated to Chrome"
     >
       <ChromeLogo size={iconSize} />
       <span>{label}</span>

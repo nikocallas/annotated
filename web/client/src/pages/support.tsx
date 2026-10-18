@@ -1,13 +1,10 @@
 import { useState } from "react";
-import { Logo } from "@/components/Logo";
-import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { SiteNav } from "@/components/SiteNav";
+import { MarketingFooter, MarketingHeader } from "@/components/MarketingChrome";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, AlertCircle, LifeBuoy, User as UserIcon } from "lucide-react";
+import { CheckCircle2, AlertCircle, LifeBuoy } from "lucide-react";
 
 const MAX_NAME = 120;
 const MAX_EMAIL = 200;
@@ -80,24 +77,7 @@ export default function SupportPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6 h-14 flex items-center gap-4 sm:gap-6">
-          <Logo />
-          <SiteNav />
-          <div className="ml-auto flex items-center gap-3">
-            <ThemeToggle />
-            <DownloadExtensionButton size="sm" className="hidden md:inline-flex" />
-            <a
-              href="/login"
-              className="md:hidden min-h-11 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-95"
-              data-testid="link-signin-header-mobile"
-            >
-              <UserIcon className="w-4 h-4" />
-              Sign in
-            </a>
-          </div>
-        </div>
-      </header>
+      <MarketingHeader />
 
       <main className="flex-1">
         <section className="mx-auto max-w-2xl px-6 py-12 sm:py-16">
@@ -270,26 +250,7 @@ export default function SupportPage() {
         </section>
       </main>
 
-      <footer className="border-t border-border mt-12">
-        <div className="mx-auto max-w-3xl px-6 py-8 text-sm text-muted-foreground flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-          <Logo />
-          <DownloadExtensionButton size="sm" />
-          <div className="flex gap-4 flex-wrap">
-            <a href="/" className="inline-flex min-h-11 items-center hover:text-foreground">Home</a>
-            <a href="/feed" className="inline-flex min-h-11 items-center hover:text-foreground">Feed</a>
-            <a href="/demo" className="inline-flex min-h-11 items-center hover:text-foreground">Demo Video</a>
-            <a href="/support" className="inline-flex min-h-11 items-center hover:text-foreground">Support</a>
-            <a href="/privacy" className="inline-flex min-h-11 items-center hover:text-foreground">Privacy</a>
-            <a href="/tos" className="inline-flex min-h-11 items-center hover:text-foreground">Terms</a>
-          </div>
-        </div>
-        <div
-          className="mx-auto max-w-3xl px-6 pb-6 text-xs text-muted-foreground"
-          data-testid="text-footer-copyright"
-        >
-          © 2026 Annotated · Built by Niko Callas
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }

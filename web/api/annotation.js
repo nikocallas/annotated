@@ -51,33 +51,27 @@ ${d.stack}`)}else{var b;l=(b=o?.stack)!==null&&b!==void 0?b:""}let y=this.url.to
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>Annotated \u2014 Clip the exact moment. Add the missing context.</title>
-    <meta name="description" content="Turn the best part of any article, video, or podcast into a source-linked post built for conversation." />
+    <title>Annotated: highlight any sentence on the web and add the context</title>
+    <meta name="description" content="A Chrome side panel for disputing, fact-checking, and adding context to articles, videos, and podcasts. Every note stays attached to the exact line or moment, with a link back to the source." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Annotated" />
     <meta property="og:url" content="https://www.annotatedextension.com/" />
-    <meta property="og:title" content="Annotated \u2014 Clip the exact moment. Add the missing context." />
-    <meta property="og:description" content="Source-linked conversations for articles, video, and podcasts." />
+    <meta property="og:title" content="Annotated: highlight any sentence on the web and add the context" />
+    <meta property="og:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta property="og:image" content="https://www.annotatedextension.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Annotated \u2014 source-linked conversations for the open web" />
+    <meta property="og:image:alt" content="Annotated: a highlighted sentence with a dispute note pinned beside it" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Annotated \u2014 Clip the exact moment. Add the missing context." />
-    <meta name="twitter:description" content="Source-linked conversations for articles, video, and podcasts." />
+    <meta name="twitter:title" content="Annotated: highlight any sentence on the web and add the context" />
+    <meta name="twitter:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta name="twitter:image" content="https://www.annotatedextension.com/og-image.png" />
-    <meta name="twitter:image:alt" content="Annotated \u2014 source-linked conversations for the open web" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
-      rel="stylesheet"
-    />
-    <script type="module" crossorigin src="/assets/index-Bn2zMJnX.js"></script>
+    <meta name="twitter:image:alt" content="Annotated: a highlighted sentence with a dispute note pinned beside it" />
+    <script type="module" crossorigin src="/assets/index-DXYTiUgU.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
-    <link rel="modulepreload" crossorigin href="/assets/icons-jlL_J9ym.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CzTuUUWh.css">
+    <link rel="modulepreload" crossorigin href="/assets/icons-DI7ldGyV.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CTQqk0FH.css">
   </head>
   <body>
     <div id="root"></div>
@@ -90,33 +84,27 @@ ${d.stack}`)}else{var b;l=(b=o?.stack)!==null&&b!==void 0?b:""}let y=this.url.to
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>Annotated \u2014 Clip the exact moment. Add the missing context.</title>
-    <meta name="description" content="Turn the best part of any article, video, or podcast into a source-linked post built for conversation." />
+    <title>Annotated: highlight any sentence on the web and add the context</title>
+    <meta name="description" content="A Chrome side panel for disputing, fact-checking, and adding context to articles, videos, and podcasts. Every note stays attached to the exact line or moment, with a link back to the source." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Annotated" />
     <meta property="og:url" content="https://www.annotatedextension.com/" />
-    <meta property="og:title" content="Annotated \u2014 Clip the exact moment. Add the missing context." />
-    <meta property="og:description" content="Source-linked conversations for articles, video, and podcasts." />
+    <meta property="og:title" content="Annotated: highlight any sentence on the web and add the context" />
+    <meta property="og:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta property="og:image" content="https://www.annotatedextension.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Annotated \u2014 source-linked conversations for the open web" />
+    <meta property="og:image:alt" content="Annotated: a highlighted sentence with a dispute note pinned beside it" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Annotated \u2014 Clip the exact moment. Add the missing context." />
-    <meta name="twitter:description" content="Source-linked conversations for articles, video, and podcasts." />
+    <meta name="twitter:title" content="Annotated: highlight any sentence on the web and add the context" />
+    <meta name="twitter:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta name="twitter:image" content="https://www.annotatedextension.com/og-image.png" />
-    <meta name="twitter:image:alt" content="Annotated \u2014 source-linked conversations for the open web" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
-      rel="stylesheet"
-    />
-    <script type="module" crossorigin src="/assets/index-Bn2zMJnX.js"></script>
+    <meta name="twitter:image:alt" content="Annotated: a highlighted sentence with a dispute note pinned beside it" />
+    <script type="module" crossorigin src="/assets/index-DXYTiUgU.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
-    <link rel="modulepreload" crossorigin href="/assets/icons-jlL_J9ym.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CzTuUUWh.css">
+    <link rel="modulepreload" crossorigin href="/assets/icons-DI7ldGyV.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CTQqk0FH.css">
   </head>
   <body>
     <div id="root"></div>
