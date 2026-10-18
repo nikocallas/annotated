@@ -71,7 +71,7 @@ ${d.stack}`)}else{var b;l=(b=o?.stack)!==null&&b!==void 0?b:""}let y=this.url.to
     <meta name="twitter:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta name="twitter:image" content="https://www.annotatedextension.com/og-image.png" />
     <meta name="twitter:image:alt" content="Annotated. Clip. Annotate. A highlighted sentence with a dispute note pinned beside it." />
-    <script type="module" crossorigin src="/assets/index-D2U3rVQy.js"></script>
+    <script type="module" crossorigin src="/assets/index-GUjmR1gD.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-DI7ldGyV.js">
@@ -108,7 +108,7 @@ ${d.stack}`)}else{var b;l=(b=o?.stack)!==null&&b!==void 0?b:""}let y=this.url.to
     <meta name="twitter:description" content="Highlight a line or clip a moment, then dispute it, fact-check it, or add the context. Every note links back to the source." />
     <meta name="twitter:image" content="https://www.annotatedextension.com/og-image.png" />
     <meta name="twitter:image:alt" content="Annotated. Clip. Annotate. A highlighted sentence with a dispute note pinned beside it." />
-    <script type="module" crossorigin src="/assets/index-D2U3rVQy.js"></script>
+    <script type="module" crossorigin src="/assets/index-GUjmR1gD.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-BXWnWPGP.js">
     <link rel="modulepreload" crossorigin href="/assets/data-BQSQrMsn.js">
     <link rel="modulepreload" crossorigin href="/assets/icons-DI7ldGyV.js">
