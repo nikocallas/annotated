@@ -2,12 +2,12 @@ import { MarketingFooter, MarketingHeader } from "@/components/MarketingChrome";
 import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
 
 const CHAPTERS = [
-  { time: "0:00", title: "Why Annotated", body: "Turn an exact moment into a post that keeps its source." },
-  { time: "0:04", title: "Clip a video", body: "Set a precise start and end on a YouTube video." },
-  { time: "0:12", title: "Highlight an article", body: "Keep the passage and the publication attached." },
-  { time: "0:21", title: "Clip a podcast", body: "Keep the audio moment, not just a transcript of it." },
-  { time: "0:29", title: "Publish to the feed", body: "Share a playable post with the source intact." },
-  { time: "0:40", title: "Credit the source", body: "Every post shows the creator, the range, and the original link." },
+  { time: "0:04", title: "Highlight a sentence", body: "Select the line, open the side panel, and the passage comes with you." },
+  { time: "0:16", title: "Answer a request", body: "Someone asked you to check this story. Pick Dispute and say what’s wrong." },
+  { time: "0:36", title: "Publish with the source", body: "The post keeps a screenshot of the page and links back to the article." },
+  { time: "0:41", title: "Clip a podcast", body: "The clip starts where you’re listening. Trim it to the second, up to 90 seconds." },
+  { time: "1:10", title: "Play it in the post", body: "The audio clip plays right in the post, with the episode linked." },
+  { time: "1:15", title: "Feed and requests", body: "Filter the feed by kind of take, and see requests get answered." },
 ];
 
 export default function DemoVideoPage() {
@@ -17,7 +17,7 @@ export default function DemoVideoPage() {
       <main>
         <section className="demo-hero">
           <h1 data-testid="text-demo-video-title">See a moment become a post in under a minute.</h1>
-          <p>Recorded in the real product: an article, a video, and a podcast, from the side panel to the feed.</p>
+          <p>Recorded in the real extension and site: a news article, a podcast episode, the feed, and requests. Ninety seconds, no sound needed.</p>
         </section>
 
         <section className="demo-player-section" aria-label="Annotated demo video">
