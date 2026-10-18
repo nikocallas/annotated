@@ -56,7 +56,7 @@ export function DownloadExtensionButton({
   const variantClasses =
     variant === "outline"
       ? "border border-border bg-background text-foreground hover:bg-foreground/5"
-      : "bg-primary text-primary-foreground border border-[hsl(var(--primary-border))] hover:brightness-[0.97]";
+      : "bg-primary text-primary-foreground border border-[hsl(var(--highlight-edge))] hover:brightness-[0.97]";
 
   const iconSize = size === "lg" ? 22 : size === "sm" ? 16 : 18;
 
