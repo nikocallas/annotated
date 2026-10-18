@@ -60,7 +60,7 @@ export function SourceCredit({ annotation }: SourceCreditProps) {
         <div className="rounded-full bg-primary/10 text-primary p-1.5">
           <Quote className="w-3.5 h-3.5" />
         </div>
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+        <div className="text-[13px] text-muted-foreground font-semibold">
           Source credits
         </div>
       </div>
@@ -72,7 +72,7 @@ export function SourceCredit({ annotation }: SourceCreditProps) {
       <dl className="text-xs grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
         {a.sourceTitle && (
           <>
-            <dt className="uppercase tracking-wider text-muted-foreground">Title</dt>
+            <dt className="text-muted-foreground">Title</dt>
             <dd className="text-right font-medium" data-testid="text-credit-title">
               {a.sourceTitle}
             </dd>
@@ -80,7 +80,7 @@ export function SourceCredit({ annotation }: SourceCreditProps) {
         )}
         {a.sourceAuthor && (
           <>
-            <dt className="uppercase tracking-wider text-muted-foreground">
+            <dt className="text-muted-foreground">
               {authorLabelFor(a.sourceType)}
             </dt>
             <dd className="text-right truncate" data-testid="text-credit-author">
@@ -90,7 +90,7 @@ export function SourceCredit({ annotation }: SourceCreditProps) {
         )}
         {a.sourcePublication && (
           <>
-            <dt className="uppercase tracking-wider text-muted-foreground">
+            <dt className="text-muted-foreground">
               {publicationLabelFor(a.sourceType)}
             </dt>
             <dd className="text-right truncate" data-testid="text-credit-publication">
@@ -98,13 +98,13 @@ export function SourceCredit({ annotation }: SourceCreditProps) {
             </dd>
           </>
         )}
-        <dt className="uppercase tracking-wider text-muted-foreground">Domain</dt>
+        <dt className="text-muted-foreground">Domain</dt>
         <dd className="text-right" data-testid="text-credit-domain">
           {host}
         </dd>
         {range && (
           <>
-            <dt className="uppercase tracking-wider text-muted-foreground">Clip range</dt>
+            <dt className="text-muted-foreground">Clip range</dt>
             <dd className="text-right tabular-nums" data-testid="text-credit-range">
               {range}
             </dd>

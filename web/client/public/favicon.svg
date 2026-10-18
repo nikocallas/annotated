@@ -1,18 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ff9d3a"/>
-      <stop offset="1" stop-color="#e36a17"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="14" fill="url(#g)"/>
-  <rect x="12" y="15" width="30" height="5" rx="2.5" fill="#28251D" opacity="0.55"/>
-  <rect x="9" y="26" width="38" height="13" rx="3" fill="#FFE24A"/>
-  <rect x="12" y="30" width="32" height="5" rx="2.5" fill="#28251D"/>
-  <rect x="12" y="45" width="22" height="5" rx="2.5" fill="#28251D" opacity="0.55"/>
-  <g transform="translate(47 37) rotate(35)">
-    <rect x="-4.5" y="-21" width="9" height="15" rx="2" fill="#28251D"/>
-    <path d="M-4.5 -6h9l-2 6h-5z" fill="#28251D"/>
-    <path d="M-2.5 0h5l-1.2 3h-2.6z" fill="#FFE24A" stroke="#28251D" stroke-width="1"/>
+  <rect width="64" height="64" rx="14" fill="#1A1D2E"/>
+  <g transform="translate(32 32) scale(0.82) translate(-32 -32)">
+    <rect x="12" y="15" width="30" height="5" rx="2.5" fill="#FFFFFF" opacity="0.55"/>
+    <rect x="9" y="26" width="38" height="13" rx="3" fill="#FFE24A"/>
+    <rect x="12" y="30" width="32" height="5" rx="2.5" fill="#1A1D2E"/>
+    <rect x="12" y="45" width="22" height="5" rx="2.5" fill="#FFFFFF" opacity="0.55"/>
+    <g transform="translate(47 37) rotate(35)">
+      <rect x="-4.5" y="-21" width="9" height="15" rx="2" fill="#FFFFFF"/>
+      <path d="M-4.5 -6h9l-2 6h-5z" fill="#FFFFFF"/>
+      <path d="M-2.5 0h5l-1.2 3h-2.6z" fill="#FFE24A" stroke="#FFFFFF" stroke-width="1"/>
+    </g>
   </g>
 </svg>

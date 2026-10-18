@@ -1,263 +1,314 @@
-import { Logo, QuoteMark } from "@/components/Logo";
+import { useEffect, useId, useState } from "react";
+import { MarketingFooter, MarketingHeader } from "@/components/MarketingChrome";
 import { DownloadExtensionButton } from "@/components/DownloadExtensionButton";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import {
-  ArrowRight,
-  ArrowUpRight,
-  FileText,
-  Link2,
-  MessageSquareQuote,
-  Mic2,
-  Play,
-  Scissors,
-  User as UserIcon,
-  Video,
-} from "lucide-react";
+import { ANNOTATION_TYPES, ANNOTATION_TYPE_DESCRIPTIONS, ANNOTATION_TYPE_LABELS } from "@shared/schema";
+
+// Three real posts from the live feed. The hero shows exactly what each one
+// looks like: the evidence on the page, and the note pinned beside it.
+const EXAMPLES = [
+  {
+    key: "article",
+    tab: "Article",
+    href: "/a/4fe9ca44-61f0-48b5-b004-ee92bcf268fa",
+    source: "ycombinator.com",
+    title: "A guide to seed fundraising",
+    passage:
+      "Investors write checks when the idea they hear is compelling, when they are persuaded that the team of founders can realize its vision, and that the opportunity described is real and sufficiently large.",
+    kind: "Context",
+    note:
+      "The useful signal is not “raise whenever you can”; it is story readiness. A fundable company can explain why this team, this market, and this moment belong together before the deck asks for a dollar.",
+  },
+  {
+    key: "video",
+    tab: "Video",
+    href: "/a/cb88eb8f-9b88-40ac-99c8-68a05ee3bae8",
+    source: "YouTube, Stanford",
+    title: "Steve Jobs’ 2005 Stanford Commencement Address",
+    range: { start: "0:27", end: "0:57", from: 3, to: 6.3, total: 100 },
+    kind: "Context",
+    note:
+      "The first thirty seconds keep the room, the applause, and the speaker’s hesitation attached to the words. Context is not overhead here; it is part of the evidence.",
+  },
+  {
+    key: "podcast",
+    tab: "Podcast",
+    href: "/a/43fd61bb-6f99-400c-a856-72b4817b706d",
+    source: "The Changelog",
+    title: "Castro leans into indie, Changelog Interviews #589",
+    range: { start: "0:30", end: "1:00", from: 8, to: 16, total: 100 },
+    kind: "Explainer",
+    note:
+      "The opening exchange works because the pause and cadence survive the transcript. Audio carries confidence, uncertainty, and timing that a pulled quote would flatten.",
+  },
+] as const;
+
+type Example = (typeof EXAMPLES)[number];
+
+function Lines({ widths }: { widths: number[] }) {
+  return (
+    <>
+      {widths.map((w, i) => (
+        <span key={i} className="lp-line" style={{ width: `${w}%` }} aria-hidden />
+      ))}
+    </>
+  );
+}
+
+function Waveform() {
+  return (
+    <div className="lp-wave" aria-hidden>
+      {Array.from({ length: 64 }).map((_, i) => (
+        <i key={i} style={{ height: `${18 + Math.round(Math.abs(Math.sin(i * 0.61) * Math.cos(i * 0.23)) * 78)}%` }} />
+      ))}
+    </div>
+  );
+}
+
+function Evidence({ ex }: { ex: Example }) {
+  if (ex.key === "article") {
+    return (
+      <div className="lp-doc">
+        <Lines widths={[92, 97, 64]} />
+        <p className="lp-passage">
+          <mark className="lp-mark">{ex.passage}</mark>
+        </p>
+        <Lines widths={[95, 88, 97, 41]} />
+      </div>
+    );
+  }
+  const r = ex.range;
+  return (
+    <div className="lp-media">
+      {ex.key === "video" ? (
+        <div className="lp-video" aria-hidden>
+          <span className="lp-video-play" />
+        </div>
+      ) : (
+        <Waveform />
+      )}
+      <div className="lp-scrub" aria-hidden>
+        <span className="lp-scrub-range" style={{ left: `${r.from}%`, width: `${r.to - r.from}%` }} />
+      </div>
+      <p className="lp-range">
+        Clipped <strong>{r.start}</strong> to <strong>{r.end}</strong>, {ex.key === "video" ? "saved at 240p" : "audio only"}
+      </p>
+    </div>
+  );
+}
+
+function AnnotatedPage() {
+  const [active, setActive] = useState(0);
+  const [replay, setReplay] = useState(0);
+  const id = useId();
+  const ex = EXAMPLES[active];
+
+  return (
+    <div className="lp-stage">
+      <div className="lp-tabs" role="tablist" aria-label="Example annotations">
+        {EXAMPLES.map((e, i) => (
+          <button
+            key={e.key}
+            type="button"
+            role="tab"
+            id={`${id}-tab-${i}`}
+            aria-selected={i === active}
+            aria-controls={`${id}-panel`}
+            onClick={() => {
+              setActive(i);
+              setReplay((n) => n + 1);
+            }}
+          >
+            {e.tab}
+          </button>
+        ))}
+      </div>
+      <div
+        className="lp-spread"
+        role="tabpanel"
+        id={`${id}-panel`}
+        aria-labelledby={`${id}-tab-${active}`}
+        key={`${ex.key}-${replay}`}
+      >
+        <article className="lp-sheet">
+          <header>
+            <span>{ex.source}</span>
+            <h3>{ex.title}</h3>
+          </header>
+          <Evidence ex={ex} />
+        </article>
+        <aside className="lp-note" aria-label="Annotation">
+          <svg className="lp-leader" viewBox="0 0 40 24" preserveAspectRatio="none" aria-hidden>
+            <path d="M0 12 C 14 12, 18 4, 40 4" />
+          </svg>
+          <div className="lp-note-head">
+            <span className="lp-kind">{ex.kind}</span>
+            <span>Niko Callas</span>
+          </div>
+          <p>{ex.note}</p>
+          <a href={ex.href} className="lp-note-link">
+            Read the post
+          </a>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+interface FeedItem {
+  id: string;
+  sourceTitle: string | null;
+  sourcePublication: string | null;
+  sourceUrl: string;
+  commentaryText: string | null;
+  clipText: string | null;
+  user: { displayName: string; username: string };
+}
+
+function host(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function RecentAnnotations() {
+  const [items, setItems] = useState<FeedItem[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/feed?limit=4")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: FeedItem[]) => live && setItems(Array.isArray(rows) ? rows.slice(0, 4) : []))
+      .catch(() => live && setItems([]));
+    return () => {
+      live = false;
+    };
+  }, []);
+  if (!items || items.length === 0) return null;
+  return (
+    <section className="lp-section lp-recent" aria-labelledby="recent-title">
+      <div className="lp-section-head">
+        <h2 id="recent-title">Recently annotated</h2>
+        <a href="/feed" className="lp-text-link">Open the feed</a>
+      </div>
+      <ul>
+        {items.map((a) => (
+          <li key={a.id}>
+            <a href={`/a/${encodeURIComponent(a.id)}`}>
+              <p className="lp-recent-note">{a.commentaryText ?? a.clipText ?? a.sourceTitle}</p>
+              <p className="lp-recent-meta">
+                {a.user.displayName} on {a.sourcePublication ?? host(a.sourceUrl)}
+              </p>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 const STEPS = [
   {
-    icon: Scissors,
-    title: "Capture the moment",
-    body: "Highlight the exact passage or scrub to the precise start and end of a video or podcast clip.",
+    title: "Highlight the line, or set the clip",
+    body: "Select up to 100 words on any page. On a video or podcast, drag the handles while it plays; clips stop at 90 seconds.",
   },
   {
-    icon: MessageSquareQuote,
-    title: "Add what’s missing",
-    body: "Write or record the context that turns a source into an idea worth carrying forward.",
+    title: "Say what kind of take it is",
+    body: "Pick one, then write or record your note. Add a #topic so people can find it.",
+    types: true,
   },
   {
-    icon: Link2,
-    title: "Publish with provenance",
-    body: "Share a public annotation with the creator, source, clip range, and original link still attached.",
+    title: "Publish",
+    body: "The post opens with your note on top, the evidence under it, and the source linked below. Share it to X from the same screen.",
   },
 ];
 
-const MEDIA = [
-  { icon: FileText, label: "Articles" },
-  { icon: Video, label: "Video" },
-  { icon: Mic2, label: "Podcasts" },
+const GUARANTEES = [
+  ["90 seconds at most", "Video and podcast clips are capped, so a post can quote a moment but never replace the work."],
+  ["Video saved at 240p", "Enough to see what was said. Anyone who wants the full picture goes to the original."],
+  ["Always linked", "Every post credits the creator and links back to the page, video, or episode it came from."],
+  ["A claim button on every post", "Rights holders can file a fair-use claim from the clip itself, and we review each one."],
 ];
-
-function ProductFrame({
-  src,
-  alt,
-  className = "",
-}: {
-  src: string;
-  alt: string;
-  className?: string;
-}) {
-  return (
-    <figure className={`landing-browser ${className}`}>
-      <div className="landing-browser-bar" aria-hidden="true">
-        <span /><span /><span />
-        <div>annotatedextension.com</div>
-      </div>
-      <img src={src} alt={alt} loading="eager" decoding="async" />
-    </figure>
-  );
-}
-
-function HeroProductFrame() {
-  return (
-    <figure className="landing-product-window">
-      <div className="landing-browser-bar" aria-hidden="true">
-        <span /><span /><span />
-        <div>annotatedextension.com/feed</div>
-      </div>
-      <div className="landing-product-screen">
-        <picture className="landing-product-feed-media">
-          <source media="(max-width: 520px)" srcSet="/product/annotated-feed-mobile.png" />
-          <img
-            className="landing-product-feed"
-            src="/product/annotated-feed.png"
-            alt="The live Annotated feed showing source-linked podcast and video posts"
-            loading="eager"
-            decoding="async"
-          />
-        </picture>
-        <div className="landing-product-panel">
-          <div className="landing-panel-label">
-            <QuoteMark size={20} />
-            Exact-range clipping
-          </div>
-          <img
-            src="/product/annotated-extension-panel.png"
-            alt="The real Annotated Chrome side panel with exact start and end controls"
-            loading="eager"
-            decoding="async"
-          />
-        </div>
-      </div>
-    </figure>
-  );
-}
-
-const MARQUEE_ITEMS = Array.from({ length: 3 }, (_, index) => (
-  <span key={index}>The context layer of the internet.</span>
-));
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header className="landing-header">
-        <div className="landing-header-inner">
-          <Logo />
-          <nav className="landing-nav" aria-label="Primary">
-            <a href="/feed">Feed</a>
-            <a href="/demo">Demo</a>
-            <a href="#how-it-works">How it works</a>
-          </nav>
-          <div className="landing-header-actions">
-            <ThemeToggle />
-            <a href="/login" className="landing-sign-in" data-testid="link-signin-header" aria-label="Sign in">
-              <UserIcon aria-hidden />
-              <span>Sign in</span>
-            </a>
-            <DownloadExtensionButton size="sm" className="hidden sm:inline-flex" label="Get the extension" />
+    <div className="lp">
+      <MarketingHeader current="home" />
+      <main>
+        <section className="lp-hero" aria-labelledby="hero-title">
+          <div className="lp-hero-copy">
+            <h1 id="hero-title">Highlight any sentence on the web. Dispute it, or add what’s missing.</h1>
+            <p>
+              Annotated is a Chrome side panel for fact-checking and adding context to articles, videos, and
+              podcasts. Your note stays pinned to the exact line or moment, with a link back to the source.
+            </p>
+            <div className="lp-actions">
+              <DownloadExtensionButton size="lg" />
+              <a href="/feed" className="lp-button-quiet" data-testid="link-hero-feed">
+                Browse annotations
+              </a>
+            </div>
+            <p className="lp-fineprint">Free. Works on news sites, blogs, YouTube, podcasts, and X.</p>
           </div>
-        </div>
-      </header>
+          <AnnotatedPage />
+        </section>
 
-      <main className="flex-1 overflow-hidden">
-        <section className="landing-hero" aria-labelledby="landing-title">
-          <h1 id="landing-title" data-testid="text-hero">
-            Clip the exact moment.<br />
-            <span>Add the missing context.</span>
-          </h1>
+        <section className="lp-section lp-how" id="how-it-works" aria-labelledby="how-title">
+          <h2 id="how-title">How it works</h2>
+          <ol className="lp-steps">
+            {STEPS.map((s) => (
+              <li key={s.title}>
+                <h3>{s.title}</h3>
+                <p>{s.body}</p>
+                {s.types && (
+                  <ul className="lp-types" aria-label="Kinds of take">
+                    {ANNOTATION_TYPES.map((t) => (
+                      <li key={t} data-type={t} title={ANNOTATION_TYPE_DESCRIPTIONS[t]}>
+                        {ANNOTATION_TYPE_LABELS[t]}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="lp-section lp-fair" aria-labelledby="fair-title">
+          <div className="lp-fair-intro">
+            <h2 id="fair-title">Built for commentary, not reposting</h2>
+            <p>
+              Quoting a source to argue with it is fair use. Lifting the whole thing is not. The limits are part of
+              the product, not a setting.
+            </p>
+          </div>
+          <dl>
+            {GUARANTEES.map(([term, detail]) => (
+              <div key={term}>
+                <dt>{term}</dt>
+                <dd>{detail}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
+        <section className="lp-section lp-ask" aria-labelledby="ask-title">
+          <h2 id="ask-title">Not sure a story holds up? Ask someone to check it.</h2>
           <p>
-            Annotated turns the best part of any article, video, or podcast into a
-            source-linked post built for conversation.
+            Post a request with a link and a question. Ask the whole community, or name the one person whose
+            judgment you trust. When they annotate the page, the request is marked answered.
           </p>
-          <div className="landing-actions">
-            <DownloadExtensionButton size="lg" label="Get the extension" />
-            <a href="/demo" className="landing-secondary-button" data-testid="link-watch-demo">
-              <Play aria-hidden fill="currentColor" />
-              Watch the demo
-            </a>
-          </div>
-          <div className="landing-proof" aria-label="Supported media">
-            {MEDIA.map(({ icon: Icon, label }) => (
-              <span key={label}><Icon aria-hidden />{label}</span>
-            ))}
-            <strong>Always linked to the source</strong>
-          </div>
+          <a href="/requests" className="lp-button-quiet">See open requests</a>
         </section>
 
-        <section className="landing-product-stage" aria-label="Annotated product preview">
-          <HeroProductFrame />
-        </section>
+        <RecentAnnotations />
 
-        <section className="landing-marquee" aria-label="The context layer of the internet">
-          <div className="landing-marquee-track" aria-hidden="true">
-            <div className="landing-marquee-group">
-              {MARQUEE_ITEMS}
-            </div>
-            <div className="landing-marquee-group">
-              {MARQUEE_ITEMS}
-            </div>
-          </div>
-        </section>
-
-        <section className="landing-system" id="how-it-works" aria-labelledby="system-title">
-          <header className="landing-section-heading">
-            <span>One gesture. Three kinds of media.</span>
-            <h2 id="system-title" className="sr-only">Ideas travel farther when their evidence travels with them.</h2>
-          </header>
-          <div className="landing-steps">
-            {STEPS.map(({ icon: Icon, title, body }, index) => (
-              <article key={title}>
-                <div><Icon aria-hidden /><span>0{index + 1}</span></div>
-                <h3>{title}</h3>
-                <p>{body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="landing-feature landing-feature-clip" aria-labelledby="clip-title">
-          <header className="landing-feature-heading">
-            <div className="landing-feature-copy">
-              <span>Precision, not timestamps in a caption</span>
-              <h2 id="clip-title">Scrub to the line that made you stop.</h2>
-            </div>
-            <p>
-              Set the clip’s exact in and out points before you publish. Annotated keeps the
-              result short, playable, and connected to the original creator.
-            </p>
-          </header>
-          <ProductFrame
-            src="/product/annotated-extension-youtube-context.png"
-            alt="Annotated running beside a YouTube video with a selected 66-second clip range"
-            className="landing-context-frame"
-          />
-          <ul className="landing-feature-points">
-            <li>Drag the range or enter exact times</li>
-            <li>Nudge either edge one second at a time</li>
-            <li>Preview the bounded clip before publishing</li>
-          </ul>
-        </section>
-
-        <section className="landing-demo-band" aria-labelledby="demo-title">
-          <div className="landing-demo-copy">
-            <span>Product demo</span>
-            <h2 id="demo-title">From source to social post in under a minute.</h2>
-            <p>See article, video, and podcast clipping with the real product—not a prototype.</p>
-            <a href="/demo" className="landing-inline-link">
-              Watch the full demo <ArrowRight aria-hidden />
-            </a>
-          </div>
-          <a href="/demo" className="landing-video-poster" aria-label="Watch the Annotated product demo">
-            <img src="/media/annotated-demo-poster.jpg" alt="Annotated product demo video" loading="eager" />
-            <span><Play aria-hidden fill="currentColor" /></span>
-          </a>
-        </section>
-
-        <section className="landing-feed-story" aria-labelledby="feed-story-title">
-          <div className="landing-feed-story-copy">
-            <span>Social, with receipts</span>
-            <h2 id="feed-story-title">A feed built around sources, not screenshots.</h2>
-            <p>
-              Every post begins with something verifiable: a passage, a playable moment, and a
-              path back to the work it came from. Commentary becomes the layer on top—not a
-              replacement for the source.
-            </p>
-            <a href="/feed" className="landing-inline-link" data-testid="link-explore-feed">
-              Explore the live feed <ArrowUpRight aria-hidden />
-            </a>
-          </div>
-          <ProductFrame
-            src="/product/annotated-video-post.png"
-            alt="A live Annotated post with a bounded YouTube clip, commentary, source credits, and discussion"
-            className="landing-detail-frame"
-          />
-        </section>
-
-        <section className="landing-final-cta" aria-labelledby="final-cta-title">
-          <QuoteMark size={44} />
-          <h2 id="final-cta-title">The internet deserves its footnotes.</h2>
-          <p>Clip precisely. Add context. Publish with the source intact.</p>
-          <div className="landing-actions">
-            <DownloadExtensionButton size="lg" label="Get the extension" />
-            <a href="/feed" className="landing-secondary-button">Browse the feed</a>
-          </div>
+        <section className="lp-close" aria-labelledby="close-title">
+          <h2 id="close-title">Your first annotation takes about a minute.</h2>
+          <DownloadExtensionButton size="lg" />
         </section>
       </main>
-
-      <footer className="landing-footer">
-        <div>
-          <Logo />
-          <p>Source-linked conversations for the open web.</p>
-        </div>
-        <nav aria-label="Footer">
-          <a href="/feed">Feed</a>
-          <a href="/demo">Demo</a>
-          <a href="/support">Support</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/tos">Terms</a>
-        </nav>
-        <small data-testid="text-footer-copyright">© 2026 Annotated · Built by Niko Callas</small>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }

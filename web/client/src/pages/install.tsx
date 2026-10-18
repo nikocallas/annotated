@@ -59,7 +59,7 @@ export default function InstallPage() {
         <ol className="space-y-5">
           {STEPS.map((s) => (
             <li key={s.n} className="flex gap-4" data-testid={`step-${s.n}`}>
-              <div className="rounded-full bg-foreground/5 border border-border h-9 w-9 flex items-center justify-center font-mono text-sm shrink-0">
+              <div className="rounded-full bg-foreground/5 border border-border h-9 w-9 flex items-center justify-center font-serif italic text-base shrink-0">
                 {s.n}
               </div>
               <div>

@@ -107,7 +107,7 @@ function EmailInviteCard() {
   return (
     <Card className="border-card-border bg-card p-5">
       <form onSubmit={send} className="space-y-3" data-testid="form-invite-email">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Invite by email</div>
+        <div className="text-xs text-muted-foreground font-semibold">Invite by email</div>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1">
             <Label htmlFor="invite-email" className="sr-only">Friend's email</Label>
@@ -209,7 +209,7 @@ export default function InvitePage() {
         <EmailInviteCard />
 
         <Card className="border-card-border bg-card p-5">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+          <div className="text-xs text-muted-foreground font-semibold mb-2">
             Share link
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">

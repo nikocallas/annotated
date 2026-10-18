@@ -1,7 +1,7 @@
 export function QuoteMark({ size = 28 }: { size?: number }) {
   return (
     <span
-      className="inline-flex items-center justify-center rounded-lg shrink-0"
+      className="inline-flex items-center justify-center rounded-[7px] shrink-0"
       style={{
         width: size,
         height: size,
@@ -18,11 +18,11 @@ export function QuoteMark({ size = 28 }: { size?: number }) {
         viewBox="4 4 56 56"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        style={{ color: "hsl(var(--primary-foreground))" }}
+        style={{ color: "hsl(var(--background))" }}
       >
           <rect x="12" y="15" width="30" height="5" rx="2.5" fill="currentColor" opacity="0.55"/>
           <rect x="9" y="26" width="38" height="13" rx="3" fill="#FFE24A"/>
-          <rect x="12" y="30" width="32" height="5" rx="2.5" fill="currentColor"/>
+          <rect x="12" y="30" width="32" height="5" rx="2.5" fill="#1A1D2E"/>
           <rect x="12" y="45" width="22" height="5" rx="2.5" fill="currentColor" opacity="0.55"/>
           <g transform="translate(47 37) rotate(35)">
             <rect x="-4.5" y="-21" width="9" height="15" rx="2" fill="currentColor"/>
@@ -48,12 +48,7 @@ export function Logo({ size = 28 }: { size?: number }) {
       aria-label="Annotated home"
     >
       <QuoteMark size={size} />
-      <span
-        className="text-lg font-semibold tracking-tight"
-        style={{ fontFamily: "var(--font-sans)" }}
-      >
-        Annotated
-      </span>
+      <span className="text-[1.0625rem] font-bold tracking-[-0.02em]">Annotated</span>
     </a>
   );
 }

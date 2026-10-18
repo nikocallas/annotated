@@ -156,11 +156,11 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
             aria-label={`Open annotation: ${a.sourceTitle ?? a.sourceUrl}`}
             data-testid={`text-source-title-${a.id}`}
           >
-            {a.commentCount > 0 ? `Join the discussion (${a.commentCount}) →` : "Open annotation →"}
+            {a.commentCount > 0 ? `Join the discussion (${a.commentCount})` : "Open annotation"}
           </Link>
 
           {/* Footer */}
-          <div className="flex items-center gap-1 text-xs text-muted-foreground pt-1 border-t border-card-border/60 -mx-5 -mb-5 mt-1 px-3 py-2">
+          <div className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground pt-1 border-t border-card-border/60 -mx-5 -mb-5 mt-1 px-3 py-2">
             <span
               className="inline-flex items-center px-1"
               onClick={(e) => e.stopPropagation()}
@@ -178,7 +178,8 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
             </span>
             <span className="inline-flex items-center gap-1 px-2">
               <MessageCircle className="w-3.5 h-3.5" />
-              {a.commentCount} {a.commentCount === 1 ? "note" : "notes"}
+              {a.commentCount}
+              <span className="sr-only sm:not-sr-only">{a.commentCount === 1 ? " note" : " notes"}</span>
             </span>
             <span
               className="inline-flex items-center gap-1 px-2"
@@ -201,7 +202,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
                 data-testid={`button-bookmark-${a.id}`}
               >
                 <Bookmark className={`w-3.5 h-3.5 ${isBookmarked ? "fill-current" : ""}`} />
-                {isBookmarked ? "Marked" : "Mark"}
+                <span className="hidden sm:inline">{isBookmarked ? "Marked" : "Mark"}</span>
               </button>
               <button
                 type="button"
@@ -211,7 +212,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
                 data-testid={`button-post-x-${a.id}`}
               >
                 <SiX className="w-3 h-3" />
-                Post
+                <span className="hidden sm:inline">Post</span>
               </button>
               <button
                 type="button"
@@ -221,7 +222,7 @@ export function FeedCard({ annotation, bookmarked }: FeedCardProps) {
                 data-testid={`button-share-${a.id}`}
               >
                 <Share2 className="w-3.5 h-3.5" />
-                Share
+                <span className="hidden sm:inline">Share</span>
               </button>
               <DeleteAnnotationButton
                 annotationId={a.id}

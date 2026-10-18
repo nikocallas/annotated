@@ -35,7 +35,7 @@ export default function FollowingPage() {
               Sign in to see clips from the people you follow.
             </p>
             <Link href="/login" className="text-primary hover:underline" data-testid="link-following-login">
-              Sign in with X or Google →
+              Sign in with X or Google
             </Link>
           </div>
         ) : isLoading ? (

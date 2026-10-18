@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { ExternalLink, HandHelping, CheckCircle2, Puzzle } from "lucide-react";
+import { ExternalLink, CheckCircle2, Puzzle } from "lucide-react";
 import type { AnnotationRequestWithRelations } from "@shared/schema";
 import { AppLayout } from "@/components/AppLayout";
 import { RequestAnnotationButton } from "@/components/RequestAnnotationButton";
@@ -43,15 +43,10 @@ export default function RequestsPage() {
     <AppLayout feedHeader>
       <div className="mx-auto max-w-3xl px-4 sm:px-6 py-8 space-y-6">
         <header className="space-y-3">
-          <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 text-primary-readable px-3 py-1 text-xs font-semibold">
-            <HandHelping className="w-3.5 h-3.5" aria-hidden />
-            Context wanted
-          </div>
-          <h1 className="text-3xl md:text-4xl font-semibold leading-tight">Requests</h1>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-[-0.025em] leading-tight">Requests</h1>
           <p className="text-muted-foreground max-w-2xl">
-            Put a bounty of attention on a story: ask the community, or one person whose judgment you trust,
-            to fact-check it or add the context that’s missing. Answer a request by annotating the page with the
-            Annotated extension.
+            Not sure a story holds up? Ask the community, or one person whose judgment you trust, to check it.
+            Anyone with the extension answers by annotating the page, and the request is marked answered.
           </p>
           <RequestAnnotationButton variant="default" label="New request" />
         </header>
@@ -140,8 +135,8 @@ function RequestCard({ request: r }: { request: AnnotationRequestWithRelations }
               </Link>
             ) : (
               "everyone"
-            )}{" "}
-            · {timeAgo(r.createdAt)}
+            )}
+            , {timeAgo(r.createdAt)}
           </span>
         </span>
         {r.status === "fulfilled" && (
@@ -158,7 +153,7 @@ function RequestCard({ request: r }: { request: AnnotationRequestWithRelations }
         rel="noopener noreferrer"
         className="source-card block p-3 hover-elevate"
       >
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
+        <div className="text-[13px] text-muted-foreground font-semibold">
           {hostname(r.sourceUrl)}
         </div>
         <div className="text-sm font-semibold leading-snug flex items-center gap-1">

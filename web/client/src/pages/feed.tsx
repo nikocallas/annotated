@@ -32,14 +32,11 @@ import {
   FileText,
   Mic,
   LayoutGrid,
-  Eye,
   ArrowUpDown,
   Sparkles,
   Users,
   Bookmark as BookmarkIcon,
   Search,
-  Quote,
-  TrendingUp,
   Hash,
   HandHelping,
   X as XIcon,
@@ -55,9 +52,9 @@ type FeedTab = "for-you" | "following" | "latest" | "bookmarks";
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "best", label: "Best for you" },
   { key: "latest", label: "Latest" },
-  { key: "most-viewed", label: "Most Viewed" },
-  { key: "most-popular", label: "Most Popular" },
-  { key: "most-commented", label: "Most Commented" },
+  { key: "most-viewed", label: "Most viewed" },
+  { key: "most-popular", label: "Most popular" },
+  { key: "most-commented", label: "Most commented" },
 ];
 
 const SORT_KEYS = SORT_OPTIONS.map((o) => o.key);
@@ -118,7 +115,7 @@ export default function FeedPage() {
 
   return (
     <AppLayout feedHeader>
-      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_300px] gap-6 lg:gap-8">
+      <div className="mx-auto w-[min(100%_-_2rem,76rem)] sm:w-[min(100%_-_3rem,76rem)] py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_300px] gap-6 lg:gap-8">
         {/* Left sidebar */}
         <LeftSidebar tab={tab} onTabChange={handleTabSelect} />
 
@@ -127,12 +124,8 @@ export default function FeedPage() {
           <h1 className="sr-only">Annotated public feed</h1>
           <section className="feed-intro" aria-labelledby="feed-heading">
             <div>
-              <div className="feed-eyebrow">
-                <Quote className="h-3.5 w-3.5" aria-hidden />
-                The context layer of the internet
-              </div>
-              <h2 id="feed-heading">What’s worth carrying forward</h2>
-              <p>Highlight any sentence, clip any moment, and dispute it or add the context that’s missing.</p>
+              <h2 id="feed-heading">Annotations</h2>
+              <p>Notes pinned to the exact line or moment they’re about. Filter by kind of take, or search a source.</p>
             </div>
             <label className="feed-search">
               <Search className="h-4 w-4" aria-hidden />
@@ -680,7 +673,7 @@ function PeopleWorthFollowing() {
       <div className="flex items-center justify-between mb-3">
         <h3
           id="rail-people-heading"
-          className="text-[11px] font-semibold tracking-wider uppercase text-muted-foreground"
+          className="rail-heading"
         >
           People worth following
         </h3>
@@ -715,8 +708,8 @@ function PeopleWorthFollowing() {
                     @{u.username}
                     {typeof u.annotationCount === "number" && (
                       <span>
-                        {" "}· {u.annotationCount} {u.annotationCount === 1 ? "post" : "posts"}
-                        {typeof u.followers === "number" && u.followers > 0 ? ` · ${u.followers} followers` : ""}
+                        {", "}{u.annotationCount} {u.annotationCount === 1 ? "post" : "posts"}
+                        {typeof u.followers === "number" && u.followers > 0 ? `, ${u.followers} followers` : ""}
                       </span>
                     )}
                   </div>
@@ -752,9 +745,8 @@ function MostViewedClip() {
       data-testid="rail-most-viewed"
       aria-labelledby="rail-most-viewed-heading"
     >
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground mb-3">
-        <Eye className="w-3 h-3" />
-        <span id="rail-most-viewed-heading">Live signal</span>
+      <div className="rail-heading mb-3">
+        <span id="rail-most-viewed-heading">Most viewed</span>
       </div>
       <Link
         href={`/a/${a.id}`}
@@ -769,9 +761,8 @@ function MostViewedClip() {
             {a.commentaryText.length > 140 ? `${a.commentaryText.slice(0, 140)}…` : a.commentaryText}
           </div>
         )}
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+        <div className="text-xs text-muted-foreground flex items-center gap-3">
           <span>Annotated by @{a.user.username}</span>
-          <span aria-hidden="true">·</span>
           <span data-testid="text-most-viewed-count">
             {(a.viewCount ?? 0).toLocaleString()} views
           </span>
@@ -806,9 +797,8 @@ function TrendingRail() {
     >
       <h3
         id="rail-trending-heading"
-        className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground"
+        className="rail-heading"
       >
-        <TrendingUp className="w-3 h-3" aria-hidden />
         Trending
       </h3>
       {data.topics.length > 0 && (
@@ -889,9 +879,8 @@ function OpenRequestsRail() {
     >
       <h3
         id="rail-requests-heading"
-        className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider uppercase text-muted-foreground"
+        className="rail-heading"
       >
-        <HandHelping className="w-3 h-3" aria-hidden />
         Context wanted
       </h3>
       {data && data.length > 0 ? (
@@ -920,7 +909,7 @@ function OpenRequestsRail() {
       <div className="flex items-center justify-between gap-2">
         <RequestAnnotationButton label="Ask" />
         <Link href="/requests" className="text-xs text-primary-readable hover:underline" data-testid="link-all-requests">
-          All requests →
+          All requests
         </Link>
       </div>
     </section>

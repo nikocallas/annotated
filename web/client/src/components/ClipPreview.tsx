@@ -163,7 +163,7 @@ export function ClipPreview({
             <span data-testid={`clip-range-${a.id}`}>
               Clip {range} • {dur}s
             </span>
-            <span className="font-mono">240p clip</span>
+            <span>240p clip</span>
           </div>
         </div>
       );
@@ -194,7 +194,7 @@ export function ClipPreview({
           <span data-testid={`clip-range-${a.id}`}>
             Clip {range} • {dur}s
           </span>
-          <span className="font-mono">YouTube clip</span>
+          <span>YouTube clip</span>
         </div>
       </div>
     );
@@ -234,7 +234,7 @@ export function ClipPreview({
           <span data-testid={`clip-range-${a.id}`}>
             Clip {range} • {dur}s
           </span>
-          <span className="font-mono">Spotify clip</span>
+          <span>Spotify clip</span>
         </div>
       </div>
     );
